@@ -1,0 +1,32 @@
+[Unit]
+Description=Pump.fun multi-trader Solana copybot
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/pr6spr-paper-copybot/current
+EnvironmentFile=/opt/pr6spr-paper-copybot/shared/bot.env
+ExecStart=/opt/pr6spr-paper-copybot/tools/node-v24.22.2-linux-x64/bin/node src/index.js
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillSignal=SIGINT
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/opt/pr6spr-paper-copybot/shared/data
+
+[Install]
+WantedBy=multi-user.target

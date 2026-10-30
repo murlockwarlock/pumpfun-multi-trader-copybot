@@ -1,0 +1,15 @@
+.env
+.env.*
+!.env.example
+data/
+node_modules/
+secrets/
+work/
+deploy/.env
+deploy/server-config.path
+deploy/secrets.path
+*.log
+*.tgz
+*.tar.gz
+.DS_Store
+Thumbs.db
