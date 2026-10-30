@@ -40,4 +40,10 @@ export class ShadowEngine {
     if (!engine) throw new Error(`Unknown shadow trader: ${trade.sourceWallet ?? "missing"}`);
     return engine.onTrade(trade);
   }
+
+  blockTrade(trade, reason) {
+    const engine = this.engines.get(trade.sourceWallet);
+    if (!engine) throw new Error(`Unknown shadow trader: ${trade.sourceWallet ?? "missing"}`);
+    return engine.blockTrade(trade, reason);
+  }
 }

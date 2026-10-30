@@ -77,6 +77,10 @@ export class PaperEngine {
     return record;
   }
 
+  blockTrade(trade, reason) {
+    return this.#skip(trade, reason);
+  }
+
   onTrade(trade) {
     this.#resetDailyCounterIfNeeded();
 

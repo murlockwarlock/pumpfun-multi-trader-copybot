@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const PUMP_AMM_PROGRAM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
-const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
+export const WRAPPED_SOL_MINT = "So11111111111111111111111111111111111111112";
 const POOL_DISCRIMINATOR = Buffer.from([241, 154, 109, 4, 17, 177, 109, 188]);
 const POOL_BASE_MINT_OFFSET = 8 + 1 + 2 + 32;
 const POOL_QUOTE_MINT_OFFSET = POOL_BASE_MINT_OFFSET + 32;

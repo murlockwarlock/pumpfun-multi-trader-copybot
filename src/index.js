@@ -9,6 +9,7 @@ import {
   parsePumpTrades
 } from "./parser.js";
 import { SolanaRpc } from "./rpc.js";
+import { resolvePumpCandidates } from "./route-resolver.js";
 import { ShadowEngine } from "./shadow-engine.js";
 import { TelegramNotifier } from "./telegram-notifier.js";
 import {
@@ -152,7 +153,11 @@ function latencySummary() {
   };
 }
 
-function enqueueTrade(trade, source, { shadowEligible = false, liveBlockReason = null } = {}) {
+function enqueueTrade(
+  trade,
+  source,
+  { shadowEligible = false, shadowBlockReason = null, liveBlockReason = null } = {}
+) {
   const queuedAtMs = Date.now();
   const task = tradeQueue.then(async () => {
     const decisionStartedAtMs = Date.now();
@@ -163,8 +168,10 @@ function enqueueTrade(trade, source, { shadowEligible = false, liveBlockReason =
       queueDelayMs: decisionStartedAtMs - queuedAtMs
     };
     log("target_trade", enriched);
-    if (shadowTrader && shadowEligible) {
-      const shadowResult = shadowTrader.onTrade(enriched);
+    if (shadowTrader && (shadowEligible || shadowBlockReason)) {
+      const shadowResult = shadowBlockReason
+        ? shadowTrader.blockTrade(enriched, shadowBlockReason)
+        : shadowTrader.onTrade(enriched);
       log("shadow_result", shadowResult);
     }
     const result = liveBlockReason && config.tradingMode === "live"
@@ -215,9 +222,30 @@ async function processConfirmedSignature(target, signature, source, observedAtMs
   const confirmedSignal = parseConfirmedPumpLogSignal(
     tx, target.wallet, signature, { observedAtMs }
   );
-  let trades = confirmedSignal.trades.length > 0
-    ? await resolveFastTrades(confirmedSignal.trades)
-    : parsePumpTrades(tx, target.wallet, signature);
+  const resolution = confirmedSignal.trades.length > 0
+    ? await resolvePumpCandidates(confirmedSignal.trades, rpc)
+    : { trades: parsePumpTrades(tx, target.wallet, signature), unsupportedTrades: [] };
+  const { trades, unsupportedTrades } = resolution;
+  for (const unsupported of unsupportedTrades) {
+    const trade = attributedTrade({
+      ...unsupported.trade,
+      observedAtMs,
+      signalSource: "confirmed_unsupported_route"
+    }, target);
+    log("unsupported_trade_route", {
+      signature,
+      sourceWallet: target.wallet,
+      sourceName: target.name,
+      reason: unsupported.reason,
+      pool: trade.unsupportedPool,
+      quoteMint: trade.unsupportedQuoteMint,
+      action: "skipped"
+    });
+    await enqueueTrade(trade, source, {
+      shadowBlockReason: unsupported.reason,
+      liveBlockReason: unsupported.reason
+    });
+  }
   for (const original of trades) {
     await enqueueTrade(attributedTrade({
       ...original,
@@ -273,24 +301,6 @@ function enqueueSignature(target, signature, source, observedAtMs = null) {
   return task;
 }
 
-async function resolveFastTrades(candidates) {
-  const resolved = [];
-  for (const candidate of candidates) {
-    if (candidate.boundaryPool) {
-      await rpc.resolveSolPumpPool(candidate.boundaryPool);
-      resolved.push(candidate);
-      continue;
-    }
-    if (!candidate.pool) {
-      resolved.push(candidate);
-      continue;
-    }
-    const pool = await rpc.resolveSolPumpPool(candidate.pool);
-    resolved.push({ ...candidate, mint: pool.baseMint });
-  }
-  return resolved;
-}
-
 function processWebsocketSignature(target, value, slot, observedAtMs) {
   const signature = value.signature;
   const key = signatureTaskKey(target, signature);
@@ -316,15 +326,48 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       );
     }
 
-    let trades;
+    let fastResolution;
     try {
-      trades = await resolveFastTrades(candidates);
+      fastResolution = await resolvePumpCandidates(candidates, rpc);
     } catch (error) {
       fastMetrics.resolutionFallbacks += 1;
       log("fast_resolution_fallback", { signature, message: error.message });
       return withFallbackSlot(
         () => processConfirmedSignature(target, signature, "websocket_fallback", observedAtMs)
       );
+    }
+    const { trades, unsupportedTrades } = fastResolution;
+    for (const unsupported of unsupportedTrades) {
+      const trade = attributedTrade({
+        ...unsupported.trade,
+        observedAtMs,
+        signalSource: "processed_unsupported_route"
+      }, target);
+      log("unsupported_trade_route", {
+        signature,
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        reason: unsupported.reason,
+        pool: trade.unsupportedPool,
+        quoteMint: trade.unsupportedQuoteMint,
+        action: "skipped"
+      });
+      await enqueueTrade(trade, "websocket_unsupported_route", {
+        shadowBlockReason: unsupported.reason,
+        liveBlockReason: unsupported.reason
+      });
+    }
+    if (trades.length === 0) {
+      target.ingestion.markProcessed(signature);
+      log("signature_processed", {
+        signature,
+        source: "websocket_unsupported_route",
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        targetSlot: slot,
+        detectedInMs: Date.now() - observedAtMs
+      });
+      return true;
     }
 
     fastMetrics.detected += trades.length;
@@ -336,7 +379,8 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       const confirmedSignal = parseConfirmedPumpLogSignal(
         tx, target.wallet, signature, { observedAtMs }
       );
-      confirmedTrades = await resolveFastTrades(confirmedSignal.trades);
+      const confirmedResolution = await resolvePumpCandidates(confirmedSignal.trades, rpc);
+      confirmedTrades = confirmedResolution.trades;
     } catch (error) {
       fastMetrics.verificationErrors += 1;
       log("fast_verification_error", {

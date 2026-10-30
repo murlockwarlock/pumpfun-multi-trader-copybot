@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -159,6 +159,7 @@ touch data/STOP_LIVE
 |---|---|
 | Signer verification | Reject transfers and spam that merely mention a target wallet |
 | Confirmed event gate | Block live execution unless processed and confirmed events match |
+| Unsupported-route quarantine | Record token-quoted pools once and advance ingestion without retries |
 | Per-trader ownership | Prevent cross-trader SELL signals from closing the wrong position |
 | Shadow portfolios | Compare monitored traders using isolated, fee-aware simulations |
 | Signal-age limit | Avoid copying stale transactions after reconnects |
