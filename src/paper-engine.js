@@ -16,6 +16,8 @@ function positionKey({ sourceWallet, mint }) {
 export class PaperEngine {
   constructor(config) {
     this.config = config;
+    this.recordPrefix = config.paperRecordPrefix ?? "PAPER";
+    this.fixedTxFeeSol = config.paperFixedTxFeeSol ?? 0;
     this.positions = new Map();
     this.day = utcDay();
     this.dailyRealizedPnlSol = 0;
@@ -68,7 +70,9 @@ export class PaperEngine {
   }
 
   #skip(trade, reason) {
-    const record = { type: "SKIP", reason, at: new Date().toISOString(), ...trade };
+    const record = {
+      type: `${this.recordPrefix}_SKIP`, reason, at: new Date().toISOString(), ...trade
+    };
     this.#write(record);
     return record;
   }
@@ -100,14 +104,15 @@ export class PaperEngine {
       const feeRate = this.config.pumpFeeBps / 10_000;
       const entryPriceSol = trade.averagePriceSol * penalty;
       const spendSol = this.config.paperTradeSol;
-      const feeSol = spendSol * feeRate;
-      const tokenAmount = (spendSol - feeSol) / entryPriceSol;
+      const pumpFeeSol = spendSol * feeRate;
+      const fixedFeeSol = this.fixedTxFeeSol;
+      const tokenAmount = (spendSol - pumpFeeSol) / entryPriceSol;
       const position = {
         mint: trade.mint,
         sourceWallet: trade.sourceWallet ?? null,
         sourceName: trade.sourceName ?? null,
         tokenAmount,
-        costSol: spendSol,
+        costSol: spendSol + fixedFeeSol,
         entryPriceSol,
         openedAt: new Date().toISOString(),
         entrySignature: trade.signature
@@ -116,7 +121,7 @@ export class PaperEngine {
       this.#saveState();
 
       const record = {
-        type: "PAPER_BUY",
+        type: `${this.recordPrefix}_BUY`,
         at: position.openedAt,
         signalAgeMs,
         signalSource: trade.signalSource ?? "unknown",
@@ -125,6 +130,9 @@ export class PaperEngine {
         sourceWallet: position.sourceWallet,
         sourceName: position.sourceName,
         spendSol: round(spendSol),
+        pumpFeeSol: round(pumpFeeSol),
+        fixedFeeSol: round(fixedFeeSol),
+        totalCostSol: round(position.costSol),
         tokenAmount: round(tokenAmount, 6),
         entryPriceSol,
         targetSignature: trade.signature
@@ -141,14 +149,16 @@ export class PaperEngine {
     const feeRate = this.config.pumpFeeBps / 10_000;
     const exitPriceSol = trade.averagePriceSol * penalty;
     const grossSol = position.tokenAmount * exitPriceSol;
-    const proceedsSol = grossSol * (1 - feeRate);
+    const pumpFeeSol = grossSol * feeRate;
+    const fixedFeeSol = this.fixedTxFeeSol;
+    const proceedsSol = grossSol - pumpFeeSol - fixedFeeSol;
     const pnlSol = proceedsSol - position.costSol;
     this.dailyRealizedPnlSol += pnlSol;
     this.positions.delete(key);
     this.#saveState();
 
     const record = {
-      type: "PAPER_SELL",
+      type: `${this.recordPrefix}_SELL`,
       at: new Date().toISOString(),
       signalAgeMs,
       signalSource: trade.signalSource ?? "unknown",
@@ -157,6 +167,8 @@ export class PaperEngine {
       sourceWallet: position.sourceWallet,
       sourceName: position.sourceName,
       proceedsSol: round(proceedsSol),
+      pumpFeeSol: round(pumpFeeSol),
+      fixedFeeSol: round(fixedFeeSol),
       pnlSol: round(pnlSol),
       dailyRealizedPnlSol: round(this.dailyRealizedPnlSol),
       exitPriceSol,

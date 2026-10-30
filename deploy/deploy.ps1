@@ -81,8 +81,14 @@ $allowedRuntimeKeys = @(
     'RPC_TIMEOUT_MS',
     'MAX_RPC_SILENCE_MS',
     'STARTUP_BACKFILL_MS',
-    'FAST_SIGNAL_ENABLED',
-    'FALLBACK_CONCURRENCY',
+     'FAST_SIGNAL_ENABLED',
+     'FALLBACK_CONCURRENCY',
+     'SHADOW_ENABLED',
+     'SHADOW_TRADE_SOL',
+     'SHADOW_MAX_OPEN_POSITIONS_PER_TRADER',
+     'SHADOW_MAX_DAILY_LOSS_SOL',
+     'SHADOW_LATENCY_PENALTY_BPS',
+     'SHADOW_TX_FEE_SOL',
     'LIVE_CONFIRMATION',
     'LIVE_WALLET_FILE',
     'LIVE_WALLET_ADDRESS',
@@ -182,7 +188,9 @@ try {
     $runtimeLines.Add("STATE_FILE=$RemoteAppDir/shared/data/paper-state.json")
     $runtimeLines.Add("INGESTION_STATE_FILE=$RemoteAppDir/shared/data/ingestion-state.json")
     $runtimeLines.Add("LIVE_LOG_FILE=$RemoteAppDir/shared/data/live-trades.jsonl")
-    $runtimeLines.Add("LIVE_STATE_FILE=$RemoteAppDir/shared/data/live-state.json")
+     $runtimeLines.Add("LIVE_STATE_FILE=$RemoteAppDir/shared/data/live-state.json")
+     $runtimeLines.Add("SHADOW_LOG_FILE=$RemoteAppDir/shared/data/shadow-trades.jsonl")
+     $runtimeLines.Add("SHADOW_STATE_DIR=$RemoteAppDir/shared/data/shadow-state")
     $runtimeLines.Add("LIVE_KILL_SWITCH_FILE=$RemoteAppDir/shared/data/STOP_LIVE")
     $runtimeLines.Add("LIVE_AUTO_PAUSE_FILE=$RemoteAppDir/shared/data/AUTO_PAUSE_BUYS")
     $runtimeLines.Add("MANUAL_ORDER_DIR=$RemoteAppDir/shared/data/manual-orders")

@@ -3,6 +3,7 @@ import test from "node:test";
 const WALLET_ONE = "11111111111111111111111111111111";
 const WALLET_TWO = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 process.env.TARGET_WALLETS ||= `test:${WALLET_ONE}`;
+process.env.LIVE_TRADER_WALLETS ||= "test";
 const { parseLiveTraderWallets, parseTargetTraders } = await import("../src/config.js");
 
 test("parses named target wallets and resolves the live allowlist", () => {

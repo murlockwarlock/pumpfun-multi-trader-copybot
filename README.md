@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-37%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -22,7 +22,8 @@ limits, crash recovery, and auditable JSONL logs.
 
 - Monitor up to 50 named Solana wallets from one process.
 - Independent `processed` WebSocket subscriptions and durable backfill cursors.
-- Decode official Pump bonding-curve and PumpSwap events on the fast path.
+- Decode official Pump bonding-curve and PumpSwap events, then re-check the
+  authenticated event in the confirmed transaction before live submission.
 - Require the tracked wallet to be an authenticated signer.
 - Collapse supported multi-hop routes to the final traded token.
 - Keep positions isolated by source trader; one trader's SELL cannot close
@@ -30,8 +31,8 @@ limits, crash recovery, and auditable JSONL logs.
 - Separate the monitoring list from the live execution allowlist.
 - Enforce global position, daily spend, reserve, realized-loss, signal-age, and
   price-drift limits.
-- Support paper trading, guarded live execution, Telegram admin reports, and
-  exact realized PnL accounting.
+- Run a fee-aware shadow portfolio for every monitored trader alongside guarded
+  live execution, Telegram reports, and exact realized PnL accounting.
 - Recover incomplete settlements and retry emergency exits after restarts.
 - Deploy atomically with systemd health checks and automatic rollback.
 
@@ -43,20 +44,22 @@ flowchart LR
     W --> BF[HTTP backfill per wallet]
     WS --> P[Authenticated Pump event parser]
     BF --> P
-    P --> A[Source attribution and deduplication]
+    P --> V[Confirmed event gate]
+    V --> A[Source attribution and deduplication]
     A --> R{Risk and live allowlist}
     R -->|paper| PE[Paper engine]
     R -->|allowed live signal| LE[Live executor]
-    R -->|monitor only| L[Audit log]
+    R -->|all monitored signals| SH[Per-trader shadow portfolios]
     LE --> S[Pump / PumpSwap / Jupiter route]
     PE --> REP[Per-trader reports]
     LE --> REP
-    L --> REP
+    SH --> REP
 ```
 
-The WebSocket path reacts as soon as an authenticated Pump event appears. A
-confirmed-transaction verification runs in the background, while periodic HTTP
-backfill repairs gaps caused by disconnects or restarts.
+The WebSocket path decodes a processed event immediately, then re-decodes the
+same authenticated event from the confirmed transaction. A live order is
+blocked unless both trade sets match exactly. Periodic HTTP backfill repairs
+gaps caused by disconnects or restarts.
 
 ## Quick start
 
@@ -95,11 +98,29 @@ LIVE_TRADER_WALLETS=alpha
 
 In this example, all three traders are monitored, but only `alpha` can trigger
 live orders. Signals from `beta` and `gamma` are recorded as
-`trader_monitor_only` and appear in per-trader reports.
+`trader_monitor_only`, while their independent shadow portfolios continue to
+trade and appear in ranked reports.
 
 The live allowlist can contain configured names or exact wallet addresses. If a
 trader is removed from the allowlist, new BUY orders stop immediately, while an
 already-owned position can still be sold safely.
+
+### Shadow-paper ranking
+
+`SHADOW_ENABLED=true` is the default in live mode. Every monitored trader gets
+a durable simulated portfolio with its own position and daily loss limits. The
+simulation charges Pump fees, a latency/slippage penalty, and a fixed estimated
+transaction cost on entry and exit.
+
+```dotenv
+SHADOW_TRADE_SOL=0.005
+SHADOW_MAX_OPEN_POSITIONS_PER_TRADER=5
+SHADOW_LATENCY_PENALTY_BPS=300
+SHADOW_TX_FEE_SOL=0.00011
+```
+
+Keep new candidates monitor-only until enough shadow positions have closed to
+compare their net results after estimated costs.
 
 ## Live mode
 
@@ -137,7 +158,9 @@ touch data/STOP_LIVE
 | Control | Purpose |
 |---|---|
 | Signer verification | Reject transfers and spam that merely mention a target wallet |
+| Confirmed event gate | Block live execution unless processed and confirmed events match |
 | Per-trader ownership | Prevent cross-trader SELL signals from closing the wrong position |
+| Shadow portfolios | Compare monitored traders using isolated, fee-aware simulations |
 | Signal-age limit | Avoid copying stale transactions after reconnects |
 | Entry-drift limit | Reject a BUY when the available price moved too far |
 | Daily spend/loss caps | Bound aggregate exposure across every followed trader |
@@ -151,7 +174,8 @@ touch data/STOP_LIVE
 
 Every decision is written as JSONL with the source name and source wallet.
 Telegram reports summarize detected signals per trader, confirmed BUY and SELL
-counts, skipped signals, exact realized PnL, open positions, and risk pauses.
+counts, skipped signals, exact live PnL, ranked shadow PnL, open positions, and
+risk pauses.
 
 Routine WebSocket reconnects are kept out of Telegram to avoid notification
 noise. Actionable failures, blocked exits, risk pauses, settlements, and admin
@@ -163,9 +187,10 @@ reports are still delivered.
 npm test
 ```
 
-The test suite covers event parsing, signer checks, multi-hop normalization,
-multi-trader position isolation, durable state, live submission and settlement,
-price drift, max-hold exits, token-account cleanup, RPC failover, and reporting.
+The test suite covers event parsing, confirmed fast-signal verification, signer
+checks, multi-hop normalization, independent shadow portfolios, multi-trader
+position isolation, durable state, live settlement, price drift, max-hold exits,
+token-account cleanup, RPC failover, and reporting.
 
 ## Deployment
 
@@ -187,6 +212,8 @@ src/
   pump-executor.js       transaction preparation and route selection
   live-state.js          durable positions, signals, and risk counters
   live-report.js         aggregate and per-trader reporting
+  shadow-engine.js       isolated fee-aware simulation for every trader
+  fast-verifier.js       processed-vs-confirmed trade-set comparison
 deploy/                   atomic server deployment and operational scripts
 test/                     Node.js test suite
 ```

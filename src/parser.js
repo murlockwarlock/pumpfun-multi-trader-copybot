@@ -245,22 +245,47 @@ export function parsePumpLogSignal(
   };
 }
 
-export function parsePumpTrades(tx, targetWallet, signature = "unknown") {
+function authenticatedPumpTransaction(tx, targetWallet) {
   const message = tx?.transaction?.message;
   const meta = tx?.meta;
-  if (!message || !meta || meta.err) return [];
+  if (!message || !meta || meta.err) return null;
 
   const accountKeys = message.accountKeys ?? [];
   const keys = accountKeys.map(keyString);
-  const usesPump = keys.some((key) => PUMP_PROGRAMS.has(key));
-  if (!usesPump) return [];
+  if (!keys.some((key) => PUMP_PROGRAMS.has(key))) return null;
 
   const targetIndex = keys.indexOf(targetWallet);
-  if (targetIndex < 0) return [];
-  // logsSubscribe reports every transaction that merely mentions the address.
-  // Copy only actions authorized by the target wallet, never spam transfers
-  // or token airdrops sent to it by somebody else.
-  if (!keyIsSigner(accountKeys[targetIndex])) return [];
+  if (targetIndex < 0 || !keyIsSigner(accountKeys[targetIndex])) return null;
+  return { message, meta, accountKeys, keys, targetIndex };
+}
+
+// Re-decode the authenticated Pump event from a confirmed transaction. This is
+// intentionally independent of wallet balance deltas: routers and repeated
+// buys can produce valid Pump events that the balance-delta fallback cannot
+// price reliably. The confirmed transaction and signer checks make this safe
+// to use as the live-execution gate.
+export function parseConfirmedPumpLogSignal(
+  tx,
+  targetWallet,
+  signature = "unknown",
+  { observedAtMs = null } = {}
+) {
+  const context = authenticatedPumpTransaction(tx, targetWallet);
+  if (!context) {
+    return { trades: [], endpointMint: null, routeKind: null, targetEventCount: 0 };
+  }
+  return parsePumpLogSignal(
+    context.meta.logMessages,
+    targetWallet,
+    signature,
+    { slot: tx.slot ?? null, observedAtMs }
+  );
+}
+
+export function parsePumpTrades(tx, targetWallet, signature = "unknown") {
+  const context = authenticatedPumpTransaction(tx, targetWallet);
+  if (!context) return [];
+  const { meta, targetIndex } = context;
 
   const logSignal = parsePumpLogSignal(
     meta.logMessages,

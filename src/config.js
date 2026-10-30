@@ -118,6 +118,16 @@ const liveTraderWallets = parseLiveTraderWallets(
   process.env.LIVE_TRADER_WALLETS,
   targetTraders
 );
+const liveTradeSol = numberSetting("LIVE_TRADE_SOL", 0.005, { min: 0.001, max: 1 });
+const livePriorityFeeSol = numberSetting("LIVE_PRIORITY_FEE_SOL", 0.0001, {
+  min: 0.000001,
+  max: 0.05
+});
+const liveTipSol = numberSetting("LIVE_TIP_SOL", 0.000005, { min: 0, max: 0.05 });
+const latencyPenaltyBps = numberSetting("LATENCY_PENALTY_BPS", 300, {
+  min: 0,
+  max: 5000
+});
 
 export const config = Object.freeze({
   tradingMode: enumSetting("TRADING_MODE", "paper", ["paper", "live"]),
@@ -132,7 +142,7 @@ export const config = Object.freeze({
   maxOpenPositions: numberSetting("MAX_OPEN_POSITIONS", 1, { min: 1, max: 20 }),
   maxDailyLossSol: numberSetting("MAX_DAILY_LOSS_SOL", 0.02, { min: 0.001, max: 10 }),
   maxSignalAgeMs: numberSetting("MAX_SIGNAL_AGE_MS", 5000, { min: 500, max: 60000 }),
-  latencyPenaltyBps: numberSetting("LATENCY_PENALTY_BPS", 300, { min: 0, max: 5000 }),
+  latencyPenaltyBps,
   pumpFeeBps: numberSetting("PUMP_FEE_BPS", 125, { min: 0, max: 1000 }),
   pollIntervalMs: numberSetting("POLL_INTERVAL_MS", 15_000, { min: 5_000, max: 300_000 }),
   rpcTimeoutMs: numberSetting("RPC_TIMEOUT_MS", 10_000, { min: 1_000, max: 60_000 }),
@@ -160,7 +170,7 @@ export const config = Object.freeze({
   liveConfirmation: process.env.LIVE_CONFIRMATION ?? "",
   liveWalletFile: path.resolve(process.env.LIVE_WALLET_FILE ?? "./secrets/live-wallet.json"),
   liveWalletAddress: process.env.LIVE_WALLET_ADDRESS ?? "",
-  liveTradeSol: numberSetting("LIVE_TRADE_SOL", 0.005, { min: 0.001, max: 1 }),
+  liveTradeSol,
   liveMaxDailySpendSol: numberSetting("LIVE_MAX_DAILY_SPEND_SOL", 0.03, {
     min: 0.001,
     max: 10
@@ -177,14 +187,8 @@ export const config = Object.freeze({
     min: 100_000,
     max: 1_400_000
   }),
-  livePriorityFeeSol: numberSetting("LIVE_PRIORITY_FEE_SOL", 0.0001, {
-    min: 0.000001,
-    max: 0.05
-  }),
-  liveTipSol: numberSetting("LIVE_TIP_SOL", 0.000005, {
-    min: 0,
-    max: 0.05
-  }),
+  livePriorityFeeSol,
+  liveTipSol,
   liveSendRoute: enumSetting("LIVE_SEND_ROUTE", "helius-swqos", [
     "rpc",
     "jito",
@@ -252,6 +256,36 @@ export const config = Object.freeze({
   ),
   liveLogFile: path.resolve(process.env.LIVE_LOG_FILE ?? "./data/live-trades.jsonl"),
   liveStateFile: path.resolve(process.env.LIVE_STATE_FILE ?? "./data/live-state.json"),
+  shadowEnabled: booleanSetting("SHADOW_ENABLED", true),
+  shadowTradeSol: numberSetting("SHADOW_TRADE_SOL", liveTradeSol, {
+    min: 0.001,
+    max: 1
+  }),
+  shadowMaxOpenPositionsPerTrader: numberSetting(
+    "SHADOW_MAX_OPEN_POSITIONS_PER_TRADER",
+    5,
+    { min: 1, max: 100 }
+  ),
+  shadowMaxDailyLossSol: numberSetting("SHADOW_MAX_DAILY_LOSS_SOL", 1, {
+    min: 0.001,
+    max: 100
+  }),
+  shadowLatencyPenaltyBps: numberSetting(
+    "SHADOW_LATENCY_PENALTY_BPS",
+    latencyPenaltyBps,
+    { min: 0, max: 5000 }
+  ),
+  shadowTxFeeSol: numberSetting(
+    "SHADOW_TX_FEE_SOL",
+    livePriorityFeeSol + liveTipSol + 0.000005,
+    { min: 0, max: 0.1 }
+  ),
+  shadowLogFile: path.resolve(
+    process.env.SHADOW_LOG_FILE ?? "./data/shadow-trades.jsonl"
+  ),
+  shadowStateDir: path.resolve(
+    process.env.SHADOW_STATE_DIR ?? "./data/shadow-state"
+  ),
   manualOrderDir: path.resolve(process.env.MANUAL_ORDER_DIR ?? "./data/manual-orders"),
   telegramBotToken:
     process.env.TELEGRAM_BOT_TOKEN ?? optionalSecretFile("TELEGRAM_BOT_TOKEN_FILE"),

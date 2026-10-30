@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  parseConfirmedPumpLogSignal,
   parsePumpLogSignal,
   parsePumpLogTrades,
   parsePumpTrades
@@ -129,6 +130,21 @@ test("fails closed on malformed processed logs", () => {
     parsePumpLogTrades(["Program data: vdt/007mYe4="], TARGET, "bad"),
     []
   );
+});
+
+test("uses authenticated confirmed events when balance deltas cannot price the trade", () => {
+  const tx = transaction({
+    beforeTokens: 2_000_000_000,
+    afterTokens: 2_000_000_000,
+    beforeSol: 10_000_000_000,
+    afterSol: 10_000_000_000,
+    logs: [CURVE_SELL_LOG]
+  });
+  assert.deepEqual(parsePumpTrades(tx, TARGET, "confirmed-event"), []);
+  const signal = parseConfirmedPumpLogSignal(tx, TARGET, "confirmed-event");
+  assert.equal(signal.trades.length, 1);
+  assert.equal(signal.trades[0].side, "SELL");
+  assert.equal(signal.trades[0].mint, "5ZQubmAuRaMjdHjnp4B2GMoakntsD8zzuzvsX2xZpump");
 });
 
 test("collapses a real Axiom multi-hop route to its final Pump coin", () => {

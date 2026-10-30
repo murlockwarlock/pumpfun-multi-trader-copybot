@@ -1,11 +1,23 @@
 import path from "node:path";
 import { config } from "./config.js";
+import { compareFastTrades } from "./fast-verifier.js";
 import { IngestionState } from "./ingestion-state.js";
 import { PaperEngine } from "./paper-engine.js";
-import { parsePumpLogSignal, parsePumpTrades } from "./parser.js";
+import {
+  parseConfirmedPumpLogSignal,
+  parsePumpLogSignal,
+  parsePumpTrades
+} from "./parser.js";
 import { SolanaRpc } from "./rpc.js";
+import { ShadowEngine } from "./shadow-engine.js";
 import { TelegramNotifier } from "./telegram-notifier.js";
-import { buildLiveReport, formatLiveReport, utcDay } from "./live-report.js";
+import {
+  buildLiveReport,
+  buildShadowReport,
+  formatLiveReport,
+  formatShadowReport,
+  utcDay
+} from "./live-report.js";
 
 const rpc = new SolanaRpc(
   [config.rpcHttpUrl, config.rpcFallbackHttpUrl],
@@ -29,6 +41,7 @@ const targetRuntimes = config.targetTraders.map((target, index) => ({
   lastWsMessageAt: null
 }));
 let trader;
+let shadowTrader;
 let manualOrders;
 let tradeQueue = Promise.resolve();
 let reconnectAttempt = 0;
@@ -62,13 +75,20 @@ function log(event, details = {}) {
 async function sendAdminReport(title, day = utcDay()) {
   if (!telegram.enabled || config.tradingMode !== "live") return;
   const report = buildLiveReport(config.liveLogFile, day, [...trader.positions.values()]);
+  const shadowReport = shadowTrader
+    ? buildShadowReport(config.shadowLogFile, day, [...shadowTrader.positions.values()])
+    : null;
   const snapshot = await trader.snapshot();
   const skipped = Object.values(report.skips).reduce((total, count) => total + count, 0);
+  const shadowActivity = shadowReport
+    ? shadowReport.buys + shadowReport.sells +
+      Object.values(shadowReport.skips).reduce((total, count) => total + count, 0)
+    : 0;
   if (
     title === "Промежуточный отчёт" &&
     report.buys === 0 && report.sells === 0 && report.failed === 0 &&
     report.unknown === 0 && skipped === 0 && snapshot.openPositions === 0 &&
-    !snapshot.buyPauseActive
+    !snapshot.buyPauseActive && shadowActivity === 0
   ) return;
   const text = [
     formatLiveReport(report, title),
@@ -77,8 +97,10 @@ async function sendAdminReport(title, day = utcDay()) {
     `Потрачено сегодня: ${snapshot.dailySpendSol.toFixed(9)} SOL`,
     `PnL-счётчик риска: ${snapshot.dailyRealizedPnlSol >= 0 ? "+" : ""}${snapshot.dailyRealizedPnlSol.toFixed(9)} SOL`,
     `Убытков подряд: ${snapshot.consecutiveLosses}`,
-    `Новые BUY: ${snapshot.buyPauseActive ? "на паузе" : "разрешены"}`
-  ].join("\n");
+    `Новые BUY: ${snapshot.buyPauseActive ? "на паузе" : "разрешены"}`,
+    shadowReport ? "" : null,
+    shadowReport ? formatShadowReport(shadowReport) : null
+  ].filter((line) => line !== null).join("\n");
   await telegram.handle("admin_report", { text });
 }
 
@@ -130,7 +152,7 @@ function latencySummary() {
   };
 }
 
-function enqueueTrade(trade, source) {
+function enqueueTrade(trade, source, { shadowEligible = false, liveBlockReason = null } = {}) {
   const queuedAtMs = Date.now();
   const task = tradeQueue.then(async () => {
     const decisionStartedAtMs = Date.now();
@@ -141,12 +163,20 @@ function enqueueTrade(trade, source) {
       queueDelayMs: decisionStartedAtMs - queuedAtMs
     };
     log("target_trade", enriched);
-    const result = await trader.onTrade(enriched);
+    if (shadowTrader && shadowEligible) {
+      const shadowResult = shadowTrader.onTrade(enriched);
+      log("shadow_result", shadowResult);
+    }
+    const result = liveBlockReason && config.tradingMode === "live"
+      ? trader.blockTrade(enriched, liveBlockReason)
+      : await trader.onTrade(enriched);
     const completedAtMs = Date.now();
     const signalToResultMs = Number.isFinite(trade.observedAtMs)
       ? completedAtMs - trade.observedAtMs
       : null;
-    if (trade.signalSource === "processed_logs") rememberLatency(signalToResultMs);
+    if (["processed_logs", "verified_fast"].includes(enriched.signalSource)) {
+      rememberLatency(signalToResultMs);
+    }
     log(`${config.tradingMode}_result`, {
       ...result,
       signalSource: enriched.signalSource,
@@ -182,13 +212,18 @@ async function processConfirmedSignature(target, signature, source, observedAtMs
   const tx = await rpc.getTransactionWithRetry(signature);
   if (!tx) throw new Error(`Transaction unavailable after retries: ${signature}`);
 
-  const trades = parsePumpTrades(tx, target.wallet, signature);
+  const confirmedSignal = parseConfirmedPumpLogSignal(
+    tx, target.wallet, signature, { observedAtMs }
+  );
+  let trades = confirmedSignal.trades.length > 0
+    ? await resolveFastTrades(confirmedSignal.trades)
+    : parsePumpTrades(tx, target.wallet, signature);
   for (const original of trades) {
     await enqueueTrade(attributedTrade({
       ...original,
       observedAtMs,
       signalSource: "confirmed_transaction"
-    }, target), source);
+    }, target), source, { shadowEligible: true });
   }
   target.ingestion.markProcessed(signature);
   return true;
@@ -256,39 +291,6 @@ async function resolveFastTrades(candidates) {
   return resolved;
 }
 
-function tradeKeys(trades) {
-  return trades.map((trade) => `${trade.side}:${trade.mint}`).sort();
-}
-
-function scheduleFastVerification(target, signature, fastTrades) {
-  const timer = setTimeout(async () => {
-    try {
-      const tx = await rpc.getTransactionWithRetry(signature);
-      if (!tx) throw new Error("confirmed transaction unavailable");
-      const confirmed = parsePumpTrades(tx, target.wallet, signature);
-      const fastKeys = tradeKeys(fastTrades);
-      const confirmedKeys = tradeKeys(confirmed);
-      const matches = JSON.stringify(fastKeys) === JSON.stringify(confirmedKeys);
-      if (matches) fastMetrics.verified += 1;
-      else fastMetrics.mismatches += 1;
-      log(matches ? "fast_signal_verified" : "fast_signal_mismatch", {
-        signature,
-        sourceWallet: target.wallet,
-        sourceName: target.name,
-        fast: fastKeys,
-        confirmed: confirmedKeys
-      });
-    } catch (error) {
-      fastMetrics.verificationErrors += 1;
-      log("fast_verification_error", {
-        signature, sourceWallet: target.wallet, sourceName: target.name,
-        message: error.message
-      });
-    }
-  }, 1_000);
-  timer.unref();
-}
-
 function processWebsocketSignature(target, value, slot, observedAtMs) {
   const signature = value.signature;
   const key = signatureTaskKey(target, signature);
@@ -325,19 +327,76 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       );
     }
 
-    const attributed = trades.map((trade) => attributedTrade(trade, target));
-    for (const trade of attributed) await enqueueTrade(trade, "websocket_fast");
     fastMetrics.detected += trades.length;
+    let tx;
+    let confirmedTrades;
+    try {
+      tx = await rpc.getTransactionWithRetry(signature);
+      if (!tx) throw new Error("confirmed transaction unavailable");
+      const confirmedSignal = parseConfirmedPumpLogSignal(
+        tx, target.wallet, signature, { observedAtMs }
+      );
+      confirmedTrades = await resolveFastTrades(confirmedSignal.trades);
+    } catch (error) {
+      fastMetrics.verificationErrors += 1;
+      log("fast_verification_error", {
+        signature, sourceWallet: target.wallet, sourceName: target.name,
+        message: error.message
+      });
+      throw error;
+    }
+
+    const comparison = compareFastTrades(trades, confirmedTrades);
+    const verificationMs = Date.now() - observedAtMs;
+    if (comparison.matches) {
+      fastMetrics.verified += 1;
+      log("fast_signal_verified", {
+        signature,
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        fast: comparison.fast,
+        confirmed: comparison.confirmed,
+        verificationMs
+      });
+      for (const trade of confirmedTrades) {
+        await enqueueTrade(attributedTrade({
+          ...trade,
+          observedAtMs,
+          signalSource: "verified_fast"
+        }, target), "websocket_verified_fast", { shadowEligible: true });
+      }
+    } else {
+      fastMetrics.mismatches += 1;
+      log("fast_signal_mismatch", {
+        signature,
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        fast: comparison.fast,
+        confirmed: comparison.confirmed,
+        verificationMs,
+        action: "live_blocked"
+      });
+      const safeShadowTrades = confirmedTrades.length > 0 ? confirmedTrades : trades;
+      for (const trade of safeShadowTrades) {
+        await enqueueTrade(attributedTrade({
+          ...trade,
+          observedAtMs,
+          signalSource: "confirmed_mismatch"
+        }, target), "websocket_fast_mismatch", {
+          shadowEligible: confirmedTrades.length > 0,
+          liveBlockReason: "fast_signal_mismatch"
+        });
+      }
+    }
     target.ingestion.markProcessed(signature);
     log("signature_processed", {
       signature,
-      source: "websocket_fast",
+      source: comparison.matches ? "websocket_verified_fast" : "websocket_fast_blocked",
       sourceWallet: target.wallet,
       sourceName: target.name,
       targetSlot: slot,
       detectedInMs: Date.now() - observedAtMs
     });
-    scheduleFastVerification(target, signature, attributed);
     return true;
   })();
   signatureTasks.set(key, task);
@@ -531,6 +590,16 @@ try {
     const { LiveEngine } = await import("./live-engine.js");
     trader = new LiveEngine(config, log);
     await trader.initialize();
+    if (config.shadowEnabled) {
+      shadowTrader = new ShadowEngine(config);
+      log("shadow_executor_ready", {
+        traders: config.targetTraders.length,
+        tradeSol: config.shadowTradeSol,
+        txFeeSol: config.shadowTxFeeSol,
+        maxOpenPositionsPerTrader: config.shadowMaxOpenPositionsPerTrader,
+        restoredPositions: shadowTrader.positions.size
+      });
+    }
     const { ManualOrderQueue } = await import("./manual-orders.js");
     manualOrders = new ManualOrderQueue(config.manualOrderDir, enqueueTrade, log);
     manualOrders.start();
@@ -568,6 +637,7 @@ try {
       targetHealth,
       tradingMode: config.tradingMode,
       openPositions: trader.positions.size,
+      shadowOpenPositions: shadowTrader?.positions.size ?? 0,
       fallbackActive,
       fallbackQueued: fallbackWaiters.length,
       signaturesInFlight: signatureTasks.size,

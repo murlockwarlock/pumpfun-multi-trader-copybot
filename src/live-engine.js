@@ -89,6 +89,10 @@ export class LiveEngine {
     return record;
   }
 
+  blockTrade(trade, reason) {
+    return this.#skip(trade, reason);
+  }
+
   #liveTraderEnabled(trade) {
     if (!trade.sourceWallet) return true;
     const enabled = this.config.liveTraderWallets;

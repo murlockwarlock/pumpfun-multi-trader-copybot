@@ -56,9 +56,10 @@ export function buildLiveReport(logFile, day, positions = []) {
       const at = Date.parse(record.at);
       if (!Number.isFinite(at) || at < start || at >= end) continue;
       const [key, source] = traderStats(record);
-      if (record.targetSignature) {
+      const signalSignature = record.targetSignature ?? record.signature;
+      if (signalSignature) {
         traderSignals.set(key, traderSignals.get(key) ?? new Set());
-        traderSignals.get(key).add(record.targetSignature);
+        traderSignals.get(key).add(signalSignature);
       }
       if (record.type === "LIVE_BUY") {
         stats.buys += 1;
@@ -106,6 +107,93 @@ export function buildLiveReport(logFile, day, positions = []) {
   return stats;
 }
 
+export function buildShadowReport(logFile, day, positions = []) {
+  const { start, end } = dayBounds(day);
+  const stats = {
+    day,
+    buys: 0,
+    sells: 0,
+    wins: 0,
+    losses: 0,
+    flat: 0,
+    skips: {},
+    realizedPnlSol: 0,
+    openPositions: positions.length,
+    traders: {}
+  };
+  const traderSignals = new Map();
+  const traderKey = (record) => record.sourceName ?? record.sourceWallet ?? "legacy";
+  const traderStats = (record) => {
+    const key = traderKey(record);
+    stats.traders[key] ??= {
+      name: record.sourceName ?? key,
+      wallet: record.sourceWallet ?? null,
+      signals: 0,
+      buys: 0,
+      sells: 0,
+      wins: 0,
+      losses: 0,
+      flat: 0,
+      skips: 0,
+      realizedPnlSol: 0,
+      openPositions: 0
+    };
+    return [key, stats.traders[key]];
+  };
+
+  for (const position of positions) {
+    const [, trader] = traderStats(position);
+    trader.openPositions += 1;
+  }
+  if (fs.existsSync(logFile)) {
+    for (const line of fs.readFileSync(logFile, "utf8").split(/\r?\n/)) {
+      if (!line) continue;
+      let record;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const at = Date.parse(record.at);
+      if (!Number.isFinite(at) || at < start || at >= end) continue;
+      const [key, trader] = traderStats(record);
+      const signalSignature = record.targetSignature ?? record.signature;
+      if (signalSignature) {
+        traderSignals.set(key, traderSignals.get(key) ?? new Set());
+        traderSignals.get(key).add(signalSignature);
+      }
+      if (record.type === "SHADOW_BUY") {
+        stats.buys += 1;
+        trader.buys += 1;
+      } else if (record.type === "SHADOW_SELL") {
+        stats.sells += 1;
+        trader.sells += 1;
+        const pnl = Number(record.pnlSol);
+        if (!Number.isFinite(pnl)) continue;
+        stats.realizedPnlSol += pnl;
+        trader.realizedPnlSol += pnl;
+        if (pnl > 0) {
+          stats.wins += 1;
+          trader.wins += 1;
+        } else if (pnl < 0) {
+          stats.losses += 1;
+          trader.losses += 1;
+        } else {
+          stats.flat += 1;
+          trader.flat += 1;
+        }
+      } else if (record.type === "SHADOW_SKIP") {
+        stats.skips[record.reason] = (stats.skips[record.reason] ?? 0) + 1;
+        trader.skips += 1;
+      }
+    }
+  }
+  for (const [key, trader] of Object.entries(stats.traders)) {
+    trader.signals = traderSignals.get(key)?.size ?? 0;
+  }
+  return stats;
+}
+
 export function formatLiveReport(report, title = "Дневной отчёт") {
   const skipLines = Object.entries(report.skips)
     .sort((left, right) => right[1] - left[1])
@@ -134,6 +222,28 @@ export function formatLiveReport(report, title = "Дневной отчёт") {
     skipLines.length ? "Пропуски:" : null,
     ...skipLines
   ].filter(Boolean).join("\n");
+}
+
+export function formatShadowReport(report) {
+  const traderLines = Object.values(report.traders ?? {})
+    .sort((left, right) => right.realizedPnlSol - left.realizedPnlSol)
+    .slice(0, 10)
+    .map((trader) =>
+      `• ${trader.name}: ${trader.signals} сигналов, ${trader.buys}/${trader.sells} BUY/SELL, ` +
+      `${trader.wins}W/${trader.losses}L, ${trader.openPositions} открыто, ` +
+      `PnL ${trader.realizedPnlSol >= 0 ? "+" : ""}${trader.realizedPnlSol.toFixed(9)} SOL`
+    );
+  const skipCount = Object.values(report.skips).reduce((sum, count) => sum + count, 0);
+  return [
+    "🧪 Shadow-paper по трейдерам",
+    `Сделки: ${report.buys} BUY / ${report.sells} SELL`,
+    `Результат: ${report.wins}W / ${report.losses}L / ${report.flat} flat`,
+    `Расчётный realized PnL: ${report.realizedPnlSol >= 0 ? "+" : ""}` +
+      `${report.realizedPnlSol.toFixed(9)} SOL`,
+    `Открытых виртуальных позиций: ${report.openPositions}`,
+    `Пропущено виртуально: ${skipCount}`,
+    ...traderLines
+  ].join("\n");
 }
 
 export function utcDay(offset = 0) {

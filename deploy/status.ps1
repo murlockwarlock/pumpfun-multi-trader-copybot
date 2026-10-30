@@ -41,6 +41,14 @@ if sudo test -f /opt/pr6spr-paper-copybot/shared/data/live-trades.jsonl; then
 else
   echo 0
 fi
+printf 'Shadow records: '
+if sudo test -f /opt/pr6spr-paper-copybot/shared/data/shadow-trades.jsonl; then
+  sudo wc -l /opt/pr6spr-paper-copybot/shared/data/shadow-trades.jsonl | awk '{print $1}'
+  printf 'Recent shadow records:\n'
+  sudo tail -n 6 /opt/pr6spr-paper-copybot/shared/data/shadow-trades.jsonl
+else
+  echo 0
+fi
 printf 'Pending manual orders:\n'
 if sudo test -d /opt/pr6spr-paper-copybot/shared/data/manual-orders; then
   sudo find /opt/pr6spr-paper-copybot/shared/data/manual-orders -maxdepth 1 -type f \( -name '*.json' -o -name '*.processing' \) -exec cat {} \;
