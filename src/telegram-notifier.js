@@ -83,6 +83,23 @@ export class TelegramNotifier {
     if (event === "health_failed") {
       text = `🚨 ${event}: ${details.message ?? JSON.stringify(details)}`;
       options = { dedupeKey: event, dedupeMs: 300_000 };
+    } else if (event === "target_health_failed") {
+      text = [
+        "⚠️ Один отслеживаемый кошелёк временно отстал",
+        details.sourceName || details.name ? `Трейдер: ${details.sourceName ?? details.name}` : null,
+        `HTTP-пауза: ${Math.round(Number(details.rpcSilenceMs ?? 0) / 1_000)} сек`,
+        "Остальные кошельки и live-торговля продолжают работать."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `target-health:${details.wallet}`, dedupeMs: 1_800_000 };
+    } else if (event === "signature_quarantined") {
+      text = [
+        "⚠️ Одна транзакция изолирована после повторных ошибок",
+        details.sourceName ? `Трейдер: ${details.sourceName}` : null,
+        `Tx: https://solscan.io/tx/${details.signature}`,
+        `Ошибка: ${details.message ?? "unknown"}`,
+        "Курсор продвинут; остальные сделки продолжают обрабатываться."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `quarantine:${details.signature}`, dedupeMs: 86_400_000 };
     } else if (event === "live_settled") {
       const pnl = details.realizedPnlSol === undefined
         ? null
@@ -108,7 +125,6 @@ export class TelegramNotifier {
     } else if ([
       "live_settlement_error",
       "trade_processing_error",
-      "processing_error",
       "unhandled_rejection",
       "startup_failed",
       "live_maintenance_error",

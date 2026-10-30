@@ -70,3 +70,31 @@ test("keeps same-mint paper positions isolated by source trader", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("skips token-quoted paper trades instead of writing NaN positions", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paper-engine-no-sol-price-"));
+  try {
+    const engine = new PaperEngine({
+      logFile: path.join(tempDir, "trades.jsonl"),
+      stateFile: path.join(tempDir, "state.json"),
+      maxSignalAgeMs: 60_000,
+      maxDailyLossSol: 0.02,
+      maxOpenPositions: 1,
+      latencyPenaltyBps: 0,
+      pumpFeeBps: 0,
+      paperTradeSol: 0.01
+    });
+    const result = engine.onTrade({
+      side: "BUY",
+      mint: "token-quoted-mint",
+      averagePriceSol: null,
+      blockTime: Math.floor(Date.now() / 1_000),
+      signature: "token-quoted-buy"
+    });
+    assert.equal(result.type, "PAPER_SKIP");
+    assert.equal(result.reason, "target_sol_price_unavailable");
+    assert.equal(engine.positions.size, 0);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

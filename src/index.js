@@ -1,6 +1,7 @@
 import path from "node:path";
 import { config } from "./config.js";
 import { compareFastTrades } from "./fast-verifier.js";
+import { assessTargetHealth } from "./health.js";
 import { IngestionState } from "./ingestion-state.js";
 import { PaperEngine } from "./paper-engine.js";
 import {
@@ -50,6 +51,8 @@ let stopped = false;
 let fallbackActive = 0;
 const fallbackWaiters = [];
 const signatureTasks = new Map();
+const signatureFailures = new Map();
+const unhealthyTargets = new Set();
 const latencySamples = [];
 const fastMetrics = {
   detected: 0,
@@ -456,7 +459,22 @@ async function initializeTargetIngestion(target) {
     .reverse();
 
   for (const item of recent) {
-    await processConfirmedSignature(target, item.signature, "startup_backfill");
+    try {
+      await processConfirmedSignature(target, item.signature, "startup_backfill");
+    } catch (error) {
+      // getTransactionWithRetry has already exhausted its RPC retries. A stale
+      // historical signature must never make systemd boot-loop the service.
+      target.ingestion.markProcessed(item.signature);
+      log("signature_quarantined", {
+        signature: item.signature,
+        source: "startup_backfill",
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        attempts: 1,
+        message: error.message,
+        action: "skipped_after_rpc_retries"
+      });
+    }
   }
   target.ingestion.checkpoint(signatures[0]?.signature ?? null);
   log("ingestion_initialized", {
@@ -479,12 +497,36 @@ async function pollTargetBackfill(target, forceLog = false) {
   try {
     const signatures = await rpc.getSignaturesSince(target.wallet, target.ingestion.cursor);
     let processed = 0;
+    let quarantined = 0;
     for (const item of signatures.toReversed()) {
       if (item.err) {
         target.ingestion.markProcessed(item.signature);
         continue;
       }
-      if (await enqueueSignature(target, item.signature, "backfill")) processed += 1;
+      const failureKey = signatureTaskKey(target, item.signature);
+      try {
+        if (await enqueueSignature(target, item.signature, "backfill")) processed += 1;
+        signatureFailures.delete(failureKey);
+      } catch (error) {
+        const failure = signatureFailures.get(failureKey) ?? { attempts: 0 };
+        failure.attempts += 1;
+        failure.message = error.message;
+        signatureFailures.set(failureKey, failure);
+        if (failure.attempts < 3) throw error;
+
+        target.ingestion.markProcessed(item.signature);
+        signatureFailures.delete(failureKey);
+        quarantined += 1;
+        log("signature_quarantined", {
+          signature: item.signature,
+          source: "backfill",
+          sourceWallet: target.wallet,
+          sourceName: target.name,
+          attempts: failure.attempts,
+          message: failure.message,
+          action: "cursor_advanced"
+        });
+      }
     }
     if (signatures.length > 0) target.ingestion.checkpoint(signatures[0].signature);
     target.lastSuccessfulPollAt = Date.now();
@@ -494,6 +536,7 @@ async function pollTargetBackfill(target, forceLog = false) {
         sourceName: target.name,
         signaturesFound: signatures.length,
         signaturesProcessed: processed,
+        signaturesQuarantined: quarantined,
         cursor: target.ingestion.cursor
       });
     }
@@ -512,7 +555,7 @@ async function pollBackfill(forceLog = false) {
   const results = await Promise.all(
     targetRuntimes.map((target) => pollTargetBackfill(target, forceLog))
   );
-  return results.every(Boolean);
+  return results.some(Boolean);
 }
 
 function scheduleReconnect() {
@@ -666,16 +709,9 @@ try {
   setInterval(pollBackfill, config.pollIntervalMs);
   setTimeout(pollBackfill, 1_000);
   setInterval(() => {
-    const targetHealth = targetRuntimes.map((target) => ({
-      name: target.name,
-      wallet: target.wallet,
-      liveEnabled: target.liveEnabled,
-      rpcSilenceMs: Date.now() - target.lastSuccessfulPollAt,
-      lastWsMessageAt: target.lastWsMessageAt
-        ? new Date(target.lastWsMessageAt).toISOString() : null,
-      cursor: target.ingestion.cursor
-    }));
-    const rpcSilenceMs = Math.max(...targetHealth.map((target) => target.rpcSilenceMs));
+    const {
+      targetHealth, staleTargets, allTargetsStale, rpcSilenceMs
+    } = assessTargetHealth(targetRuntimes, config.maxRpcSilenceMs);
     log("health", {
       rpcSilenceMs,
       targetHealth,
@@ -688,9 +724,27 @@ try {
       fastLatency: latencySummary(),
       fastMetrics
     });
-    if (rpcSilenceMs > config.maxRpcSilenceMs) {
+    const staleWallets = new Set(staleTargets.map((target) => target.wallet));
+    for (const target of staleTargets) {
+      if (unhealthyTargets.has(target.wallet)) continue;
+      unhealthyTargets.add(target.wallet);
+      log("target_health_failed", {
+        ...target,
+        action: allTargetsStale ? "await_global_health_check" : "continue_degraded"
+      });
+    }
+    for (const wallet of [...unhealthyTargets]) {
+      if (staleWallets.has(wallet)) continue;
+      unhealthyTargets.delete(wallet);
+      const target = targetHealth.find((item) => item.wallet === wallet);
+      log("target_health_recovered", target ?? { wallet });
+    }
+    if (allTargetsStale) {
       log("health_failed", {
-        rpcSilenceMs, targetHealth, action: "exit_for_systemd_restart"
+        rpcSilenceMs,
+        targetHealth,
+        message: "All target HTTP backfills are stale",
+        action: "exit_for_systemd_restart"
       });
       process.exit(1);
     }

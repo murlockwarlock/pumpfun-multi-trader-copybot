@@ -103,6 +103,9 @@ export class PaperEngine {
       if (this.positions.size >= this.config.maxOpenPositions) {
         return this.#skip(trade, "max_open_positions");
       }
+      if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
+        return this.#skip(trade, "target_sol_price_unavailable");
+      }
 
       const penalty = 1 + this.config.latencyPenaltyBps / 10_000;
       const feeRate = this.config.pumpFeeBps / 10_000;
@@ -148,6 +151,9 @@ export class PaperEngine {
     const key = positionKey(trade);
     const position = this.positions.get(key);
     if (!position) return this.#skip(trade, "no_paper_position");
+    if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
+      return this.#skip(trade, "target_sol_price_unavailable");
+    }
 
     const penalty = Math.max(0, 1 - this.config.latencyPenaltyBps / 10_000);
     const feeRate = this.config.pumpFeeBps / 10_000;

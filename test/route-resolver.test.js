@@ -5,7 +5,7 @@ import { resolvePumpCandidates } from "../src/route-resolver.js";
 
 const TOKEN_QUOTE = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-test("classifies a token-quoted PumpSwap pool as an ordinary unsupported route", async () => {
+test("routes a token-quoted PumpSwap pool through Jupiter", async () => {
   const rpc = {
     resolvePumpPool: async (address) => ({
       address,
@@ -18,11 +18,13 @@ test("classifies a token-quoted PumpSwap pool as an ordinary unsupported route",
     side: "BUY",
     pool: "token-quoted-pool"
   }], rpc);
-  assert.deepEqual(result.trades, []);
-  assert.equal(result.unsupportedTrades.length, 1);
-  assert.equal(result.unsupportedTrades[0].reason, "unsupported_non_sol_quote");
-  assert.equal(result.unsupportedTrades[0].trade.mint, "base-mint");
-  assert.equal(result.unsupportedTrades[0].trade.unsupportedQuoteMint, TOKEN_QUOTE);
+  assert.equal(result.unsupportedTrades.length, 0);
+  assert.equal(result.trades.length, 1);
+  assert.equal(result.trades[0].mint, "base-mint");
+  assert.equal(result.trades[0].quoteMint, TOKEN_QUOTE);
+  assert.equal(result.trades[0].executionRoute, "jupiter");
+  assert.equal(result.trades[0].routeKind, "token-quoted-pumpswap");
+  assert.equal(result.trades[0].averagePriceSol, null);
 });
 
 test("resolves a SOL-quoted PumpSwap pool without changing its route", async () => {

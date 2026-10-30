@@ -143,8 +143,11 @@ LIVE_SIMULATE=true
 ```
 
 Supported send routes are `rpc`, `jito`, `helius-swqos`, and `helius-max`.
-Composite routes use Jupiter. API keys and the signing keypair must remain in
-permission-restricted files, never in `.env` or source control.
+SOL-quoted Pump trades use the direct venue path. Token-quoted PumpSwap trades
+use a Jupiter atomic route from SOL to the copied mint (and back to SOL on
+exit), so the wallet does not need to pre-hold USDC, USDT, or another quote
+token. API keys and the signing keypair must remain in permission-restricted
+files, never in `.env` or source control.
 
 To stop new live BUY orders without disabling monitoring or emergency exits,
 create the configured kill-switch file:
@@ -159,7 +162,9 @@ touch data/STOP_LIVE
 |---|---|
 | Signer verification | Reject transfers and spam that merely mention a target wallet |
 | Confirmed event gate | Block live execution unless processed and confirmed events match |
-| Unsupported-route quarantine | Record token-quoted pools once and advance ingestion without retries |
+| Token-quoted routing | Copy non-SOL PumpSwap pairs through Jupiter without pre-funding quote tokens |
+| Signature quarantine | Retry a broken transaction, then isolate only that signature so its cursor advances |
+| Per-target health | A stale monitored wallet cannot restart or stop healthy live traders |
 | Per-trader ownership | Prevent cross-trader SELL signals from closing the wrong position |
 | Shadow portfolios | Compare monitored traders using isolated, fee-aware simulations |
 | Signal-age limit | Avoid copying stale transactions after reconnects |
