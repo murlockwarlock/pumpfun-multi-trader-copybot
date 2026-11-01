@@ -98,3 +98,51 @@ test("skips token-quoted paper trades instead of writing NaN positions", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("shadow pricing uses post-event curve reserves instead of the target average", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "paper-engine-curve-"));
+  const engine = new PaperEngine({
+    logFile: path.join(tempDir, "trades.jsonl"),
+    stateFile: path.join(tempDir, "state.json"),
+    maxSignalAgeMs: 60_000,
+    maxDailyLossSol: 1,
+    maxOpenPositions: 1,
+    latencyPenaltyBps: 0,
+    pumpFeeBps: 125,
+    paperTradeSol: 0.005,
+    paperFixedTxFeeSol: 0.00011,
+    paperRecordPrefix: "SHADOW"
+  });
+  const curveState = (sol, tokens) => ({
+    virtualSolReservesRaw: String(Math.round(sol * 1e9)),
+    virtualTokenReservesRaw: String(Math.round(tokens * 1e6)),
+    feeBasisPoints: 125,
+    creatorFeeBasisPoints: 50
+  });
+  try {
+    const buy = engine.onTrade({
+      side: "BUY",
+      mint: "curve-mint",
+      averagePriceSol: 5 / 153_285_714,
+      blockTime: Math.floor(Date.now() / 1_000),
+      signature: "curve-buy",
+      curveState: curveState(35, 919_714_285.714286)
+    });
+    assert.equal(buy.type, "SHADOW_BUY");
+    assert.equal(buy.quoteSource, "curve_post_event");
+
+    const sell = engine.onTrade({
+      side: "SELL",
+      mint: "curve-mint",
+      averagePriceSol: 0.519809776 / 7_664_285,
+      blockTime: Math.floor(Date.now() / 1_000),
+      signature: "curve-sell",
+      curveState: curveState(46.465555093, 692_771_235.360945)
+    });
+    assert.equal(sell.type, "SHADOW_SELL");
+    assert.equal(sell.quoteSource, "curve_post_event");
+    assert.ok(sell.pnlSol > 0.0025);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

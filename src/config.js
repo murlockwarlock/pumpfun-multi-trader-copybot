@@ -90,11 +90,14 @@ export function parseTargetTraders(raw, fallbackWallet = "") {
   });
 }
 
-export function parseLiveTraderWallets(raw, traders) {
+function parseTraderWalletSelection(raw, traders, {
+  settingName,
+  defaultToFirst = false
+}) {
   const source = String(raw ?? "").trim();
-  const entries = source ? source.split(",").map((entry) => entry.trim()).filter(Boolean) : [
-    traders[0].wallet
-  ];
+  const entries = source
+    ? source.split(",").map((entry) => entry.trim()).filter(Boolean)
+    : defaultToFirst ? [traders[0].wallet] : [];
   if (entries.length === 1 && entries[0].toLowerCase() === "none") return Object.freeze([]);
 
   const enabled = new Set();
@@ -102,10 +105,23 @@ export function parseLiveTraderWallets(raw, traders) {
     const trader = traders.find(
       (candidate) => candidate.wallet === entry || candidate.name === entry
     );
-    if (!trader) throw new Error(`LIVE_TRADER_WALLETS contains unknown trader: ${entry}`);
+    if (!trader) throw new Error(`${settingName} contains unknown trader: ${entry}`);
     enabled.add(trader.wallet);
   }
   return Object.freeze([...enabled]);
+}
+
+export function parseLiveTraderWallets(raw, traders) {
+  return parseTraderWalletSelection(raw, traders, {
+    settingName: "LIVE_TRADER_WALLETS",
+    defaultToFirst: true
+  });
+}
+
+export function parseFastTraderWallets(raw, traders) {
+  return parseTraderWalletSelection(raw, traders, {
+    settingName: "FAST_TRADER_WALLETS"
+  });
 }
 
 loadDotEnv();
@@ -116,6 +132,10 @@ const targetTraders = Object.freeze(parseTargetTraders(
 ));
 const liveTraderWallets = parseLiveTraderWallets(
   process.env.LIVE_TRADER_WALLETS,
+  targetTraders
+);
+const fastTraderWallets = parseFastTraderWallets(
+  process.env.FAST_TRADER_WALLETS,
   targetTraders
 );
 const liveTradeSol = numberSetting("LIVE_TRADE_SOL", 0.005, { min: 0.001, max: 1 });
@@ -135,6 +155,7 @@ export const config = Object.freeze({
   targetWallets: Object.freeze(targetTraders.map((trader) => trader.wallet)),
   targetTraders,
   liveTraderWallets,
+  fastTraderWallets,
   rpcHttpUrl: process.env.RPC_HTTP_URL ?? "https://api.mainnet-beta.solana.com",
   rpcFallbackHttpUrl: process.env.RPC_FALLBACK_HTTP_URL ?? "",
   rpcWsUrl: process.env.RPC_WS_URL ?? "wss://api.mainnet-beta.solana.com",
@@ -155,6 +176,16 @@ export const config = Object.freeze({
     max: 3_600_000
   }),
   fastSignalEnabled: booleanSetting("FAST_SIGNAL_ENABLED", true),
+  fastMaxSignalAgeMs: numberSetting("FAST_MAX_SIGNAL_AGE_MS", 1_500, {
+    min: 100,
+    max: 10_000
+  }),
+  fastMaxEntryDriftBps: numberSetting("FAST_MAX_ENTRY_DRIFT_BPS", 2_500, {
+    min: 0,
+    max: 10_000
+  }),
+  fastSkipSimulation: booleanSetting("FAST_SKIP_SIMULATION", false),
+  fastShadowProbeEnabled: booleanSetting("FAST_SHADOW_PROBE_ENABLED", true),
   fallbackConcurrency: numberSetting("FALLBACK_CONCURRENCY", 8, {
     min: 1,
     max: 32

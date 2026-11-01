@@ -60,15 +60,34 @@ export class PumpExecutor {
     this.marketCache = new Map();
     this.marketRequests = new Map();
     this.latestBlockhash = null;
+    this.pumpParameters = null;
   }
 
   async initialize() {
-    await Promise.all([this.sender.warmup(), this._refreshBlockhash()]);
+    await Promise.all([
+      this.sender.warmup(),
+      this._refreshBlockhash(),
+      this._refreshPumpParameters()
+    ]);
     const timer = setInterval(
       () => this._refreshBlockhash().catch(() => {}),
       this.config.liveBlockhashRefreshMs
     );
     timer.unref();
+    const parameterTimer = setInterval(
+      () => this._refreshPumpParameters().catch(() => {}),
+      60_000
+    );
+    parameterTimer.unref();
+  }
+
+  async _refreshPumpParameters() {
+    const [global, feeConfig] = await Promise.all([
+      this.pump.fetchGlobal(),
+      this.pump.fetchFeeConfig()
+    ]);
+    this.pumpParameters = { global, feeConfig, fetchedAtMs: Date.now() };
+    return this.pumpParameters;
   }
 
   async _refreshBlockhash() {
@@ -104,11 +123,13 @@ export class PumpExecutor {
     return BigInt(unpackAccount(account, info, tokenProgram).amount.toString());
   }
 
-  async #loadMarket(mint) {
+  async #loadMarket(mint, venueHint = null) {
     const pool = canonicalPumpPoolPdaWithQuote(mint, NATIVE_MINT);
     const [mintInfo, poolInfo] = await Promise.all([
       this.connection.getAccountInfo(mint, "processed"),
-      this.connection.getAccountInfo(pool, "processed")
+      venueHint === "pump-curve"
+        ? Promise.resolve(null)
+        : this.connection.getAccountInfo(pool, "processed")
     ]);
     if (!mintInfo) throw new Error(`Mint account not found: ${mint.toBase58()}`);
     if (!isTokenProgram(mintInfo.owner)) {
@@ -125,14 +146,14 @@ export class PumpExecutor {
     };
   }
 
-  async #market(mint) {
-    const key = mint.toBase58();
+  async #market(mint, venueHint = null) {
+    const key = `${mint.toBase58()}:${venueHint ?? "auto"}`;
     const cached = this.marketCache.get(key);
     if (cached && Date.now() - cached.atMs <= this.config.liveMarketCacheMs) {
       return cached.value;
     }
     if (this.marketRequests.has(key)) return this.marketRequests.get(key);
-    const request = this.#loadMarket(mint);
+    const request = this.#loadMarket(mint, venueHint);
     this.marketRequests.set(key, request);
     try {
       const value = await request;
@@ -143,8 +164,8 @@ export class PumpExecutor {
     }
   }
 
-  prewarm(mintAddress) {
-    return this.#market(new PublicKey(mintAddress));
+  prewarm(mintAddress, { venueHint = null } = {}) {
+    return this.#market(new PublicKey(mintAddress), venueHint);
   }
 
   #jupiterHeaders(json = false) {
@@ -289,13 +310,11 @@ export class PumpExecutor {
       };
     }
 
-    const [global, feeConfig, state] = await Promise.all([
-      this.pump.fetchGlobal(),
-      this.pump.fetchFeeConfig(),
-      side === "BUY"
-        ? this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram)
-        : this.pump.fetchSellState(mint, this.wallet.publicKey, market.tokenProgram)
-    ]);
+    const parameters = this.pumpParameters ?? await this._refreshPumpParameters();
+    const state = side === "BUY"
+      ? await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram)
+      : await this.pump.fetchSellState(mint, this.wallet.publicKey, market.tokenProgram);
+    const { global, feeConfig } = parameters;
     if (!state.quoteMint.equals(NATIVE_MINT)) {
       throw new Error("Only SOL-quoted Pump bonding curves are supported");
     }
@@ -361,15 +380,22 @@ export class PumpExecutor {
     return { instructions, tokenProgram: market.tokenProgram, venue: "pump-curve" };
   }
 
-  async prepare(side, mintAddress, rawAmount, { executionRoute = null } = {}) {
+  async prepare(side, mintAddress, rawAmount, {
+    executionRoute = null,
+    venueHint = null,
+    skipSimulation = false,
+    skipBeforeTokenBalance = false
+  } = {}) {
     const mint = new PublicKey(mintAddress);
-    const market = await this.#market(mint);
+    const market = await this.#market(mint, venueHint);
     if (executionRoute === "jupiter") {
       return this.#prepareJupiter(side, mint, BigInt(rawAmount), market);
     }
     const [trade, beforeTokenBalance, tip, latest] = await Promise.all([
       this.#tradeInstructions(side, mint, BigInt(rawAmount), market),
-      this.tokenBalance(mint, market.tokenProgram),
+      skipBeforeTokenBalance
+        ? Promise.resolve(0n)
+        : this.tokenBalance(mint, market.tokenProgram),
       this.sender.tipInstruction(this.wallet.publicKey),
       this._recentBlockhash()
     ]);
@@ -393,7 +419,7 @@ export class PumpExecutor {
     transaction.sign([this.wallet]);
     const expectedSignature = bs58.encode(transaction.signatures[0]);
 
-    if (this.config.liveSimulate) {
+    if (this.config.liveSimulate && !skipSimulation) {
       const simulation = await this.connection.simulateTransaction(transaction, {
         commitment: "processed",
         sigVerify: true

@@ -4,7 +4,12 @@ const WALLET_ONE = "11111111111111111111111111111111";
 const WALLET_TWO = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 process.env.TARGET_WALLETS ||= `test:${WALLET_ONE}`;
 process.env.LIVE_TRADER_WALLETS ||= "test";
-const { parseLiveTraderWallets, parseTargetTraders } = await import("../src/config.js");
+process.env.FAST_TRADER_WALLETS ||= "none";
+const {
+  parseFastTraderWallets,
+  parseLiveTraderWallets,
+  parseTargetTraders
+} = await import("../src/config.js");
 
 test("parses named target wallets and resolves the live allowlist", () => {
   const traders = parseTargetTraders(`alpha:${WALLET_ONE},beta:${WALLET_TWO}`);
@@ -13,6 +18,8 @@ test("parses named target wallets and resolves the live allowlist", () => {
     { name: "beta", wallet: WALLET_TWO }
   ]);
   assert.deepEqual(parseLiveTraderWallets("beta", traders), [WALLET_TWO]);
+  assert.deepEqual(parseFastTraderWallets("alpha", traders), [WALLET_ONE]);
+  assert.deepEqual(parseFastTraderWallets("none", traders), []);
 });
 
 test("rejects duplicate target wallets and unknown live traders", () => {
@@ -22,4 +29,5 @@ test("rejects duplicate target wallets and unknown live traders", () => {
   );
   const traders = parseTargetTraders(`alpha:${WALLET_ONE}`);
   assert.throws(() => parseLiveTraderWallets("unknown", traders), /unknown trader/);
+  assert.throws(() => parseFastTraderWallets("unknown", traders), /FAST_TRADER_WALLETS/);
 });

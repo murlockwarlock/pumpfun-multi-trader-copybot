@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-43%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -22,8 +22,9 @@ limits, crash recovery, and auditable JSONL logs.
 
 - Monitor up to 50 named Solana wallets from one process.
 - Independent `processed` WebSocket subscriptions and durable backfill cursors.
-- Decode official Pump bonding-curve and PumpSwap events, then re-check the
-  authenticated event in the confirmed transaction before live submission.
+- Decode official Pump bonding-curve and PumpSwap events with program-stack
+  provenance checks; normal profiles re-check before submission, while an
+  explicit launch-sniper profile submits first and audits confirmation after.
 - Require the tracked wallet to be an authenticated signer.
 - Collapse supported multi-hop routes to the final traded token.
 - Keep positions isolated by source trader; one trader's SELL cannot close
@@ -44,8 +45,11 @@ flowchart LR
     W --> BF[HTTP backfill per wallet]
     WS --> P[Authenticated Pump event parser]
     BF --> P
-    P --> V[Confirmed event gate]
-    V --> A[Source attribution and deduplication]
+    P --> F{Explicit fast profile?}
+    F -->|no| V[Confirmed event gate]
+    F -->|yes| A[Source attribution and deduplication]
+    V --> A
+    A -. background audit .-> V
     A --> R{Risk and live allowlist}
     R -->|paper| PE[Paper engine]
     R -->|allowed live signal| LE[Live executor]
@@ -56,10 +60,11 @@ flowchart LR
     SH --> REP
 ```
 
-The WebSocket path decodes a processed event immediately, then re-decodes the
-same authenticated event from the confirmed transaction. A live order is
-blocked unless both trade sets match exactly. Periodic HTTP backfill repairs
-gaps caused by disconnects or restarts.
+The normal WebSocket path decodes a processed event immediately, then re-decodes
+the same authenticated event from the confirmed transaction before submission.
+An explicitly allowlisted fast profile can submit from the processed event and
+verify it afterward; a mismatch automatically pauses new live buys. Periodic
+HTTP backfill repairs gaps caused by disconnects or restarts.
 
 ## Quick start
 
@@ -122,6 +127,27 @@ SHADOW_TX_FEE_SOL=0.00011
 Keep new candidates monitor-only until enough shadow positions have closed to
 compare their net results after estimated costs.
 
+### Launch-sniper fast profile
+
+Fast mode is opt-in per monitored trader and is intended for wallets whose
+positions last only a few seconds:
+
+```dotenv
+FAST_TRADER_WALLETS=sniper_name
+FAST_MAX_SIGNAL_AGE_MS=1500
+FAST_MAX_ENTRY_DRIFT_BPS=2500
+FAST_SKIP_SIMULATION=true
+FAST_SHADOW_PROBE_ENABLED=true
+```
+
+The parser accepts event bytes only while the official Pump program is at the
+top of the Solana program log stack. In monitor-only mode the bot builds, signs,
+but does not submit a real candidate transaction; that read-only probe records
+the actual log-to-ready latency and available token quote. In live mode the same
+path submits through the configured sender. Skipping simulation reduces latency
+but increases the probability that a transaction fails on-chain, so keep the
+fast wallet list explicit and small.
+
 ## Live mode
 
 Live execution is fail-closed. It requires all of the following:
@@ -161,7 +187,8 @@ touch data/STOP_LIVE
 | Control | Purpose |
 |---|---|
 | Signer verification | Reject transfers and spam that merely mention a target wallet |
-| Confirmed event gate | Block live execution unless processed and confirmed events match |
+| Confirmed event gate | Normal profiles block until processed and confirmed events match |
+| Fast-profile audit | Explicit profiles use program-provenance-checked logs, then auto-pause on mismatch |
 | Token-quoted routing | Copy non-SOL PumpSwap pairs through Jupiter without pre-funding quote tokens |
 | Signature quarantine | Retry a broken transaction, then isolate only that signature so its cursor advances |
 | Per-target health | A stale monitored wallet cannot restart or stop healthy live traders |

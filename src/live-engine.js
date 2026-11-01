@@ -141,6 +141,10 @@ export class LiveEngine {
     return details;
   }
 
+  pauseBuys(reason) {
+    return this.#pauseBuys(reason);
+  }
+
   #enforceRiskLimits() {
     const lossLimit = solToLamports(
       this.config.liveMaxDailyLossSol ?? this.config.maxDailyLossSol ?? 0.02
@@ -600,7 +604,7 @@ export class LiveEngine {
     return promise;
   }
 
-  async #prepareWithFallback(trade, rawAmount) {
+  async #prepareWithFallback(trade, rawAmount, prepareOptions = {}) {
     const requested = trade.executionRoute ?? null;
     const routes = trade.side === "SELL"
       ? requested === "jupiter" ? ["jupiter", null] : [requested, "jupiter"]
@@ -609,6 +613,7 @@ export class LiveEngine {
     for (let index = 0; index < routes.length; index += 1) {
       try {
         const prepared = await this.executor.prepare(trade.side, trade.mint, rawAmount, {
+          ...prepareOptions,
           executionRoute: routes[index]
         });
         if (index > 0) {
@@ -644,6 +649,38 @@ export class LiveEngine {
     return Math.round((copyPrice / trade.averagePriceSol - 1) * 10_000);
   }
 
+  async probeBuy(trade, spendSol = this.config.shadowTradeSol ?? this.config.liveTradeSol) {
+    if (trade.side !== "BUY") throw new Error("Only BUY signals can be probed");
+    const startedAtMs = Date.now();
+    const rawAmount = solToLamports(spendSol);
+    const prepared = await this.#prepareWithFallback(trade, rawAmount, {
+      venueHint: trade.venue ?? null,
+      skipSimulation: true,
+      skipBeforeTokenBalance: true
+    });
+    const preparedAtMs = Date.now();
+    const expectedTokenOutRaw = prepared.expectedTokenOutRaw ?? null;
+    const tokenDecimals = prepared.tokenDecimals ?? null;
+    const expectedTokens = /^\d+$/.test(expectedTokenOutRaw ?? "") &&
+      Number.isInteger(tokenDecimals)
+      ? Number(expectedTokenOutRaw) / 10 ** tokenDecimals
+      : null;
+    const copyPriceSol = Number.isFinite(expectedTokens) && expectedTokens > 0
+      ? spendSol / expectedTokens
+      : null;
+    return {
+      venue: prepared.venue,
+      expectedTokenOutRaw,
+      tokenDecimals,
+      copyPriceSol,
+      entryDriftBps: this.#entryDriftBps(trade, prepared, rawAmount),
+      prepareMs: preparedAtMs - startedAtMs,
+      signalToPreparedMs: Number.isFinite(trade.observedAtMs)
+        ? preparedAtMs - trade.observedAtMs : null,
+      preparedAtMs
+    };
+  }
+
   async onTrade(trade) {
     await this.#resetDailyRiskIfNeeded();
     if (!this.#liveTraderEnabled(trade)) {
@@ -667,13 +704,18 @@ export class LiveEngine {
     const signalAgeMs = trade.signalSource === "processed_logs" && Number.isFinite(trade.observedAtMs)
       ? Math.max(0, Date.now() - trade.observedAtMs)
       : trade.blockTime ? Math.max(0, Date.now() - trade.blockTime * 1_000) : null;
-    const prewarm = this.executor.prewarm(trade.mint).catch(() => null);
+    const maxSignalAgeMs = trade.fastProfile
+      ? this.config.fastMaxSignalAgeMs ?? this.config.maxSignalAgeMs
+      : this.config.maxSignalAgeMs;
+    const prewarm = this.executor.prewarm(trade.mint, {
+      venueHint: trade.venue ?? null
+    }).catch(() => null);
     let rawAmount;
 
     if (trade.side === "BUY") {
       this.#enforceRiskLimits();
       if (this.#buyPauseActive()) return this.#skip(trade, "buy_pause_active");
-      if (signalAgeMs === null || signalAgeMs > this.config.maxSignalAgeMs) {
+      if (signalAgeMs === null || signalAgeMs > maxSignalAgeMs) {
         return this.#skip(trade, `signal_too_old_${signalAgeMs ?? "unknown"}ms`);
       }
       if (this.state.positions.has(trade.mint)) return this.#skip(trade, "position_already_open");
@@ -711,8 +753,16 @@ export class LiveEngine {
 
     await prewarm;
     let prepared;
+    let preparedAtMs;
+    let entryDriftBps = null;
+    const prepareStartedAtMs = Date.now();
     try {
-      prepared = await this.#prepareWithFallback(trade, rawAmount);
+      prepared = await this.#prepareWithFallback(trade, rawAmount, {
+        venueHint: trade.venue ?? null,
+        skipSimulation: Boolean(trade.fastProfile && this.config.fastSkipSimulation),
+        skipBeforeTokenBalance: Boolean(trade.fastProfile && trade.side === "BUY")
+      });
+      preparedAtMs = Date.now();
     } catch (error) {
       const message = errorMessage(error);
       if (trade.side === "SELL") this.#scheduleExitRetry(trade.mint, `prepare_failed:${message}`);
@@ -724,12 +774,15 @@ export class LiveEngine {
     if (trade.side === "BUY") {
       const currentAge = Number.isFinite(trade.observedAtMs)
         ? Date.now() - trade.observedAtMs : signalAgeMs;
-      if (currentAge === null || currentAge > this.config.maxSignalAgeMs) {
+      if (currentAge === null || currentAge > maxSignalAgeMs) {
         return this.#skip(trade, `signal_too_old_after_prepare_${currentAge ?? "unknown"}ms`);
       }
-      const driftBps = this.#entryDriftBps(trade, prepared, rawAmount);
-      if (driftBps !== null && driftBps > (this.config.liveMaxEntryDriftBps ?? 500)) {
-        return this.#skip(trade, `entry_price_drift_${driftBps}bps`);
+      entryDriftBps = this.#entryDriftBps(trade, prepared, rawAmount);
+      const maxEntryDriftBps = trade.fastProfile
+        ? this.config.fastMaxEntryDriftBps ?? this.config.liveMaxEntryDriftBps ?? 500
+        : this.config.liveMaxEntryDriftBps ?? 500;
+      if (entryDriftBps !== null && entryDriftBps > maxEntryDriftBps) {
+        return this.#skip(trade, `entry_price_drift_${entryDriftBps}bps`);
       }
     }
 
@@ -787,7 +840,12 @@ export class LiveEngine {
       type: "LIVE_SUBMITTED", at: new Date(submittedAtMs).toISOString(),
       targetSignature: trade.signature, signature, mint: trade.mint, side: trade.side,
       venue: prepared.venue, signalSource: trade.signalSource ?? "unknown",
+      fastProfile: Boolean(trade.fastProfile),
       sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null,
+      entryDriftBps,
+      prepareMs: preparedAtMs - prepareStartedAtMs,
+      signalToPreparedMs: Number.isFinite(trade.observedAtMs)
+        ? preparedAtMs - trade.observedAtMs : null,
       signalToSubmitMs: Number.isFinite(trade.observedAtMs)
         ? submittedAtMs - trade.observedAtMs : null
     };

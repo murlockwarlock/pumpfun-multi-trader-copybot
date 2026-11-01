@@ -35,6 +35,7 @@ function traderStateFile(file, wallet, index) {
 const targetRuntimes = config.targetTraders.map((target, index) => ({
   ...target,
   liveEnabled: config.liveTraderWallets.includes(target.wallet),
+  fastEnabled: config.fastTraderWallets.includes(target.wallet),
   ingestion: new IngestionState(
     traderStateFile(config.ingestionStateFile, target.wallet, index)
   ),
@@ -172,9 +173,51 @@ function enqueueTrade(
     };
     log("target_trade", enriched);
     if (shadowTrader && (shadowEligible || shadowBlockReason)) {
-      const shadowResult = shadowBlockReason
-        ? shadowTrader.blockTrade(enriched, shadowBlockReason)
-        : shadowTrader.onTrade(enriched);
+      let shadowTrade = enriched;
+      let measuredShadowBlockReason = shadowBlockReason;
+      if (
+        !shadowBlockReason && enriched.fastProfile && enriched.side === "BUY" &&
+        !enriched.sourceLiveEnabled && config.fastShadowProbeEnabled &&
+        typeof trader?.probeBuy === "function"
+      ) {
+        try {
+          const executionQuote = await trader.probeBuy(enriched, config.shadowTradeSol);
+          shadowTrade = { ...enriched, executionQuote };
+          if (
+            executionQuote.signalToPreparedMs === null ||
+            executionQuote.signalToPreparedMs > config.fastMaxSignalAgeMs
+          ) {
+            measuredShadowBlockReason =
+              `fast_quote_too_old_${executionQuote.signalToPreparedMs ?? "unknown"}ms`;
+          } else if (
+            executionQuote.entryDriftBps !== null &&
+            executionQuote.entryDriftBps > config.fastMaxEntryDriftBps
+          ) {
+            measuredShadowBlockReason =
+              `fast_entry_price_drift_${executionQuote.entryDriftBps}bps`;
+          }
+          log("fast_shadow_probe", {
+            signature: enriched.signature,
+            mint: enriched.mint,
+            sourceWallet: enriched.sourceWallet,
+            sourceName: enriched.sourceName,
+            ...executionQuote
+          });
+        } catch (error) {
+          measuredShadowBlockReason = `fast_shadow_probe_failed:${error.message}`;
+          log("fast_shadow_probe_failed", {
+            signature: enriched.signature,
+            mint: enriched.mint,
+            sourceWallet: enriched.sourceWallet,
+            sourceName: enriched.sourceName,
+            message: error.message,
+            fallback: enriched.curveState ? "curve_post_event" : "target_price_penalty"
+          });
+        }
+      }
+      const shadowResult = measuredShadowBlockReason
+        ? shadowTrader.blockTrade(shadowTrade, measuredShadowBlockReason)
+        : shadowTrader.onTrade(shadowTrade);
       log("shadow_result", shadowResult);
     }
     const result = liveBlockReason && config.tradingMode === "live"
@@ -209,7 +252,8 @@ function attributedTrade(trade, target) {
     ...trade,
     sourceWallet: target.wallet,
     sourceName: target.name,
-    sourceLiveEnabled: target.liveEnabled
+    sourceLiveEnabled: target.liveEnabled,
+    fastProfile: target.fastEnabled
   };
 }
 
@@ -374,6 +418,84 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
     }
 
     fastMetrics.detected += trades.length;
+    if (target.fastEnabled) {
+      const dispatchStartedAtMs = Date.now();
+      for (const trade of trades) {
+        await enqueueTrade(attributedTrade({
+          ...trade,
+          observedAtMs,
+          signalSource: "processed_logs"
+        }, target), "websocket_processed_fast", { shadowEligible: true });
+      }
+      target.ingestion.markProcessed(signature);
+      log("fast_signal_dispatched", {
+        signature,
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        targetSlot: slot,
+        trades: trades.map((trade) => `${trade.side}:${trade.mint}`),
+        detectedToDispatchMs: dispatchStartedAtMs - observedAtMs,
+        signalToResultMs: Date.now() - observedAtMs,
+        liveEnabled: target.liveEnabled
+      });
+
+      try {
+        const tx = await rpc.getTransactionWithRetry(signature);
+        if (!tx) throw new Error("confirmed transaction unavailable");
+        const confirmedSignal = parseConfirmedPumpLogSignal(
+          tx, target.wallet, signature, { observedAtMs }
+        );
+        const confirmedResolution = await resolvePumpCandidates(confirmedSignal.trades, rpc);
+        const comparison = compareFastTrades(trades, confirmedResolution.trades);
+        const verificationMs = Date.now() - observedAtMs;
+        if (comparison.matches) {
+          fastMetrics.verified += 1;
+          log("fast_signal_verified", {
+            signature,
+            sourceWallet: target.wallet,
+            sourceName: target.name,
+            fast: comparison.fast,
+            confirmed: comparison.confirmed,
+            verificationMs,
+            executionTiming: "processed_before_confirmation"
+          });
+        } else {
+          fastMetrics.mismatches += 1;
+          if (target.liveEnabled && typeof trader?.pauseBuys === "function") {
+            trader.pauseBuys(`fast_signal_mismatch:${signature}`);
+          }
+          log("fast_signal_mismatch", {
+            signature,
+            sourceWallet: target.wallet,
+            sourceName: target.name,
+            fast: comparison.fast,
+            confirmed: comparison.confirmed,
+            verificationMs,
+            action: target.liveEnabled ? "auto_pause_new_buys" : "shadow_alert"
+          });
+        }
+      } catch (error) {
+        fastMetrics.verificationErrors += 1;
+        log("fast_verification_error", {
+          signature,
+          sourceWallet: target.wallet,
+          sourceName: target.name,
+          message: error.message,
+          action: "signal_already_dispatched"
+        });
+      }
+
+      log("signature_processed", {
+        signature,
+        source: "websocket_processed_fast",
+        sourceWallet: target.wallet,
+        sourceName: target.name,
+        targetSlot: slot,
+        detectedInMs: Date.now() - observedAtMs
+      });
+      return true;
+    }
+
     let tx;
     let confirmedTrades;
     try {
@@ -592,7 +714,10 @@ function connect() {
     });
     log("subscribing", {
       traders: targetRuntimes.map(({ name, wallet, liveEnabled }) => ({
-        name, wallet, liveEnabled
+        name,
+        wallet,
+        liveEnabled,
+        fastEnabled: config.fastTraderWallets.includes(wallet)
       })),
       commitment: "processed",
       fastSignalEnabled: config.fastSignalEnabled
@@ -615,7 +740,8 @@ function connect() {
         subscriptionId: payload.result,
         sourceWallet: requestedTarget.wallet,
         sourceName: requestedTarget.name,
-        liveEnabled: requestedTarget.liveEnabled
+        liveEnabled: requestedTarget.liveEnabled,
+        fastEnabled: requestedTarget.fastEnabled
       });
       return;
     }
@@ -659,8 +785,8 @@ process.on("unhandledRejection", (error) => {
 
 log("starting", {
   tradingMode: config.tradingMode,
-  traders: targetRuntimes.map(({ name, wallet, liveEnabled }) => ({
-    name, wallet, liveEnabled
+  traders: targetRuntimes.map(({ name, wallet, liveEnabled, fastEnabled }) => ({
+    name, wallet, liveEnabled, fastEnabled
   })),
   tradeSol: config.tradingMode === "paper" ? config.paperTradeSol : config.liveTradeSol,
   maxOpenPositions: config.maxOpenPositions,

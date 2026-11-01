@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { curveFeeBps, quoteCurveBuyAfter, quoteCurveSellAfter } from "./curve-quote.js";
 
 function utcDay() {
   return new Date().toISOString().slice(0, 10);
@@ -103,17 +104,36 @@ export class PaperEngine {
       if (this.positions.size >= this.config.maxOpenPositions) {
         return this.#skip(trade, "max_open_positions");
       }
-      if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
-        return this.#skip(trade, "target_sol_price_unavailable");
-      }
-
-      const penalty = 1 + this.config.latencyPenaltyBps / 10_000;
-      const feeRate = this.config.pumpFeeBps / 10_000;
-      const entryPriceSol = trade.averagePriceSol * penalty;
       const spendSol = this.config.paperTradeSol;
-      const pumpFeeSol = spendSol * feeRate;
+      const probedTokens = Number(trade.executionQuote?.expectedTokenOutRaw) /
+        10 ** Number(trade.executionQuote?.tokenDecimals);
+      const curveQuote = quoteCurveBuyAfter(trade, spendSol, this.config.pumpFeeBps);
+      let tokenAmount;
+      let entryPriceSol;
+      let pumpFeeSol;
+      let quoteSource;
+      if (Number.isFinite(probedTokens) && probedTokens > 0) {
+        tokenAmount = probedTokens;
+        entryPriceSol = spendSol / tokenAmount;
+        pumpFeeSol = spendSol * curveFeeBps(trade, this.config.pumpFeeBps) / 10_000;
+        quoteSource = "prepared_at_observation";
+      } else if (curveQuote) {
+        tokenAmount = curveQuote.tokenAmount;
+        entryPriceSol = curveQuote.averagePriceSol;
+        pumpFeeSol = curveQuote.pumpFeeSol;
+        quoteSource = curveQuote.source;
+      } else {
+        if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
+          return this.#skip(trade, "target_sol_price_unavailable");
+        }
+        const penalty = 1 + this.config.latencyPenaltyBps / 10_000;
+        const feeRate = this.config.pumpFeeBps / 10_000;
+        entryPriceSol = trade.averagePriceSol * penalty;
+        pumpFeeSol = spendSol * feeRate;
+        tokenAmount = (spendSol - pumpFeeSol) / entryPriceSol;
+        quoteSource = "target_price_penalty";
+      }
       const fixedFeeSol = this.fixedTxFeeSol;
-      const tokenAmount = (spendSol - pumpFeeSol) / entryPriceSol;
       const position = {
         mint: trade.mint,
         sourceWallet: trade.sourceWallet ?? null,
@@ -121,6 +141,9 @@ export class PaperEngine {
         tokenAmount,
         costSol: spendSol + fixedFeeSol,
         entryPriceSol,
+        quoteSource,
+        signalToPreparedMs: trade.executionQuote?.signalToPreparedMs ?? null,
+        entryDriftBps: trade.executionQuote?.entryDriftBps ?? null,
         openedAt: new Date().toISOString(),
         entrySignature: trade.signature
       };
@@ -142,6 +165,10 @@ export class PaperEngine {
         totalCostSol: round(position.costSol),
         tokenAmount: round(tokenAmount, 6),
         entryPriceSol,
+        quoteSource,
+        signalToPreparedMs: position.signalToPreparedMs,
+        entryDriftBps: position.entryDriftBps,
+        preparedVenue: trade.executionQuote?.venue ?? null,
         targetSignature: trade.signature
       };
       this.#write(record);
@@ -151,15 +178,31 @@ export class PaperEngine {
     const key = positionKey(trade);
     const position = this.positions.get(key);
     if (!position) return this.#skip(trade, "no_paper_position");
-    if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
-      return this.#skip(trade, "target_sol_price_unavailable");
+    const curveQuote = quoteCurveSellAfter(
+      trade,
+      position.tokenAmount,
+      this.config.pumpFeeBps
+    );
+    let exitPriceSol;
+    let grossSol;
+    let pumpFeeSol;
+    let quoteSource;
+    if (curveQuote) {
+      exitPriceSol = curveQuote.averagePriceSol;
+      grossSol = curveQuote.grossSol;
+      pumpFeeSol = curveQuote.pumpFeeSol;
+      quoteSource = curveQuote.source;
+    } else {
+      if (!Number.isFinite(trade.averagePriceSol) || trade.averagePriceSol <= 0) {
+        return this.#skip(trade, "target_sol_price_unavailable");
+      }
+      const penalty = Math.max(0, 1 - this.config.latencyPenaltyBps / 10_000);
+      const feeRate = this.config.pumpFeeBps / 10_000;
+      exitPriceSol = trade.averagePriceSol * penalty;
+      grossSol = position.tokenAmount * exitPriceSol;
+      pumpFeeSol = grossSol * feeRate;
+      quoteSource = "target_price_penalty";
     }
-
-    const penalty = Math.max(0, 1 - this.config.latencyPenaltyBps / 10_000);
-    const feeRate = this.config.pumpFeeBps / 10_000;
-    const exitPriceSol = trade.averagePriceSol * penalty;
-    const grossSol = position.tokenAmount * exitPriceSol;
-    const pumpFeeSol = grossSol * feeRate;
     const fixedFeeSol = this.fixedTxFeeSol;
     const proceedsSol = grossSol - pumpFeeSol - fixedFeeSol;
     const pnlSol = proceedsSol - position.costSol;
@@ -182,6 +225,7 @@ export class PaperEngine {
       pnlSol: round(pnlSol),
       dailyRealizedPnlSol: round(this.dailyRealizedPnlSol),
       exitPriceSol,
+      quoteSource,
       targetSignature: trade.signature,
       entrySignature: position.entrySignature
     };

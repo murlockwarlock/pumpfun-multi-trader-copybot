@@ -15,10 +15,42 @@ const PUMP_TOKEN_DECIMALS = 6;
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 const EVENT_PREFIX = "Program data: ";
 const EVENT_DISCRIMINATORS = new Map([
-  ["189,219,127,211,78,230,97,238", "curve"],
-  ["103,244,82,31,44,245,119,119", "amm-buy"],
-  ["62,47,55,10,165,3,220,42", "amm-sell"]
+  ["189,219,127,211,78,230,97,238", {
+    kind: "curve",
+    program: "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
+  }],
+  ["103,244,82,31,44,245,119,119", {
+    kind: "amm-buy",
+    program: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }],
+  ["62,47,55,10,165,3,220,42", {
+    kind: "amm-sell",
+    program: "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  }]
 ]);
+
+function authenticatedProgramData(logs) {
+  const stack = [];
+  const records = [];
+  for (const line of logs ?? []) {
+    const invoke = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) invoke \[(\d+)\]$/.exec(line);
+    if (invoke) {
+      const depth = Number(invoke[2]);
+      stack.length = Math.max(0, depth - 1);
+      stack.push(invoke[1]);
+      continue;
+    }
+    if (line.startsWith(EVENT_PREFIX)) {
+      if (stack.length > 0) records.push({ line, program: stack.at(-1) });
+      continue;
+    }
+    const complete = /^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) (?:success|failed:)/.exec(line);
+    if (!complete) continue;
+    const index = stack.lastIndexOf(complete[1]);
+    if (index >= 0) stack.length = index;
+  }
+  return records;
+}
 
 function keyString(key) {
   return typeof key === "string" ? key : key?.pubkey;
@@ -65,7 +97,8 @@ function fastTrade({
   blockTime,
   slot,
   observedAtMs,
-  venue
+  venue,
+  curveState
 }) {
   if (
     !Number.isFinite(tokenAmount) ||
@@ -87,7 +120,8 @@ function fastTrade({
     slot,
     observedAtMs,
     signalSource: "processed_logs",
-    venue
+    venue,
+    ...(curveState ? { curveState } : {})
   };
 }
 
@@ -121,8 +155,7 @@ export function parsePumpLogSignal(
   { slot = null, observedAtMs = Date.now() } = {}
 ) {
   const events = [];
-  for (const line of logs ?? []) {
-    if (!line.startsWith(EVENT_PREFIX)) continue;
+  for (const { line, program } of authenticatedProgramData(logs)) {
     let data;
     try {
       data = Buffer.from(line.slice(EVENT_PREFIX.length), "base64");
@@ -130,8 +163,9 @@ export function parsePumpLogSignal(
       continue;
     }
     if (data.length < 9) continue;
-    const kind = EVENT_DISCRIMINATORS.get([...data.subarray(0, 8)].join(","));
-    if (!kind) continue;
+    const descriptor = EVENT_DISCRIMINATORS.get([...data.subarray(0, 8)].join(","));
+    if (!descriptor || descriptor.program !== program) continue;
+    const { kind } = descriptor;
 
     try {
       const payload = data.subarray(8);
@@ -146,7 +180,17 @@ export function parsePumpLogSignal(
           quoteAmountRaw: eventNumber(event.solAmount),
           quoteMint: event.quoteMint.toBase58(),
           blockTime: eventNumber(event.timestamp),
-          venue: "pump-curve"
+          venue: "pump-curve",
+          curveState: {
+            virtualSolReservesRaw: event.virtualSolReserves.toString(),
+            virtualTokenReservesRaw: event.virtualTokenReserves.toString(),
+            realSolReservesRaw: event.realSolReserves.toString(),
+            realTokenReservesRaw: event.realTokenReserves.toString(),
+            feeBasisPoints: Number(event.feeBasisPoints.toString()),
+            creatorFeeBasisPoints: Number(event.creatorFeeBasisPoints.toString()),
+            cashbackFeeBasisPoints: Number(event.cashbackFeeBasisPoints.toString()),
+            buybackFeeBasisPoints: Number(event.buybackFeeBasisPoints.toString())
+          }
         });
         continue;
       }
@@ -190,7 +234,8 @@ export function parsePumpLogSignal(
     blockTime: event.blockTime,
     slot,
     observedAtMs,
-    venue: event.venue
+    venue: event.venue,
+    curveState: event.curveState
   });
   const hasTokenQuotedCurve = events.some(
     (event) => event.kind === "curve" && event.quoteMint !== SYSTEM_PROGRAM

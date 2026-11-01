@@ -10,11 +10,16 @@ import {
 const TARGET = "sAdNbe1cKNMDqDsa4npB3TfL62T14uAo2MsUQfLvzLT";
 const MINT = "hKyXZVKmrBDPhKKhdSaaGf1qrFwUkwjqrdzRc63farm";
 const PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+const PUMP_AMM = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 const CURVE_SELL_LOG = "Program data: vdt/007mYe5DvF19jPjrmg7v696Nsrx23f3uNFDfyDVxupO9P8wzb0qJNLEAAAAATRPux/YWAAAADNntBUGU7+9bbyqxBdw8bAd+679sqIXoiaJsjwy7kuT5zuJqAAAAABuOCf4NAAAAwQYr0yjnAQAb4uUBBwAAAMFuGIeX6AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABfAAAAAAAAAI72rgEAAAAAGhL9uhSe7QsDQtFAx1NZm1RjEZwJroJRw3JGegHs2K8eAAAAAAAAAPcXiAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABAAAAHNlbGwAAAAAAAAAAAAAAAAAAAAAAIgTAAAAAAAAR3vXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABKiTSxAAAAABuOCf4NAAAAG+LlAQcAAAAeAAAAAAAAAPcXiAAAAAAAoCvbHAAAAAAAAAAAAAAAAA==";
 const MULTI_HOP_AMM_LOG = "Program data: Z/RSHyz1d3d2M+RqAAAAAOGzaRIAAAAAcIamvAAAAAAAAAAAAAAAAEBZjr4AAAAAUir3WpUCAADJ9r30YhoAAHCGprwAAAAAGQAAAAAAAAANYHgAAAAAAAUAAAAAAAAANhMYAAAAAAA6c468AAAAAC0TFrwAAAAA6KMk0MFc9epmamCnr2kB/eZ8c1spZ1JtCUM0pLKBI7kM2e0FQZTv71tvKrEF3DxsB37rv2yoheiJomyPDLuS5OosK4VI7LHz6DrOi8H+Tu1/emSdOh1ReF/G97ZPDgRQR2EpnH6JUmAp8EbfPlLsQ6th1sRPmPQiUtH8TMOuRnAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAVAAAAYnV5X2V4YWN0X3F1b3RlX2luX3YyAAAAAAAAAAAAAAAAAAAAAIgTAAAAAAAAmwkMAAAAAAApwYj/////////////////AGBq4igzkhwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 const MULTI_HOP_CURVE_LOG = "Program data: vdt/007mYe62B42VK5/oXuQat8tUW38/vwRJyedUChbPHwdwEbWu6gAAAAAAAAAAyeBAxz4fAAABDNntBUGU7+9bbyqxBdw8bAd+679sqIXoiaJsjwy7kuR2M+RqAAAAAAAAAAAAAAAAz/+zCYRQAgAAAAAAAAAAAM9nob3yUQEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABfAAAAAAAAAL0AYAAAAAAABAVrEWf3SX1PpUUKfcaHSuiZC5JLihkNwvXxP9hJujdkAAAAAAAAAEAOZQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAEgAAAGJ1eV9leGFjdF9xdW90ZV9pbgAAAAAAAAAAAAAAAAAAAAAAiBMAAAAAAAB7hS8AAAAAAAAAAAAF2usXC9eTT253vQrB34zObyMGO60MozJCOAWS9xPrIbGQeScAAAAAOHINFAMAAAA//pQ1AQAAAGQAAAAAAAAAQA5lAAAAAACewLgBAAAAAAGVZwAAAAAA";
 const MULTI_HOP_MINT = "DFZt6XrafYhwMbn2Ew1Uom7JLkVmMnDZXW96oYYDBMjf";
 const ROUTE_DUST_MINT = "PrekqLJvJ3qVdXmBGDiexvwUTF4rLFDa6HWS4HJbw9S";
+
+function emittedBy(program, dataLog) {
+  return [`Program ${program} invoke [1]`, dataLog, `Program ${program} success`];
+}
 
 function transaction({
   beforeTokens,
@@ -102,7 +107,7 @@ test("ignores Pump transfers that only mention the target wallet", () => {
 
 test("decodes an authenticated Pump trade directly from processed logs", () => {
   const [trade] = parsePumpLogTrades(
-    [CURVE_SELL_LOG],
+    emittedBy(PUMP, CURVE_SELL_LOG),
     TARGET,
     "fast-signature",
     { slot: 456, observedAtMs: 1_234 }
@@ -116,11 +121,27 @@ test("decodes an authenticated Pump trade directly from processed logs", () => {
   assert.equal(trade.signalSource, "processed_logs");
   assert.ok(trade.tokenAmount > 25_000_000);
   assert.ok(trade.solAmount > 2.9);
+  assert.match(trade.curveState.virtualSolReservesRaw, /^\d+$/);
+  assert.match(trade.curveState.virtualTokenReservesRaw, /^\d+$/);
+});
+
+test("rejects spoofed event bytes emitted by a non-Pump program", () => {
+  assert.deepEqual(
+    parsePumpLogTrades(
+      emittedBy("11111111111111111111111111111111", CURVE_SELL_LOG),
+      TARGET,
+      "spoofed"
+    ),
+    []
+  );
 });
 
 test("rejects a valid Pump event when its authenticated user is not the target", () => {
   assert.deepEqual(
-    parsePumpLogTrades([CURVE_SELL_LOG], "11111111111111111111111111111111"),
+    parsePumpLogTrades(
+      emittedBy(PUMP, CURVE_SELL_LOG),
+      "11111111111111111111111111111111"
+    ),
     []
   );
 });
@@ -138,7 +159,7 @@ test("uses authenticated confirmed events when balance deltas cannot price the t
     afterTokens: 2_000_000_000,
     beforeSol: 10_000_000_000,
     afterSol: 10_000_000_000,
-    logs: [CURVE_SELL_LOG]
+    logs: emittedBy(PUMP, CURVE_SELL_LOG)
   });
   assert.deepEqual(parsePumpTrades(tx, TARGET, "confirmed-event"), []);
   const signal = parseConfirmedPumpLogSignal(tx, TARGET, "confirmed-event");
@@ -149,7 +170,10 @@ test("uses authenticated confirmed events when balance deltas cannot price the t
 
 test("collapses a real Axiom multi-hop route to its final Pump coin", () => {
   const signal = parsePumpLogSignal(
-    [MULTI_HOP_AMM_LOG, MULTI_HOP_CURVE_LOG],
+    [
+      ...emittedBy(PUMP_AMM, MULTI_HOP_AMM_LOG),
+      ...emittedBy(PUMP, MULTI_HOP_CURVE_LOG)
+    ],
     TARGET,
     "3JhHULgf9gKukx2kNGu4covS7yDTihtTLUbpBgmGNiqAKpaJGsXMP1kQoa5sYMRBwhadtLJSP7qPoT5M7TwLqj1k",
     { slot: 789, observedAtMs: 2_345 }
@@ -172,7 +196,10 @@ test("confirmed parsing keeps only the multi-hop endpoint and ignores route dust
     beforeSol: 10_000_000_000,
     afterSol: 9_980_000_000,
     mint: MULTI_HOP_MINT,
-    logs: [MULTI_HOP_AMM_LOG, MULTI_HOP_CURVE_LOG]
+    logs: [
+      ...emittedBy(PUMP_AMM, MULTI_HOP_AMM_LOG),
+      ...emittedBy(PUMP, MULTI_HOP_CURVE_LOG)
+    ]
   });
   tx.meta.preTokenBalances.push({
     owner: TARGET,

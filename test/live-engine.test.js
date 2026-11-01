@@ -23,6 +23,9 @@ function liveConfig(directory, overrides = {}) {
     liveTipSol: 0.000005,
     liveMaxHoldMs: 3_600_000,
     liveMaxEntryDriftBps: 500,
+    fastMaxSignalAgeMs: 1_500,
+    fastMaxEntryDriftBps: 2_500,
+    fastSkipSimulation: true,
     ...overrides
   };
 }
@@ -159,6 +162,90 @@ test("rejects an entry when our quoted price drift exceeds the cap", async () =>
     assert.equal(result.type, "LIVE_SKIP");
     assert.match(result.reason, /^entry_price_drift_/);
     assert.equal(submitted, false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("fast profile uses its own drift window and latency prepare options", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-"));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let prepareOptions;
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    prepare: async (_side, _mint, _rawAmount, options) => {
+      prepareOptions = options;
+      return {
+        expectedSignature: "fast-copy-signature",
+        mint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "pump-curve",
+        beforeTokenBalance: 0n,
+        lastValidBlockHeight: 123,
+        expectedTokenOutRaw: "1000000",
+        tokenDecimals: 6
+      };
+    },
+    submit: async () => "fast-copy-signature",
+    confirm: async () => new Promise(() => {}),
+    tokenBalance: async () => 100n
+  };
+  try {
+    const result = await engine.onTrade({
+      signature: "target-fast-buy",
+      side: "BUY",
+      mint: mint.toBase58(),
+      averagePriceSol: 0.0042,
+      observedAtMs: Date.now(),
+      signalSource: "processed_logs",
+      venue: "pump-curve",
+      fastProfile: true
+    });
+    assert.equal(result.type, "LIVE_SUBMITTED");
+    assert.ok(result.entryDriftBps > 1_800 && result.entryDriftBps < 2_000);
+    assert.equal(prepareOptions.venueHint, "pump-curve");
+    assert.equal(prepareOptions.skipSimulation, true);
+    assert.equal(prepareOptions.skipBeforeTokenBalance, true);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("shadow probe measures the actual ready-to-submit quote without sending", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-probe-"));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let options;
+  engine.executor = {
+    prepare: async (_side, _mint, _rawAmount, value) => {
+      options = value;
+      return {
+        expectedSignature: "unsigned-probe-only",
+        mint,
+        tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "pump-curve",
+        beforeTokenBalance: 0n,
+        lastValidBlockHeight: 123,
+        expectedTokenOutRaw: "125000000000",
+        tokenDecimals: 6
+      };
+    }
+  };
+  try {
+    const quote = await engine.probeBuy({
+      signature: "target-probe",
+      side: "BUY",
+      mint: mint.toBase58(),
+      averagePriceSol: 0.000000035,
+      observedAtMs: Date.now(),
+      venue: "pump-curve"
+    }, 0.005);
+    assert.equal(quote.expectedTokenOutRaw, "125000000000");
+    assert.equal(quote.copyPriceSol, 0.005 / 125_000);
+    assert.equal(options.skipSimulation, true);
+    assert.equal(options.skipBeforeTokenBalance, true);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
