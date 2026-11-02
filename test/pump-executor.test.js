@@ -110,14 +110,27 @@ test("closes an empty associated token account and reports reclaimed rent", asyn
     true,
     TOKEN_PROGRAM_ID
   );
+  const lifecycle = [];
+  const originalSubmit = executor.sender.submit;
+  executor.sender.submit = async transaction => {
+    lifecycle.push("submitted");
+    return originalSubmit(transaction);
+  };
 
-  const result = await executor.closeEmptyTokenAccount(mint, TOKEN_PROGRAM_ID);
+  const result = await executor.closeEmptyTokenAccount(mint, TOKEN_PROGRAM_ID, {
+    onPrepared: async (signature, details) => {
+      lifecycle.push("prepared");
+      assert.equal(bs58.decode(signature).length, 64);
+      assert.equal(details.tokenAccount, expectedAta.toBase58());
+    }
+  });
 
   assert.equal(result.status, "closed");
   assert.equal(result.tokenAccount, expectedAta.toBase58());
   assert.equal(result.reclaimedLamports, 2_039_280);
   assert.equal(result.confirmation, "confirmed");
   assert.ok(submitted());
+  assert.deepEqual(lifecycle, ["prepared", "submitted"]);
   const keys = submitted().message.staticAccountKeys.map((key) => key.toBase58());
   assert.ok(keys.includes(expectedAta.toBase58()));
   assert.ok(keys.includes(TOKEN_PROGRAM_ID.toBase58()));

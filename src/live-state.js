@@ -10,6 +10,11 @@ export const UNRESOLVED_SELL_STATUSES = new Set([
   "expired_no_balance_change", "reconcile_unavailable",
   "sell_proceeds_unknown", "confirmed_pending_close", "sell_pnl_pending"
 ]);
+export const UNRESOLVED_BUY_STATUSES = new Set([
+  "reserved", "submitted", "processed", "confirmation_unknown",
+  "submit_failed", "position_quarantined", "reconcile_unavailable",
+  "retry_safe", "expired_no_balance_change"
+]);
 
 function utcDay() {
   return new Date().toISOString().slice(0, 10);
@@ -20,6 +25,18 @@ function settlementNeedsDurableHistory(settlement) {
     settlement?.completed !== true ||
     (settlement?.remainingRaw === "0" && settlement?.pnlRecorded !== true) ||
     (settlement?.closeRequired === true && settlement?.closeStatus !== "closed");
+}
+
+function signalNeedsDurableHistory(signal) {
+  if (signal?.side === "BUY") {
+    if (UNRESOLVED_BUY_STATUSES.has(signal.status)) return true;
+    if (signal.status === "failed_onchain" &&
+        !/^\d+$/.test(String(signal.failedFeeLamports ?? ""))) return true;
+    const reservedSpend = String(signal.reservedSpend ?? "0");
+    if (signal.status === "submit_rejected" &&
+        (/^\d+$/.test(reservedSpend) ? BigInt(reservedSpend) > 0n : true)) return true;
+  }
+  return signal?.side === "SELL" && UNRESOLVED_SELL_STATUSES.has(signal.status);
 }
 
 export class LiveState {
@@ -131,18 +148,22 @@ export class LiveState {
 
   #save() {
     const settlements = [...this.sellSettlements.values()];
-    const unfinishedSettlements = settlements.filter(settlementNeedsDurableHistory);
-    const unfinishedTargets = new Set(
-      unfinishedSettlements.map(settlement => settlement.targetSignature)
+    const retainedSettlements = settlements.filter(settlement =>
+      settlementNeedsDurableHistory(settlement) || this.quarantines.has(settlement.mint)
+    );
+    const retainedTargets = new Set(
+      retainedSettlements.map(settlement => settlement.targetSignature)
     );
     const persistedSettlements = [
-      ...unfinishedSettlements,
-      ...settlements.filter(settlement => !settlementNeedsDurableHistory(settlement))
+      ...retainedSettlements,
+      ...settlements.filter(settlement => !retainedTargets.has(settlement.targetSignature))
         .slice(-this.handledLimit)
     ];
+    this.sellSettlements = new Map(
+      persistedSettlements.map(settlement => [settlement.targetSignature, settlement])
+    );
     const preservedSignals = this.handledSignals.filter(signal =>
-      unfinishedTargets.has(signal.targetSignature) ||
-      (signal.side === "SELL" && UNRESOLVED_SELL_STATUSES.has(signal.status))
+      retainedTargets.has(signal.targetSignature) || signalNeedsDurableHistory(signal)
     );
     const recentSignals = this.handledSignals.slice(-this.handledLimit);
     const persistedTargets = new Set([
@@ -393,6 +414,28 @@ export class LiveState {
       settlement.closeWalletDeltaLamports = null;
       settlement.closeError = error ? String(error) : null;
     }
+    settlement.closeUpdatedAt = new Date().toISOString();
+    this.#save();
+    return { ...settlement };
+  }
+
+  persistSellSettlementCloseIntent(targetSignature, { signature, result = null } = {}) {
+    const settlement = this.sellSettlements.get(targetSignature);
+    if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    if (settlement.closeStatus === "closed") return { ...settlement, alreadyClosed: true };
+    if (typeof signature !== "string" || signature.length === 0) {
+      throw new Error("SELL close intent requires a transaction signature");
+    }
+    if (settlement.closeSignature && settlement.closeSignature !== signature &&
+        settlement.closeStatus !== "failed") {
+      throw new Error("SELL settlement already has a different close intent");
+    }
+    settlement.closeStatus = "pending";
+    settlement.closeSignature = signature;
+    settlement.tokenAccountClose = result ?? settlement.tokenAccountClose ?? null;
+    settlement.closeWalletDeltaLamports = null;
+    settlement.closeError = null;
+    settlement.closeIntentAt = new Date().toISOString();
     settlement.closeUpdatedAt = new Date().toISOString();
     this.#save();
     return { ...settlement };

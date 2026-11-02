@@ -1386,6 +1386,117 @@ test("completed partial SELL is not scheduled for reconciliation again", async t
   assert.equal(settlementReads, 0);
 });
 
+test("unresolved BUY survives durable history rollover and restart", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-buy-retention-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory, { liveHandledHistoryLimit: 2 });
+  const first = new LiveEngine(config, () => {});
+  first.state.reserveSignal(
+    { signature: "old-unresolved-buy", side: "BUY", mint: "old-buy-mint" },
+    { signature: "old-buy-chain", beforeTokenBalance: "0", rawAmount: "5000000" },
+    5_000_000n
+  );
+  first.state.updateSignal("old-unresolved-buy", {
+    status: "submitted", signature: "old-buy-chain"
+  });
+  first.state.handledSignals.push(
+    { targetSignature: "new-terminal-1", side: "BUY", mint: "new-mint-1", status: "confirmed" },
+    { targetSignature: "new-terminal-2", side: "BUY", mint: "new-mint-2", status: "confirmed" },
+    { targetSignature: "new-terminal-3", side: "BUY", mint: "new-mint-3", status: "confirmed" }
+  );
+  first.state.recordRealizedPnl(0n);
+
+  const restarted = new LiveEngine(config, () => {});
+  assert.equal(restarted.state.hasHandled("old-unresolved-buy"), true);
+  assert.equal(restarted.state.handledSignals.some(signal =>
+    signal.targetSignature === "old-unresolved-buy" && signal.status === "submitted"
+  ), true);
+});
+
+test("durable CLOSE intent recovers after broadcast response loss without rebroadcast", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-intent-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "intent-entry", targetEntrySignature: "intent-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "intent-target", side: "SELL", mint }, {
+    signature: "intent-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("intent-target", {
+    status: "submitted", signature: "intent-sell"
+  });
+  first.state.applySellSettlement({
+    mint, targetSignature: "intent-target", signature: "intent-sell",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  first.executor = {
+    closeEmptyTokenAccount: async (_mint, _program, { onPrepared }) => {
+      await onPrepared("durable-close-signature", { tokenAccount: "durable-ata" });
+      throw new Error("response lost after close broadcast");
+    }
+  };
+  await first.reconcile();
+  assert.equal(first.state.getSellSettlement("intent-target").closeSignature,
+    "durable-close-signature");
+  assert.equal(first.state.getSellSettlement("intent-target").closeStatus, "failed");
+  assert.equal(first.state.dailyRealizedPnlLamports, 0n);
+
+  const restarted = new LiveEngine(config, () => {});
+  let rebroadcasts = 0;
+  restarted.executor = {
+    signatureStatus: async signature => {
+      assert.equal(signature, "durable-close-signature");
+      return { confirmationStatus: "confirmed", err: null };
+    },
+    transactionWalletDelta: async signature => {
+      assert.equal(signature, "durable-close-signature");
+      return { walletDeltaLamports: "123" };
+    },
+    closeEmptyTokenAccount: async () => {
+      rebroadcasts += 1;
+      throw new Error("durable CLOSE must not be rebroadcast");
+    }
+  };
+  await restarted.reconcile();
+  assert.equal(rebroadcasts, 0);
+  assert.equal(restarted.state.getSellSettlement("intent-target").closeStatus, "closed");
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
+});
+
+test("completed SELL settlements are bounded in memory while unresolved history stays durable", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-settlement-memory-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const engine = new LiveEngine(liveConfig(directory, { liveHandledHistoryLimit: 2 }), () => {});
+  engine.state.sellSettlements.set("unresolved-settlement", {
+    targetSignature: "unresolved-settlement", signature: "unresolved-sell",
+    mint: "unresolved-mint", remainingRaw: "0", sellWalletDeltaKnown: false,
+    completed: false, pnlRecorded: false, closeRequired: false, closeStatus: "not_required"
+  });
+  for (let index = 0; index < 10_050; index += 1) {
+    engine.state.sellSettlements.set(`terminal-${index}`, {
+      targetSignature: `terminal-${index}`, signature: `terminal-sell-${index}`,
+      mint: `terminal-mint-${index}`, remainingRaw: "1", sellWalletDeltaKnown: true,
+      completed: true, pnlRecorded: false, closeRequired: false, closeStatus: "not_required"
+    });
+  }
+  engine.state.recordRealizedPnl(0n);
+  assert.equal(engine.state.sellSettlements.size, 3);
+  assert.equal(engine.state.sellSettlements.has("unresolved-settlement"), true);
+  assert.equal(engine.state.sellSettlements.has("terminal-10049"), true);
+  assert.equal(engine.state.sellSettlements.has("terminal-10048"), true);
+  assert.equal(engine.state.sellSettlements.has("terminal-0"), false);
+});
+
 test("FAST BUY without inventory provenance is rejected before submit", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));

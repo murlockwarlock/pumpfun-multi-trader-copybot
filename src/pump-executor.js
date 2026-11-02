@@ -692,7 +692,7 @@ export class PumpExecutor {
     });
   }
 
-  async closeEmptyTokenAccount(mintAddress, tokenProgramAddress) {
+  async closeEmptyTokenAccount(mintAddress, tokenProgramAddress, { onPrepared = null } = {}) {
     const mint = mintAddress instanceof PublicKey ? mintAddress : new PublicKey(mintAddress);
     const tokenProgram = tokenProgramAddress instanceof PublicKey
       ? tokenProgramAddress
@@ -768,6 +768,9 @@ export class PumpExecutor {
       }
     }
 
+    await onPrepared?.(prepared.expectedSignature, {
+      tokenAccount: tokenAccount.toBase58()
+    });
     const signature = await this.submit(prepared);
     let confirmation;
     try {
