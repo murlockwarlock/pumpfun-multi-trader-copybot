@@ -9,8 +9,9 @@ import { PumpExecutor } from "./pump-executor.js";
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const LIVE_CONFIRMATION = "I_UNDERSTAND_REAL_FUNDS";
 const ACTIVE_SIGNAL_STATUSES = new Set([
-  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed", "expired_no_balance_change"
+  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed"
 ]);
+const RECOVERABLE_EXIT_STATUSES = new Set(["expired_no_balance_change", "legacy_exit_unknown"]);
 
 const solToLamports = (sol) => BigInt(Math.round(sol * LAMPORTS_PER_SOL));
 const bigintMin = (left, right) => left < right ? left : right;
@@ -35,6 +36,12 @@ export class LiveEngine {
     return this.state.positions;
   }
 
+  get unresolvedExitCount() {
+    return this.state.handledSignals.filter(signal =>
+      signal.side === "SELL" && (RECOVERABLE_EXIT_STATUSES.has(signal.status) ||
+        signal.status === "confirmation_unknown")).length;
+  }
+
   async snapshot() {
     const balance = this.executor
       ? BigInt(await this.executor.balanceLamports())
@@ -47,7 +54,8 @@ export class LiveEngine {
         Number(this.state.dailyRealizedPnlLamports) / LAMPORTS_PER_SOL,
       consecutiveLosses: this.state.consecutiveLosses,
       buyPauseActive: this.#buyPauseActive(),
-      openPositions: this.state.positions.size
+      openPositions: this.state.positions.size,
+      unresolvedExits: this.unresolvedExitCount
     };
   }
 
@@ -277,6 +285,13 @@ export class LiveEngine {
     );
   }
 
+  #hasUnresolvedExit(mint) {
+    return this.state.handledSignals.some(signal =>
+      signal.mint === mint && signal.side === "SELL" &&
+      (RECOVERABLE_EXIT_STATUSES.has(signal.status) || signal.status === "confirmation_unknown")
+    );
+  }
+
   #isAmbiguousSubmitError(error) {
     const message = errorMessage(error);
     if (/timeout|timed out|network|socket|econn|aborted/i.test(message)) return true;
@@ -288,7 +303,8 @@ export class LiveEngine {
 
   reconcile() {
     const mints = new Set(this.state.handledSignals.filter(s =>
-      s.status === "confirmed_pending_close" || ACTIVE_SIGNAL_STATUSES.has(s.status)).map(s => s.mint));
+      s.status === "confirmed_pending_close" || ACTIVE_SIGNAL_STATUSES.has(s.status) ||
+      RECOVERABLE_EXIT_STATUSES.has(s.status)).map(s => s.mint));
     return Promise.all([...mints].map(mint => {
       if (!this.recoveryJobs.has(mint)) {
         const task = this.#reconcileMint(mint).finally(() => this.recoveryJobs.delete(mint));
@@ -301,8 +317,22 @@ export class LiveEngine {
   async #reconcileMint(address) {
     const orphan = this.#pendingBuys().find(s => s.mint === address && s.pendingExit);
     if (orphan && !this.positions.has(address) && !this.settlements.has(address) && !this.#hasActiveSell(address)) {
+      const buyStatus = await this.executor.signatureStatus(orphan.signature).catch(() => null);
+      if (buyStatus?.err) {
+        this.state.updateSignal(orphan.targetSignature, {
+          status: "failed_onchain", error: JSON.stringify(buyStatus.err)
+        });
+        return;
+      }
+      if (!["processed", "confirmed", "finalized"].includes(buyStatus?.confirmationStatus)) return;
+      const executedDelta = typeof this.executor.transactionTokenDelta === "function"
+        ? await this.executor.transactionTokenDelta(orphan.signature, address, this.wallet?.publicKey,
+          buyStatus.confirmationStatus === "processed" ? "processed" : "confirmed")
+          .catch(() => null)
+        : null;
+      if (executedDelta === null || executedDelta <= 0n) return;
       const balance = await this.executor.tokenBalance(new PublicKey(address), new PublicKey(orphan.tokenProgram), "processed");
-      const bought = balance - BigInt(orphan.beforeTokenBalance);
+      const bought = bigintMin(executedDelta, balance);
       if (bought > 0n && !this.positions.has(address)) {
         this.state.setPosition({
           mint: address, rawTokenAmount: bought.toString(), tokenProgram: orphan.tokenProgram,
@@ -324,7 +354,8 @@ export class LiveEngine {
     }
 
     const pending = this.state.handledSignals.filter((signal) =>
-      signal.mint === address && ACTIVE_SIGNAL_STATUSES.has(signal.status)
+      signal.mint === address && (ACTIVE_SIGNAL_STATUSES.has(signal.status) ||
+        RECOVERABLE_EXIT_STATUSES.has(signal.status))
     );
     for (const signal of pending) {
       if (this.settlements.has(signal.mint) || this.submitting.has(signal.targetSignature)) continue;
@@ -334,14 +365,57 @@ export class LiveEngine {
         !/^\d+$/.test(signal.rawAmount ?? "") ||
         !Number.isFinite(Number(signal.lastValidBlockHeight))
       ) {
-        this.state.updateSignal(signal.targetSignature, { status: "reconcile_unavailable" });
-        if (signal.side === "SELL") this.#scheduleExitRetry(signal.mint, "reconcile_unavailable");
+        if (signal.side === "SELL" && RECOVERABLE_EXIT_STATUSES.has(signal.status)) {
+          this.state.updateSignal(signal.targetSignature, {
+            status: "legacy_exit_unknown", recoveryEvidence: "missing_transaction_evidence"
+          });
+          this.log("live_exit_recovery", {
+            mint: signal.mint, targetSignature: signal.targetSignature,
+            signature: signal.signature ?? null, status: "legacy_exit_unknown",
+            recoveryEvidence: "missing_transaction_evidence"
+          });
+        } else {
+          this.state.updateSignal(signal.targetSignature, { status: "reconcile_unavailable" });
+          if (signal.side === "SELL") this.#scheduleExitRetry(signal.mint, "reconcile_unavailable");
+        }
         continue;
       }
       const mint = new PublicKey(signal.mint);
       const tokenProgram = new PublicKey(signal.tokenProgram);
       const before = BigInt(signal.beforeTokenBalance);
       const status = await this.executor.signatureStatus(signal.signature);
+      if (RECOVERABLE_EXIT_STATUSES.has(signal.status)) {
+        if (status?.err) {
+          this.state.updateSignal(signal.targetSignature, {
+            status: "retry_safe", recoveryEvidence: "confirmed_transaction_error"
+          });
+          this.#scheduleExitRetry(signal.mint, "confirmed_transaction_error");
+          this.log("live_exit_recovery", {
+            mint: signal.mint, targetSignature: signal.targetSignature,
+            signature: signal.signature, status: "retry_safe",
+            recoveryEvidence: "confirmed_transaction_error"
+          });
+        } else if (["processed", "confirmed", "finalized"].includes(status?.confirmationStatus)) {
+          this.state.updateSignal(signal.targetSignature, {
+            status: "confirmation_unknown", recoveryEvidence: "transaction_exists"
+          });
+          this.log("live_exit_recovery", {
+            mint: signal.mint, targetSignature: signal.targetSignature,
+            signature: signal.signature, status: "confirmation_unknown",
+            recoveryEvidence: "transaction_exists"
+          });
+        } else {
+          this.state.updateSignal(signal.targetSignature, {
+            status: "legacy_exit_unknown", recoveryEvidence: "signature_unresolved"
+          });
+          this.log("live_exit_recovery", {
+            mint: signal.mint, targetSignature: signal.targetSignature,
+            signature: signal.signature, status: "legacy_exit_unknown",
+            recoveryEvidence: "signature_unresolved"
+          });
+        }
+        continue;
+      }
       if (!["confirmed","finalized"].includes(status?.confirmationStatus)) continue;
       if (status.err) {
         const fee = signal.side === "BUY" ? (await this.executor.transactionWalletDelta(signal.signature)).feeLamports : "0";
@@ -354,13 +428,23 @@ export class LiveEngine {
       }
 
       const after = await this.executor.tokenBalance(mint, tokenProgram);
-      const changed = signal.side === "BUY" ? after > before : after < before;
+      let executedTokenDelta = null;
+      let changed = signal.side === "BUY" ? after > before : after < before;
+      if (signal.side === "SELL" && !changed && typeof this.executor.transactionTokenDelta === "function") {
+        executedTokenDelta = await this.executor.transactionTokenDelta(signal.signature, signal.mint, this.wallet?.publicKey,
+          status.confirmationStatus === "processed" ? "processed" : "confirmed")
+          .catch(() => null);
+        if (executedTokenDelta !== null) changed = executedTokenDelta < 0n;
+      }
       if (!changed) {
         // A confirmed BUY can already have been fully exited on processed.
         const exited = signal.side === "BUY" && this.state.handledSignals.some(s =>
           s.side === "SELL" && s.entrySignature === signal.signature &&
           ["confirmed", "reconciled_confirmed"].includes(s.status));
         if (exited) this.state.updateSignal(signal.targetSignature, { status: "reconciled_confirmed" });
+        else if (signal.side === "SELL") this.state.updateSignal(signal.targetSignature, {
+          status: "confirmation_unknown", recoveryEvidence: "confirmed_transaction_no_token_delta"
+        });
         continue;
       }
       let pnl = null;
@@ -398,7 +482,8 @@ export class LiveEngine {
       } else {
         const position = this.state.positions.get(signal.mint);
         if (position) {
-          const sold = before - after;
+          const sold = executedTokenDelta !== null && executedTokenDelta < 0n
+            ? -executedTokenDelta : before - after;
           const remaining = BigInt(position.rawTokenAmount) > sold
             ? BigInt(position.rawTokenAmount) - sold : 0n;
           if (remaining === 0n) {
@@ -445,7 +530,8 @@ export class LiveEngine {
     const now = Date.now();
     const trades = [];
     for (const [mint, original] of this.state.positions) {
-      if (this.settlements.has(mint) || this.pendingExits.has(mint) || this.#hasActiveSell(mint)) continue;
+      if (this.settlements.has(mint) || this.pendingExits.has(mint) ||
+        this.#hasActiveSell(mint) || this.#hasUnresolvedExit(mint)) continue;
 
       let position = original;
       const entry = this.state.handledSignals.find(s => s.targetSignature === position.targetEntrySignature);
@@ -645,10 +731,27 @@ export class LiveEngine {
       });
       return this.#skip(trade, "position_missing_during_sell_settlement");
     }
-    const sold = prepared.beforeTokenBalance - afterTokenBalance;
+    let sold = prepared.beforeTokenBalance - afterTokenBalance;
+    if (sold <= 0n && typeof this.executor.transactionTokenDelta === "function") {
+      const executedTokenDelta = await this.executor.transactionTokenDelta(
+        signature, trade.mint, this.wallet?.publicKey,
+        confirmation === "processed" ? "processed" : "confirmed"
+      ).catch(() => null);
+      if (executedTokenDelta !== null && executedTokenDelta < 0n) sold = -executedTokenDelta;
+    }
     if (sold <= 0n) {
-      this.#scheduleExitRetry(trade.mint, "confirmed_but_no_token_balance_decrease");
-      return this.#skip(trade, "confirmed_but_no_token_balance_decrease");
+      this.state.updateSignal(trade.signature, {
+        status: "confirmation_unknown", signature,
+        recoveryEvidence: "confirmed_transaction_no_token_delta"
+      });
+      const unknown = {
+        type: "LIVE_UNKNOWN", at: new Date().toISOString(), targetSignature: trade.signature,
+        signature, mint: trade.mint, side: trade.side,
+        error: "confirmed transaction has no observed token delta"
+      };
+      this.#write(unknown);
+      this.log("live_sell_unknown", unknown);
+      return unknown;
     }
     const remaining = BigInt(position.rawTokenAmount) > sold
       ? BigInt(position.rawTokenAmount) - sold : 0n;
@@ -896,7 +999,8 @@ export class LiveEngine {
     }
     if (this.state.hasHandled(trade.signature)) return this.#skip(trade, "signal_already_handled");
 
-    if (trade.side === "SELL" && ((this.pendingExits.has(trade.mint) && !dispatchingExit) || this.#hasActiveSell(trade.mint))) {
+    if (trade.side === "SELL" && ((this.pendingExits.has(trade.mint) && !dispatchingExit) ||
+      this.#hasActiveSell(trade.mint) || this.#hasUnresolvedExit(trade.mint))) {
       return this.#skip(trade, "exit_already_pending");
     }
     const pending = this.settlements.get(trade.mint);

@@ -180,17 +180,87 @@ test("pending exit without tokens survives another restart and dispatches on pro
   const entry = buy();
   persistBuy(engine, entry);
   const first = new LiveEngine(engine.config, () => {});
-  first.executor = { ...engine.executor, tokenBalance: async () => 0n, signatureStatus: async () => null };
+  first.executor = { ...engine.executor, tokenBalance: async () => 0n,
+    signatureStatus: async () => ({ confirmationStatus: "processed" }),
+    transactionTokenDelta: async () => 50n };
   const exit = { ...entry, side: "SELL", signature: "persisted-exit" };
   assert.equal((await first.onTrade(exit)).type, "LIVE_EXIT_PENDING");
   await first.reconcile();
   const second = new LiveEngine(engine.config, () => {});
   let sends = 0;
   second.executor = { ...engine.executor, submit: async p => { sends++; return p.expectedSignature; },
-    signatureStatus: async () => null };
+    signatureStatus: async () => ({ confirmationStatus: "processed" }),
+    transactionTokenDelta: async () => 50n };
   await second.reconcile();
   assert.equal(sends, 1);
   assert.equal((await second.onTrade(exit)).reason, "signal_already_handled");
+});
+
+test("pre-existing token balance cannot be recovered as a fast BUY", async t => {
+  const { engine, buy, calls } = concurrentFixture(t);
+  const entry = buy();
+  persistBuy(engine, entry);
+  engine.state.updateSignal(entry.signature, { pendingExit: { signature: "foreign-exit" } });
+  const restored = new LiveEngine(engine.config, () => {});
+  restored.executor = { ...engine.executor,
+    tokenBalance: async () => 50n,
+    signatureStatus: async () => ({ confirmationStatus: "processed" }),
+    transactionTokenDelta: async () => 0n,
+    submit: async prepared => { calls.push({ side: "SELL" }); return prepared.expectedSignature; }
+  };
+  await restored.reconcile();
+  assert.equal(restored.positions.size, 0);
+  assert.equal(calls.filter(call => call.side === "SELL").length, 0);
+});
+
+test("legacy expired SELL is surfaced and never rebroadcast blindly", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  const sell = { ...entry, side: "SELL", signature: "old-sell" };
+  engine.state.setPosition({ mint: entry.mint, rawTokenAmount: "50", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(), entrySignature: "copy-buy", exitRequest: { targetSignature: sell.signature } });
+  engine.state.reserveSignal(sell, { signature: "copy-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "50", rawAmount: "50", lastValidBlockHeight: 1 }, 0n);
+  engine.state.updateSignal(sell.signature, { status: "expired_no_balance_change" });
+  engine.executor.signatureStatus = async () => null;
+  const retries = await engine.maintenanceTrades();
+  assert.equal(retries.length, 0);
+  await engine.reconcile();
+  assert.equal(engine.state.handledSignals.at(-1).status, "legacy_exit_unknown");
+  assert.equal((await engine.onTrade({ ...sell, signature: "new-sell" })).reason, "exit_already_pending");
+});
+
+test("confirmed SELL with stale balance becomes unknown without a duplicate", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  engine.state.setPosition({ mint: entry.mint, rawTokenAmount: "50", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
+  engine.executor.tokenBalance = async () => 50n;
+  engine.executor.confirm = async () => "confirmed";
+  const sell = { ...entry, side: "SELL", signature: "stale-sell" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "submitted"; i++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(engine.state.handledSignals.at(-1).status, "confirmation_unknown");
+  assert.equal((await engine.onTrade({ ...sell, signature: "stale-sell-retry" })).reason, "exit_already_pending");
+});
+
+test("confirmed SELL uses transaction token delta when wallet balance is stale", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  engine.state.setPosition({ mint: entry.mint, rawTokenAmount: "50", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
+  engine.executor.tokenBalance = async () => 50n;
+  engine.executor.confirm = async () => "confirmed";
+  engine.executor.transactionTokenDelta = async () => -50n;
+  const sell = { ...entry, side: "SELL", signature: "meta-sell" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "submitted"; i++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(engine.state.handledSignals.at(-1).status, "confirmed");
+  assert.equal(engine.positions.has(entry.mint), false);
 });
 
 for (const rollover of [false,true]) test("confirmed BUY failure refunds principal once, rollover=" + rollover, async t => {

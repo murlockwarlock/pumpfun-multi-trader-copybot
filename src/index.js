@@ -900,6 +900,7 @@ try {
       targetHealth,
       tradingMode: config.tradingMode,
       openPositions: trader.positions.size,
+      unresolvedExits: trader.unresolvedExitCount,
       shadowOpenPositions: shadowTrader?.positions.size ?? 0,
       fallbackActive,
       fallbackQueued: fallbackWaiters.length,

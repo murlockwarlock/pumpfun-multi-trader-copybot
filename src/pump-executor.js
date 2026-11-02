@@ -815,6 +815,28 @@ export class PumpExecutor {
     }
   }
 
+  async transactionTokenDelta(signature, mintAddress, ownerAddress, commitment = "confirmed") {
+    const mint = mintAddress.toBase58 ? mintAddress.toBase58() : String(mintAddress);
+    const owner = ownerAddress?.toBase58 ? ownerAddress.toBase58() : String(ownerAddress ?? "");
+    try {
+      const transaction = await this.connection.getParsedTransaction(signature, {
+        commitment, maxSupportedTransactionVersion: 0
+      });
+      return this.#tokenDeltaFromTransaction(transaction, signature, mint, owner);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.transactionTokenDelta(signature, mintAddress, ownerAddress, commitment);
+    }
+  }
+
+  #tokenDeltaFromTransaction(transaction, signature, mint, owner) {
+    if (!transaction?.meta) throw new Error(`Confirmed transaction unavailable: ${signature}`);
+    const amount = (balances = []) => balances
+      .filter(balance => balance.mint === mint && (!owner || balance.owner === owner))
+      .reduce((sum, balance) => sum + BigInt(balance.uiTokenAmount.amount), 0n);
+    return amount(transaction.meta.postTokenBalances) - amount(transaction.meta.preTokenBalances);
+  }
+
   async #confirmOnce(signature, prepared) {
     const deadline = Date.now() + this.config.liveConfirmationTimeoutMs;
     while (Date.now() < deadline) {

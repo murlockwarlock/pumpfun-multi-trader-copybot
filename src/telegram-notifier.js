@@ -153,6 +153,26 @@ export class TelegramNotifier {
         "Проверьте кошелёк и при необходимости продайте вручную."
       ].join("\n");
       options = { dedupeKey: `exit-retry:${details.mint}`, dedupeMs: 300_000 };
+    } else if (
+      event === "live_exit_recovery" &&
+      ["confirmation_unknown", "legacy_exit_unknown"].includes(details.status)
+    ) {
+      text = [
+        "🚨 Статус SELL не определён",
+        `Mint: ${short(details.mint, 10)}`,
+        `Tx: ${details.signature ? `https://solscan.io/tx/${details.signature}` : "нет сигнатуры"}`,
+        `Доказательство: ${details.recoveryEvidence ?? "unknown"}`,
+        "Новая продажа заблокирована до проверки транзакции; при необходимости вмешайтесь вручную."
+      ].join("\n");
+      options = { dedupeKey: `exit-unknown:${details.signature ?? details.targetSignature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_sell_unknown") {
+      text = [
+        "🚨 SELL подтверждён, но изменение токенов не найдено",
+        `Mint: ${short(details.mint, 10)}`,
+        details.signature ? `Tx: https://solscan.io/tx/${details.signature}` : null,
+        "Повторная отправка остановлена до проверки on-chain состояния."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `sell-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
     } else if (event === "admin_report") {
       text = details.text;
     }
