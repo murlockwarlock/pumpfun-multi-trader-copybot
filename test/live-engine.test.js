@@ -30,6 +30,77 @@ function liveConfig(directory, overrides = {}) {
   };
 }
 
+function concurrentFixture(t, overrides = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-concurrent-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const engine = new LiveEngine(liveConfig(dir, overrides), () => {});
+  const never = new Promise(() => {});
+  const calls = [];
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async (side, mint, raw, options) => {
+      calls.push({ side, mint, options });
+      return { expectedSignature: side + mint, mint: new PublicKey(mint), tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "pump-curve", beforeTokenBalance: side === "BUY" ? 0n : 50n, lastValidBlockHeight: 123 };
+    },
+    submit: async prepared => prepared.expectedSignature,
+    waitForTokenBalanceChange: () => never, confirm: () => never,
+    tokenBalance: async () => 100n
+  };
+  const buy = () => {
+    const mint = Keypair.generate().publicKey.toBase58();
+    return { side: "BUY", mint, signature: mint, observedAtMs: Date.now(), signalSource: "processed_logs" };
+  };
+  return { engine, calls, buy };
+}
+
+for (const [reason, limits] of [
+  ["max_open_positions", { maxOpenPositions: 1 }],
+  ["daily_spend_limit", { maxOpenPositions: 2, liveMaxDailySpendSol: 0.005 }]
+]) {
+  test("concurrent preparation respects " + reason, async t => {
+    const { engine, buy, calls } = concurrentFixture(t, limits);
+    const results = await Promise.all([engine.onTrade(buy()), engine.onTrade(buy())]);
+    assert.equal(calls.length, 1);
+    assert.ok(results.some(r => r.reason === reason));
+    assert.ok(results.some(r => r.type === "LIVE_SUBMITTED"));
+  });
+}
+
+test("two live mints overlap in prepare and submit", { timeout: 3000 }, async t => {
+  const { engine, buy } = concurrentFixture(t, { maxOpenPositions: 2 });
+  for (const stage of ["prepare", "submit"]) {
+    const implementation = engine.executor[stage];
+    const both = Promise.withResolvers();
+    let count = 0;
+    engine.executor[stage] = async (...args) => {
+      if (++count === 2) both.resolve();
+      await both.promise;
+      return implementation(...args);
+    };
+  }
+  const results = await Promise.all([engine.onTrade(buy()), engine.onTrade(buy())]);
+  assert.ok(results.every(r => r.type === "LIVE_SUBMITTED"));
+});
+
+test("pending exit survives duplicate signals and adjusted SELL uses processed", async t => {
+  const { engine, buy, calls } = concurrentFixture(t);
+  const tokens = Promise.withResolvers();
+  engine.executor.waitForTokenBalanceChange = () => tokens.promise;
+  const entry = buy();
+  await engine.onTrade(entry);
+  const exit = { ...entry, signature: "exit", side: "SELL" };
+  assert.equal((await engine.onTrade(exit)).type, "LIVE_EXIT_PENDING");
+  assert.equal((await engine.onTrade(exit)).reason, "exit_already_pending");
+  const dispatch = engine.pendingExits.get(entry.mint);
+  tokens.resolve(100n);
+  await dispatch;
+  const sells = calls.filter(call => call.side === "SELL");
+  assert.equal(sells.length, 2);
+  assert.ok(sells.every(call => call.options.balanceCommitment === "processed"));
+  assert.equal(engine.state.handledSignals.filter(s => s.side === "SELL").length, 1);
+});
+
 test("returns after live submission while confirmation settles in the background", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-engine-"));
   let releaseConfirmation;

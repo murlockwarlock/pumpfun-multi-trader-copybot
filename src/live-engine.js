@@ -23,6 +23,9 @@ export class LiveEngine {
     this.wallet = null;
     this.executor = null;
     this.settlements = new Map();
+    this.preparingBuys = new Map();
+    this.pendingExits = new Map();
+    this.submitting = new Set();
     fs.mkdirSync(path.dirname(config.liveLogFile), { recursive: true });
   }
 
@@ -287,6 +290,7 @@ export class LiveEngine {
       ACTIVE_SIGNAL_STATUSES.has(signal.status)
     );
     for (const signal of pending) {
+      if (this.settlements.has(signal.mint) || this.submitting.has(signal.targetSignature)) continue;
       if (
         !signal.signature || !signal.mint || !signal.tokenProgram ||
         !/^\d+$/.test(signal.beforeTokenBalance ?? "") ||
@@ -415,8 +419,12 @@ export class LiveEngine {
     const now = Date.now();
     const trades = [];
     for (const [mint, original] of this.state.positions) {
-      if (this.settlements.has(mint) || this.#hasActiveSell(mint)) continue;
+      if (this.settlements.has(mint) || this.pendingExits.has(mint) || this.#hasActiveSell(mint)) continue;
       let position = original;
+      const entry = this.state.handledSignals.find(s => s.targetSignature === position.targetEntrySignature);
+      if (entry?.pendingExit && !position.exitRequest) {
+        position = this.#requestExit(position, entry.pendingExit, "target_sell");
+      }
       const openedAt = Date.parse(position.openedAt ?? "");
       if (
         !position.exitRequest && Number.isFinite(openedAt) &&
@@ -463,8 +471,9 @@ export class LiveEngine {
     };
   }
 
-  #pendingBuyCount() {
-    return [...this.settlements.values()].filter((entry) => entry.side === "BUY").length;
+  #pendingBuys() {
+    return this.state.handledSignals.filter(signal =>
+      signal.side === "BUY" && ACTIVE_SIGNAL_STATUSES.has(signal.status));
   }
 
   async #primeProcessedBuy(trade, rawAmount, prepared, signature, readiness) {
@@ -484,6 +493,10 @@ export class LiveEngine {
             prepared.tokenProgram,
             "processed"
           );
+      const buySignal = this.state.handledSignals.find(s => s.targetSignature === trade.signature);
+      if (!buySignal || !ACTIVE_SIGNAL_STATUSES.has(buySignal.status)) {
+        return { ready: this.positions.get(trade.mint)?.entrySignature === signature };
+      }
       const bought = afterTokenBalance - prepared.beforeTokenBalance;
       if (bought <= 0n) {
         readiness.error = "processed_balance_not_increased";
@@ -701,7 +714,8 @@ export class LiveEngine {
           signature, error: errorMessage(error)
         };
       });
-    const entry = { side: trade.side, promise, readyPromise, readiness };
+    const entry = { side: trade.side, promise, readyPromise, readiness, trade,
+      pollProcessed: () => this.#primeProcessedBuy(trade, rawAmount, prepared, signature, readiness) };
     this.settlements.set(trade.mint, entry);
     const cleanup = () => {
       if (this.settlements.get(trade.mint) === entry) this.settlements.delete(trade.mint);
@@ -794,7 +808,25 @@ export class LiveEngine {
     };
   }
 
+  async #dispatchPendingExit(trade, pending) {
+    await Promise.race([pending.readyPromise, pending.promise]);
+    while (!this.positions.has(trade.mint) && this.settlements.get(trade.mint) === pending) {
+      await new Promise(resolve => setTimeout(resolve, this.config.liveProcessedBalancePollMs ?? 100));
+      if (this.settlements.get(trade.mint) === pending) await Promise.race([pending.pollProcessed(), pending.promise]);
+    }
+    if (this.positions.has(trade.mint)) await this.#execute(trade, {}, true);
+  }
+
   async onTrade(trade) {
+    const reservation = { amount: 0n };
+    try {
+      return await this.#execute(trade, reservation);
+    } finally {
+      if (this.preparingBuys.get(trade.mint) === reservation) this.preparingBuys.delete(trade.mint);
+    }
+  }
+
+  async #execute(trade, reservationToken, dispatchingExit = false) {
     await this.#resetDailyRiskIfNeeded();
     if (!this.#liveTraderEnabled(trade)) {
       const ownedPosition = trade.side === "SELL"
@@ -811,13 +843,23 @@ export class LiveEngine {
     }
     if (this.state.hasHandled(trade.signature)) return this.#skip(trade, "signal_already_handled");
 
+    if (trade.side === "SELL" && ((this.pendingExits.has(trade.mint) && !dispatchingExit) || this.#hasActiveSell(trade.mint))) {
+      return this.#skip(trade, "exit_already_pending");
+    }
     const pending = this.settlements.get(trade.mint);
     if (pending) {
       if (trade.side === "SELL" && pending.side === "BUY") {
-        const ready = await pending.readyPromise;
-        if (!ready?.ready && !this.state.positions.has(trade.mint)) {
-          await pending.promise;
+        if (!this.#samePositionSource(pending.trade, trade)) return this.#skip(trade, "position_owned_by_other_trader");
+        if (!this.positions.has(trade.mint)) {
+          this.state.updateSignal(pending.trade.signature, { pendingExit: trade });
+          const task = this.#dispatchPendingExit(trade, pending)
+            .catch(error => this.log("pending_exit_error", { mint: trade.mint, message: errorMessage(error) }))
+            .finally(() => this.pendingExits.delete(trade.mint));
+          this.pendingExits.set(trade.mint, task);
+          return { type: "LIVE_EXIT_PENDING", mint: trade.mint, targetSignature: trade.signature };
         }
+      } else if (trade.side === "BUY" && pending.side === "BUY") {
+        return this.#skip(trade, "position_already_open");
       } else {
         await pending.promise;
       }
@@ -829,10 +871,12 @@ export class LiveEngine {
     const maxSignalAgeMs = trade.fastProfile
       ? this.config.fastMaxSignalAgeMs ?? this.config.maxSignalAgeMs
       : this.config.maxSignalAgeMs;
-    const prewarm = this.executor.prewarm(trade.mint, {
+    const startPrewarm = () => this.executor.prewarm(trade.mint, {
       venueHint: trade.venue ?? null
     }).catch(() => null);
+    let prewarm;
     let rawAmount;
+    let balanceCommitment = "confirmed";
 
     if (trade.side === "BUY") {
       this.#enforceRiskLimits();
@@ -841,18 +885,29 @@ export class LiveEngine {
         return this.#skip(trade, `signal_too_old_${signalAgeMs ?? "unknown"}ms`);
       }
       if (this.state.positions.has(trade.mint)) return this.#skip(trade, "position_already_open");
-      if (this.state.positions.size + this.#pendingBuyCount() >= this.config.maxOpenPositions) {
+      const pendingBuys = this.#pendingBuys();
+      const occupied = new Set([...this.state.positions.keys(), ...this.preparingBuys.keys(),
+        ...pendingBuys.map(signal => signal.mint)]);
+      if (occupied.has(trade.mint)) return this.#skip(trade, "position_already_open");
+      if (occupied.size >= this.config.maxOpenPositions) {
         return this.#skip(trade, "max_open_positions");
       }
       const tradeLamports = solToLamports(this.config.liveTradeSol);
       const dailyCap = solToLamports(this.config.liveMaxDailySpendSol);
-      if (this.state.dailySpendLamports + tradeLamports > dailyCap) {
+      const reserved = [...this.preparingBuys.values()].reduce((sum, slot) => sum + slot.amount, 0n);
+      if (this.state.dailySpendLamports + reserved + tradeLamports > dailyCap) {
         return this.#skip(trade, "daily_spend_limit");
       }
+      reservationToken.amount = tradeLamports;
+      const fee = solToLamports(this.config.livePriorityFeeSol) + solToLamports(this.config.liveTipSol);
+      const otherExposure = reserved + BigInt(this.preparingBuys.size) * fee +
+        pendingBuys.reduce((sum, signal) => sum + BigInt(signal.rawAmount) + fee, 0n);
+      this.preparingBuys.set(trade.mint, reservationToken);
+      prewarm = startPrewarm();
       const balance = BigInt(await this.executor.balanceLamports());
       const minimumAfterTrade = solToLamports(this.config.liveMinReserveSol) + tradeLamports +
         solToLamports(this.config.livePriorityFeeSol) + solToLamports(this.config.liveTipSol);
-      if (balance < minimumAfterTrade) return this.#skip(trade, "insufficient_balance_reserve");
+      if (balance < minimumAfterTrade + otherExposure) return this.#skip(trade, "insufficient_balance_reserve");
       rawAmount = tradeLamports;
     } else {
       const existing = this.state.positions.get(trade.mint);
@@ -863,12 +918,15 @@ export class LiveEngine {
       const position = this.#requestExit(
         existing, trade, trade.signalSource === "max_hold" ? "max_hold" : "target_sell"
       );
+      balanceCommitment = position.provisional ? "processed" : "confirmed";
+      prewarm = startPrewarm();
       const current = await this.executor.tokenBalance(
         new PublicKey(position.mint),
         new PublicKey(position.tokenProgram),
         position.provisional ? "processed" : "confirmed"
       );
       if (current === 0n) {
+        if (position.provisional) return this.#skip(trade, "awaiting_processed_balance");
         this.state.deletePosition(trade.mint);
         return this.#skip(trade, "position_balance_already_zero");
       }
@@ -890,10 +948,7 @@ export class LiveEngine {
         venueHint: trade.venue ?? null,
         skipSimulation: Boolean(trade.fastProfile && this.config.fastSkipSimulation),
         skipBeforeTokenBalance: Boolean(trade.fastProfile && trade.side === "BUY"),
-        balanceCommitment: trade.side === "SELL" &&
-          this.state.positions.get(trade.mint)?.provisional
-          ? "processed"
-          : "confirmed",
+        balanceCommitment,
         targetAveragePriceSol: trade.side === "BUY" ? trade.averagePriceSol ?? null : null,
         maxEntryDriftBps
       });
@@ -922,12 +977,16 @@ export class LiveEngine {
       const position = this.state.positions.get(trade.mint);
       const sellable = bigintMin(BigInt(position.rawTokenAmount), prepared.beforeTokenBalance);
       if (sellable === 0n) {
+        if (position.provisional) return this.#skip(trade, "awaiting_processed_balance");
         this.state.deletePosition(trade.mint);
         return this.#skip(trade, "position_balance_already_zero");
       }
       if (sellable !== rawAmount) {
         try {
-          prepared = await this.#prepareWithFallback(trade, sellable);
+          prepared = await this.#prepareWithFallback(trade, sellable, {
+            balanceCommitment
+          });
+          preparedAtMs = Date.now();
           rawAmount = sellable;
         } catch (error) {
           const message = errorMessage(error);
@@ -950,9 +1009,14 @@ export class LiveEngine {
       return this.#skip(trade, "signal_already_handled");
     }
 
+    if (trade.side === "BUY") this.preparingBuys.delete(trade.mint);
+    this.submitting.add(trade.signature);
+    const submitStartedAtMs = Date.now();
     let signature;
+    let submittedAtMs;
     try {
       signature = await this.executor.submit(prepared);
+      submittedAtMs = Date.now();
       this.state.updateSignal(trade.signature, { status: "submitted", signature });
     } catch (error) {
       const message = errorMessage(error);
@@ -967,9 +1031,10 @@ export class LiveEngine {
       };
       this.#write(record);
       return record;
+    } finally {
+      this.submitting.delete(trade.signature);
     }
 
-    const submittedAtMs = Date.now();
     const submittedRecord = {
       type: "LIVE_SUBMITTED", at: new Date(submittedAtMs).toISOString(),
       targetSignature: trade.signature, signature, mint: trade.mint, side: trade.side,
@@ -979,6 +1044,8 @@ export class LiveEngine {
       entryDriftBps,
       hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
       rpcSource: prepared.rpcSource ?? "primary",
+      decodeMs: trade.decodeMs ?? null, resolveMs: trade.resolveMs ?? null,
+      queueDelayMs: trade.queueDelayMs ?? null, submitMs: submittedAtMs - submitStartedAtMs,
       prepareMs: preparedAtMs - prepareStartedAtMs,
       signalToPreparedMs: Number.isFinite(trade.observedAtMs)
         ? preparedAtMs - trade.observedAtMs : null,
