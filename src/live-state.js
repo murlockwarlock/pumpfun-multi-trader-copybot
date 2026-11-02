@@ -1,6 +1,16 @@
 import fs from "node:fs";
 import path from "node:path";
 
+// These statuses mean that a SELL still has unresolved ownership or settlement
+// evidence.  Keep this classification in one place so quarantine release does
+// not accidentally treat an old recovery state as terminal.
+export const UNRESOLVED_SELL_STATUSES = new Set([
+  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed",
+  "position_quarantined", "retry_safe", "legacy_exit_unknown",
+  "expired_no_balance_change", "reconcile_unavailable",
+  "sell_proceeds_unknown", "confirmed_pending_close", "sell_pnl_pending"
+]);
+
 function utcDay() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -54,7 +64,23 @@ export class LiveState {
     const sellSettlements = Array.isArray(state.sellSettlements) ? state.sellSettlements : [];
     for (const settlement of sellSettlements) {
       if (!settlement?.targetSignature || !settlement.signature || !settlement.mint) continue;
-      this.sellSettlements.set(settlement.targetSignature, settlement);
+      const priorCumulative = settlement.priorCumulativeSellWalletDeltaLamports ??
+        (/^-?\d+$/.test(String(settlement.cumulativeSellWalletDeltaLamports ?? "")) &&
+          /^-?\d+$/.test(String(settlement.sellWalletDeltaLamports ?? ""))
+          ? (BigInt(settlement.cumulativeSellWalletDeltaLamports) -
+            BigInt(settlement.sellWalletDeltaLamports)).toString()
+          : "0");
+      this.sellSettlements.set(settlement.targetSignature, {
+        ...settlement,
+        sellWalletDeltaKnown: settlement.sellWalletDeltaKnown === true,
+        proceedsStatus: settlement.proceedsStatus ??
+          (settlement.sellWalletDeltaKnown === true ? "verified" : "unknown"),
+        priorCumulativeSellWalletDeltaLamports: priorCumulative,
+        closeRequired: settlement.closeRequired === true,
+        closeStatus: settlement.closeStatus ??
+          (settlement.closeRequired === true ? "pending" : "not_required"),
+        closeWalletDeltaLamports: settlement.closeWalletDeltaLamports ?? null
+      });
     }
     this.handledSignals = state.handledSignals.filter(
       (signal) => typeof signal?.targetSignature === "string"
@@ -228,7 +254,8 @@ export class LiveState {
 
   applySellSettlement({
     mint, targetSignature, signature, entrySignature, rawSoldAmount,
-    sellWalletDeltaLamports = "0", allowQuarantined = false
+    sellWalletDeltaLamports = "0", sellWalletDeltaKnown = true,
+    closeRequired = false, allowQuarantined = false
   }) {
     const existing = this.sellSettlements.get(targetSignature);
     if (existing) return existing.signature === signature ? { ...existing, alreadyApplied: true } : null;
@@ -236,24 +263,31 @@ export class LiveState {
     if (!position || (entrySignature && position.entrySignature !== entrySignature)) return null;
     if (this.quarantines.has(mint) && !allowQuarantined) return null;
     let sold;
-    let sellWalletDelta;
+    let sellWalletDelta = 0n;
     try {
       sold = BigInt(rawSoldAmount);
-      sellWalletDelta = BigInt(sellWalletDeltaLamports);
+      if (sellWalletDeltaKnown) sellWalletDelta = BigInt(sellWalletDeltaLamports);
     } catch { return null; }
     const owned = BigInt(position.rawTokenAmount);
     if (sold <= 0n || sold > owned) return null;
     const priorCumulative = BigInt(position.cumulativeSellWalletDeltaLamports ?? "0");
-    const cumulative = priorCumulative + sellWalletDelta;
+    const cumulative = priorCumulative + (sellWalletDeltaKnown ? sellWalletDelta : 0n);
     const remaining = owned - sold;
     const record = {
       targetSignature, signature, mint,
       entrySignature: position.entrySignature ?? entrySignature ?? null,
       rawSoldAmount: sold.toString(), remainingRaw: remaining.toString(),
       sellWalletDeltaLamports: sellWalletDelta.toString(),
+      sellWalletDeltaKnown: sellWalletDeltaKnown === true,
+      proceedsStatus: sellWalletDeltaKnown === true ? "verified" : "unknown",
+      priorCumulativeSellWalletDeltaLamports: priorCumulative.toString(),
       cumulativeSellWalletDeltaLamports: cumulative.toString(),
       positionSnapshot: { ...position },
       appliedAt: new Date().toISOString(),
+      closeRequired: closeRequired === true,
+      closeStatus: closeRequired === true ? "pending" : "not_required",
+      closeWalletDeltaLamports: null,
+      closeError: null,
       completed: false, pnlRecorded: false
     };
     if (remaining === 0n) this.positions.delete(mint);
@@ -268,12 +302,138 @@ export class LiveState {
     return record;
   }
 
+  resolveSellProceeds(targetSignature, sellWalletDeltaLamports) {
+    const settlement = this.sellSettlements.get(targetSignature);
+    if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    let value;
+    try { value = BigInt(sellWalletDeltaLamports); } catch {
+      throw new Error("SELL proceeds evidence must contain a numeric wallet delta");
+    }
+    if (settlement.sellWalletDeltaKnown === true) return { ...settlement, alreadyKnown: true };
+    const prior = BigInt(
+      settlement.priorCumulativeSellWalletDeltaLamports ??
+      (BigInt(settlement.cumulativeSellWalletDeltaLamports ?? "0") -
+        BigInt(settlement.sellWalletDeltaLamports ?? "0")).toString()
+    );
+    const cumulative = prior + value;
+    settlement.sellWalletDeltaLamports = value.toString();
+    settlement.sellWalletDeltaKnown = true;
+    settlement.proceedsStatus = "verified";
+    settlement.cumulativeSellWalletDeltaLamports = cumulative.toString();
+    settlement.proceedsResolvedAt = new Date().toISOString();
+    const position = this.positions.get(settlement.mint);
+    if (position && BigInt(settlement.remainingRaw ?? "0") > 0n) {
+      this.positions.set(settlement.mint, {
+        ...position,
+        cumulativeSellWalletDeltaLamports: cumulative.toString()
+      });
+    }
+    this.#save();
+    return { ...settlement };
+  }
+
+  setSellSettlementClose(targetSignature, { status, result = null, error = null } = {}) {
+    const settlement = this.sellSettlements.get(targetSignature);
+    if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    if (!["pending", "closed", "failed"].includes(status)) {
+      throw new Error(`Invalid SELL close status: ${status}`);
+    }
+    if (status === "closed") {
+      const resultStatus = result?.status;
+      const alreadyClosed = resultStatus === "already_closed";
+      const walletDelta = result?.walletDeltaLamports;
+      if (!alreadyClosed && !/^-?\d+$/.test(String(walletDelta ?? ""))) {
+        throw new Error("Closed token account is missing verified wallet delta");
+      }
+      settlement.closeStatus = "closed";
+      settlement.closeWalletDeltaLamports = alreadyClosed ? "0" : String(walletDelta);
+      settlement.closeSignature = result?.signature ?? null;
+      settlement.tokenAccountClose = result ?? null;
+      settlement.closeError = null;
+    } else {
+      settlement.closeStatus = status;
+      settlement.closeWalletDeltaLamports = null;
+      settlement.closeError = error ? String(error) : null;
+    }
+    settlement.closeUpdatedAt = new Date().toISOString();
+    this.#save();
+    return { ...settlement };
+  }
+
   completeSellSettlement(targetSignature, {
     status = "reconciled_confirmed", confirmationStatus = null,
     realizedPnlLamports = null, closeWalletDeltaLamports = "0"
   } = {}) {
     const settlement = this.sellSettlements.get(targetSignature);
     if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    const signal = this.handledSignals.find(candidate =>
+      candidate.targetSignature === targetSignature
+    );
+    const fullSell = settlement.remainingRaw === "0";
+    const hasPnl = realizedPnlLamports != null;
+    if (!hasPnl && settlement.sellWalletDeltaKnown !== true) {
+      if (signal) Object.assign(signal, {
+        status: "sell_proceeds_unknown",
+        settlementApplied: false,
+        recoveryEvidence: "sell_wallet_delta_unavailable",
+        updatedAt: new Date().toISOString()
+      });
+      this.#save();
+      return {
+        dailyRealizedPnlLamports: this.dailyRealizedPnlLamports,
+        consecutiveLosses: this.consecutiveLosses,
+        realizedPnlLamports: settlement.realizedPnlLamports ?? null,
+        pnlRecorded: settlement.pnlRecorded,
+        settlement
+      };
+    }
+    if (fullSell && !hasPnl) {
+      if (signal) Object.assign(signal, {
+        status: settlement.closeRequired && settlement.closeStatus !== "closed"
+          ? "confirmed_pending_close" : "sell_pnl_pending",
+        settlementApplied: false,
+        updatedAt: new Date().toISOString()
+      });
+      this.#save();
+      return {
+        dailyRealizedPnlLamports: this.dailyRealizedPnlLamports,
+        consecutiveLosses: this.consecutiveLosses,
+        realizedPnlLamports: settlement.realizedPnlLamports ?? null,
+        pnlRecorded: settlement.pnlRecorded,
+        settlement
+      };
+    }
+    if (hasPnl && settlement.sellWalletDeltaKnown !== true) {
+      if (signal) Object.assign(signal, {
+        status: "sell_proceeds_unknown",
+        settlementApplied: false,
+        recoveryEvidence: "sell_wallet_delta_unavailable",
+        updatedAt: new Date().toISOString()
+      });
+      this.#save();
+      return {
+        dailyRealizedPnlLamports: this.dailyRealizedPnlLamports,
+        consecutiveLosses: this.consecutiveLosses,
+        realizedPnlLamports: settlement.realizedPnlLamports ?? null,
+        pnlRecorded: settlement.pnlRecorded,
+        settlement
+      };
+    }
+    if (hasPnl && settlement.closeRequired && settlement.closeStatus !== "closed") {
+      if (signal) Object.assign(signal, {
+        status: "confirmed_pending_close",
+        settlementApplied: false,
+        updatedAt: new Date().toISOString()
+      });
+      this.#save();
+      return {
+        dailyRealizedPnlLamports: this.dailyRealizedPnlLamports,
+        consecutiveLosses: this.consecutiveLosses,
+        realizedPnlLamports: settlement.realizedPnlLamports ?? null,
+        pnlRecorded: settlement.pnlRecorded,
+        settlement
+      };
+    }
     if (realizedPnlLamports != null && !settlement.pnlRecorded) {
       const value = BigInt(realizedPnlLamports);
       this.dailyRealizedPnlLamports += value;
@@ -285,9 +445,6 @@ export class LiveState {
     }
     settlement.completed = true;
     settlement.completedAt = settlement.completedAt ?? new Date().toISOString();
-    const signal = this.handledSignals.find(candidate =>
-      candidate.targetSignature === targetSignature
-    );
     if (signal && status) {
       Object.assign(signal, {
         status,
@@ -463,18 +620,16 @@ export class LiveState {
     const settlement = this.sellSettlements.get(options.targetSignature);
     if (!settlement || settlement.mint !== mint || settlement.signature !== options.signature ||
         settlement.rawSoldAmount !== String(options.rawSoldAmount) ||
-        settlement.remainingRaw !== "0" || !settlement.completed || !settlement.pnlRecorded) {
+        settlement.remainingRaw !== "0" || !settlement.completed || !settlement.pnlRecorded ||
+        settlement.sellWalletDeltaKnown !== true ||
+        (settlement.closeRequired === true && settlement.closeStatus !== "closed")) {
       throw new Error(
         "Closed SELL quarantine release requires a completed full SELL settlement"
       );
     }
-    const unresolvedStatuses = new Set([
-      "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed",
-      "position_quarantined", "retry_safe", "legacy_exit_unknown"
-    ]);
     const unresolved = this.handledSignals.some(signal =>
       signal.mint === mint && signal.targetSignature !== options.targetSignature &&
-      unresolvedStatuses.has(signal.status) &&
+      UNRESOLVED_SELL_STATUSES.has(signal.status) &&
       !(signal.status === "position_quarantined" &&
         signal.signature === settlement.entrySignature)
     );

@@ -266,7 +266,7 @@ test("confirmed SELL uses transaction token delta when wallet balance is stale",
   for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "submitted"; i++) {
     await new Promise(resolve => setTimeout(resolve, 5));
   }
-  assert.equal(engine.state.handledSignals.at(-1).status, "confirmed");
+  assert.equal(engine.state.handledSignals.at(-1).status, "sell_proceeds_unknown");
   assert.equal(engine.positions.has(entry.mint), false);
 });
 
@@ -455,7 +455,8 @@ for (const sold of [40n, 100n]) test(`SELL confirmed after quarantine settles ${
   restarted.executor = {
     signatureStatus: async () => ({ confirmationStatus: "confirmed", err: null }),
     tokenBalance: async () => 50n + (100n - sold),
-    transactionTokenDelta: async () => -sold
+    transactionTokenDelta: async () => -sold,
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "0" })
   };
   await restarted.reconcile();
   const expectedRemaining = 100n - sold;
@@ -471,6 +472,25 @@ for (const sold of [40n, 100n]) test(`SELL confirmed after quarantine settles ${
     expectedRemaining === 0n ? null : expectedRemaining.toString());
   assert.equal(reloaded.state.isQuarantined(mint), true);
   if (sold === 100n) {
+    reloaded.state.reserveSignal({ signature: "old-unresolved-target", side: "SELL", mint }, {
+      signature: "old-unresolved-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+      beforeTokenBalance: "0", rawAmount: "1", lastValidBlockHeight: 123
+    });
+    reloaded.state.updateSignal("old-unresolved-target", {
+      status: "expired_no_balance_change", signature: "old-unresolved-copy"
+    });
+    assert.throws(() => reloaded.releaseClosedSellQuarantine(mint, {
+      resolution: "must wait for old unresolved SELL", evidence: { source: "test" },
+      signature: `copy-sell-${sold}`, targetSignature: sell.signature,
+      rawSoldAmount: "100"
+    }), /no unresolved/);
+    reloaded.state.updateSignal("old-unresolved-target", { status: "reconcile_unavailable" });
+    assert.throws(() => reloaded.releaseClosedSellQuarantine(mint, {
+      resolution: "must wait for unavailable SELL", evidence: { source: "test" },
+      signature: `copy-sell-${sold}`, targetSignature: sell.signature,
+      rawSoldAmount: "100"
+    }), /no unresolved/);
+    reloaded.state.updateSignal("old-unresolved-target", { status: "reconciled_confirmed" });
     assert.equal(reloaded.releaseClosedSellQuarantine(mint, {
       resolution: "confirmed full SELL left zero strategy inventory",
       evidence: { source: "transaction_token_delta", observedDelta: "-100" },
@@ -533,6 +553,15 @@ for (const sold of [40n, 100n]) test(`SELL settlement survives crash boundary fo
     allowQuarantined: true
   });
   assert.equal(applied.remainingRaw, (100n - sold).toString());
+  if (sold === 100n) {
+    // Crash fixture for the old unsafe boundary: the terminal signal and
+    // settlement flag were persisted, but PnL was not.  Recovery must still
+    // select the settlement and finish it without rereading the SELL.
+    const persisted = JSON.parse(fs.readFileSync(config.liveStateFile, "utf8"));
+    persisted.handledSignals.find(signal => signal.targetSignature === targetSignature).status = "confirmed";
+    persisted.sellSettlements.find(settlement => settlement.targetSignature === targetSignature).completed = true;
+    fs.writeFileSync(config.liveStateFile, `${JSON.stringify(persisted, null, 2)}\n`);
+  }
 
   const restarted = new LiveEngine(config, () => {});
   restarted.executor = {
@@ -1013,6 +1042,161 @@ test("SELL with unavailable transaction metadata remains unknown and is not dupl
   assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "100");
   assert.equal(submits, 1);
   assert.equal((await engine.onTrade({ ...sell, signature: "no-metadata-retry" })).reason, "exit_already_pending");
+});
+
+test("SELL inventory is durable while proceeds metadata is unavailable", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-sell-proceeds-recovery-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "entry", costLamports: "5000000",
+    entryWalletDeltaLamports: "-5000000"
+  });
+  let prepareCount = 0;
+  let activeSignature = null;
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async () => ({
+      expectedSignature: ++prepareCount === 1 ? "proceeds-unknown-sell" : "proceeds-final-sell", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve", beforeTokenBalance: 150n,
+      lastValidBlockHeight: 123 }),
+    submit: async prepared => { activeSignature = prepared.expectedSignature; return activeSignature; },
+    confirm: async () => "confirmed",
+    tokenBalance: async () => activeSignature === null ? 150n :
+      activeSignature === "proceeds-unknown-sell" ? 110n : 50n,
+    transactionTokenDelta: async signature => signature === "proceeds-unknown-sell" ? -40n : -60n
+  };
+  const sell = { signature: "proceeds-unknown-target", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let attempt = 0; attempt < 30 && engine.state.handledSignals.at(-1).status === "submitted"; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(engine.state.handledSignals.at(-1).status, "sell_proceeds_unknown");
+  assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "60");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 0n);
+  assert.equal(engine.state.getSellSettlement(sell.signature).sellWalletDeltaKnown, false);
+
+  let walletDeltaReads = 0;
+  engine.executor.transactionWalletDelta = async signature => {
+    walletDeltaReads += 1;
+    return { walletDeltaLamports: signature === "proceeds-unknown-sell" ? "2000000" : "4000000" };
+  };
+  await engine.reconcile();
+  assert.equal(walletDeltaReads, 1);
+  assert.equal(engine.state.handledSignals.at(-1).status, "reconciled_confirmed");
+  assert.equal(engine.state.getSellSettlement(sell.signature).sellWalletDeltaKnown, true);
+  assert.equal(engine.positions.get(mint.toBase58()).cumulativeSellWalletDeltaLamports, "2000000");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 0n);
+
+  const finalSell = { ...sell, signature: "proceeds-final-target" };
+  assert.equal((await engine.onTrade(finalSell)).type, "LIVE_SUBMITTED");
+  for (let attempt = 0; attempt < 30 && engine.state.handledSignals.at(-1).status === "submitted"; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(walletDeltaReads, 2);
+  assert.equal(engine.state.handledSignals.at(-1).status, "reconciled_confirmed");
+  assert.equal(engine.positions.has(mint.toBase58()), false);
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_000n);
+  await engine.reconcile();
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_000n);
+});
+
+test("verified token-account close is not repeated when PnL was not yet recorded", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-sell-close-crash-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "close-entry", targetEntrySignature: "close-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "close-crash-target", side: "SELL", mint }, {
+    signature: "close-crash-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("close-crash-target", {
+    status: "confirmed_pending_close", signature: "close-crash-copy"
+  });
+  first.state.applySellSettlement({
+    mint, targetSignature: "close-crash-target", signature: "close-crash-copy",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  first.state.setSellSettlementClose("close-crash-target", {
+    status: "closed", result: {
+      status: "closed", signature: "token-close", walletDeltaLamports: "123"
+    }
+  });
+
+  const restarted = new LiveEngine(config, () => {});
+  let closeCalls = 0;
+  restarted.executor = {
+    closeEmptyTokenAccount: async () => {
+      closeCalls += 1;
+      throw new Error("close must not be repeated after durable success");
+    }
+  };
+  await restarted.reconcile();
+  assert.equal(closeCalls, 0);
+  assert.equal(restarted.state.handledSignals.at(-1).status, "reconciled_confirmed");
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
+  assert.equal(restarted.state.getSellSettlement("close-crash-target").pnlRecorded, true);
+});
+
+test("failed token-account close is retried from the durable SELL settlement", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-sell-close-retry-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "retry-entry", targetEntrySignature: "retry-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "close-retry-target", side: "SELL", mint }, {
+    signature: "close-retry-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("close-retry-target", {
+    status: "submitted", signature: "close-retry-copy"
+  });
+  first.state.applySellSettlement({
+    mint, targetSignature: "close-retry-target", signature: "close-retry-copy",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  first.executor = {
+    closeEmptyTokenAccount: async () => { throw new Error("temporary close RPC failure"); }
+  };
+  await first.reconcile();
+  assert.equal(first.state.getSellSettlement("close-retry-target").closeStatus, "failed");
+  assert.equal(first.state.dailyRealizedPnlLamports, 0n);
+
+  const restarted = new LiveEngine(config, () => {});
+  let closeCalls = 0;
+  restarted.executor = {
+    closeEmptyTokenAccount: async () => {
+      closeCalls += 1;
+      return { status: "closed", signature: "retry-token-close", walletDeltaLamports: "123" };
+    }
+  };
+  await restarted.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(restarted.state.handledSignals.at(-1).status, "reconciled_confirmed");
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
 });
 
 test("FAST BUY without inventory provenance is rejected before submit", async t => {
@@ -1613,6 +1797,6 @@ test("partial SELL and the subsequent SELL account each transaction delta once",
   assert.equal(engine.positions.has(mint.toBase58()), false);
   assert.deepEqual(submissions, ["sell-1", "sell-2"]);
   assert.deepEqual(engine.state.handledSignals.filter(s => s.side === "SELL").map(s => s.status),
-    ["reconciled_confirmed", "confirmed"]);
+    ["reconciled_confirmed", "reconciled_confirmed"]);
   assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_000n);
 });
