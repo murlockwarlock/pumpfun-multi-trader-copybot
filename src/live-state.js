@@ -27,7 +27,7 @@ function settlementNeedsDurableHistory(settlement) {
     (settlement?.closeRequired === true && settlement?.closeStatus !== "closed");
 }
 
-function signalNeedsDurableHistory(signal) {
+function signalNeedsDurableHistory(signal, quarantines = null) {
   if (signal?.side === "BUY") {
     if (UNRESOLVED_BUY_STATUSES.has(signal.status)) return true;
     if (signal.status === "failed_onchain" &&
@@ -35,6 +35,11 @@ function signalNeedsDurableHistory(signal) {
     const reservedSpend = String(signal.reservedSpend ?? "0");
     if (signal.status === "submit_rejected" &&
         (/^\d+$/.test(reservedSpend) ? BigInt(reservedSpend) > 0n : true)) return true;
+    const quarantine = quarantines?.get(signal.mint);
+    if (quarantine && (
+      (quarantine.targetSignature && quarantine.targetSignature === signal.targetSignature) ||
+      (quarantine.signature && quarantine.signature === signal.signature)
+    )) return true;
   }
   return signal?.side === "SELL" && UNRESOLVED_SELL_STATUSES.has(signal.status);
 }
@@ -103,7 +108,11 @@ export class LiveState {
         closeRequired: settlement.closeRequired === true,
         closeStatus: settlement.closeStatus ??
           (settlement.closeRequired === true ? "pending" : "not_required"),
-        closeWalletDeltaLamports: settlement.closeWalletDeltaLamports ?? null
+        closeWalletDeltaLamports: settlement.closeWalletDeltaLamports ?? null,
+        closeBroadcastStatus: settlement.closeBroadcastStatus ??
+          (settlement.closeRequired === true ? "not_prepared" : "not_required"),
+        closeLastValidBlockHeight: settlement.closeLastValidBlockHeight ?? null,
+        closeRecentBlockhash: settlement.closeRecentBlockhash ?? null
       });
     }
     this.handledSignals = state.handledSignals.filter(
@@ -163,7 +172,7 @@ export class LiveState {
       persistedSettlements.map(settlement => [settlement.targetSignature, settlement])
     );
     const preservedSignals = this.handledSignals.filter(signal =>
-      retainedTargets.has(signal.targetSignature) || signalNeedsDurableHistory(signal)
+      retainedTargets.has(signal.targetSignature) || signalNeedsDurableHistory(signal, this.quarantines)
     );
     const recentSignals = this.handledSignals.slice(-this.handledLimit);
     const persistedTargets = new Set([
@@ -337,6 +346,9 @@ export class LiveState {
       closeRequired: closeRequired === true,
       closeStatus: closeRequired === true ? "pending" : "not_required",
       closeWalletDeltaLamports: null,
+      closeBroadcastStatus: closeRequired === true ? "not_prepared" : "not_required",
+      closeLastValidBlockHeight: null,
+      closeRecentBlockhash: null,
       closeError: null,
       completed: false, pnlRecorded: false
     };
@@ -399,6 +411,7 @@ export class LiveState {
       settlement.closeWalletDeltaLamports = alreadyClosed ? "0" : String(walletDelta);
       settlement.closeSignature = result?.signature ?? null;
       settlement.tokenAccountClose = result ?? null;
+      settlement.closeBroadcastStatus = "confirmed";
       settlement.closeError = null;
     } else if (status === "delta_pending") {
       if (!result?.signature) {
@@ -408,6 +421,7 @@ export class LiveState {
       settlement.closeWalletDeltaLamports = null;
       settlement.closeSignature = result.signature;
       settlement.tokenAccountClose = result;
+      settlement.closeBroadcastStatus = "confirmed";
       settlement.closeError = error ? String(error) : "close_wallet_delta_unavailable";
     } else {
       settlement.closeStatus = status;
@@ -433,6 +447,13 @@ export class LiveState {
     settlement.closeStatus = "pending";
     settlement.closeSignature = signature;
     settlement.tokenAccountClose = result ?? settlement.tokenAccountClose ?? null;
+    settlement.closeBroadcastStatus = "prepared";
+    if (Number.isSafeInteger(Number(result?.lastValidBlockHeight))) {
+      settlement.closeLastValidBlockHeight = Number(result.lastValidBlockHeight);
+    }
+    if (typeof result?.recentBlockhash === "string" && result.recentBlockhash.length > 0) {
+      settlement.closeRecentBlockhash = result.recentBlockhash;
+    }
     settlement.closeWalletDeltaLamports = null;
     settlement.closeError = null;
     settlement.closeIntentAt = new Date().toISOString();

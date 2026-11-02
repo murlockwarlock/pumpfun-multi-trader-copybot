@@ -769,7 +769,9 @@ export class PumpExecutor {
     }
 
     await onPrepared?.(prepared.expectedSignature, {
-      tokenAccount: tokenAccount.toBase58()
+      tokenAccount: tokenAccount.toBase58(),
+      lastValidBlockHeight: prepared.lastValidBlockHeight,
+      recentBlockhash: latest.blockhash
     });
     const signature = await this.submit(prepared);
     let confirmation;

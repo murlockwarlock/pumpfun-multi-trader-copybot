@@ -1497,6 +1497,206 @@ test("completed SELL settlements are bounded in memory while unresolved history 
   assert.equal(engine.state.sellSettlements.has("terminal-0"), false);
 });
 
+test("terminal failed BUY proof stays releasable while its quarantine remains", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-failed-buy-quarantine-retention-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory, { liveHandledHistoryLimit: 2 });
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  first.state.reserveSignal(
+    { signature: "failed-quarantine-target", side: "BUY", mint },
+    { signature: "failed-quarantine-buy", rawAmount: "5000000", beforeTokenBalance: "0" },
+    5_000_000n
+  );
+  first.state.quarantineMint(mint, {
+    kind: "buy", reason: "inventory_baseline_unproven",
+    signature: "failed-quarantine-buy", targetSignature: "failed-quarantine-target"
+  });
+  first.state.updateSignal("failed-quarantine-target", {
+    status: "failed_onchain", signature: "failed-quarantine-buy",
+    failedFeeLamports: "7000", error: "confirmed failure"
+  });
+  first.state.handledSignals.push(
+    { targetSignature: "terminal-buy-1", side: "BUY", mint: "terminal-1", status: "confirmed" },
+    { targetSignature: "terminal-buy-2", side: "BUY", mint: "terminal-2", status: "confirmed" },
+    { targetSignature: "terminal-buy-3", side: "BUY", mint: "terminal-3", status: "confirmed" }
+  );
+  first.state.recordRealizedPnl(0n);
+
+  const restarted = new LiveEngine(config, () => {});
+  assert.equal(restarted.state.isQuarantined(mint), true);
+  assert.equal(restarted.state.handledSignals.some(signal =>
+    signal.targetSignature === "failed-quarantine-target" &&
+    signal.status === "failed_onchain" && signal.failedFeeLamports === "7000"
+  ), true);
+  assert.equal(restarted.state.releaseFailedBuyQuarantine(mint, {
+    resolution: "confirmed failed BUY acquired no tokens",
+    signature: "failed-quarantine-buy", failedFeeLamports: "7000",
+    evidence: { status: "finalized_error", noInventory: true }
+  }), true);
+  assert.equal(restarted.state.isQuarantined(mint), false);
+});
+
+test("ambiguous CLOSE response is rechecked by a queued caller before any second broadcast", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-ambiguous-race-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "ambiguous-entry", costLamports: "5000000",
+    entryWalletDeltaLamports: "-5000000"
+  });
+  let balanceReads = 0;
+  let closeCalls = 0;
+  let releasePreSubmit;
+  let closeOutcome = null;
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    tokenBalance: async () => balanceReads++ === 0 ? 100n : 0n,
+    prepare: async () => ({ expectedSignature: "ambiguous-sell", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve", beforeTokenBalance: 100n,
+      lastValidBlockHeight: 123 }),
+    submit: async () => "ambiguous-sell",
+    confirm: async () => "confirmed",
+    transactionTokenDelta: async () => -100n,
+    transactionWalletDelta: async signature => ({
+      walletDeltaLamports: signature === "ambiguous-close" ? "123" : "6000000"
+    }),
+    signatureStatus: async () => closeOutcome,
+    currentBlockHeight: async () => 100,
+    closeEmptyTokenAccount: async (_mint, _program, { onPrepared }) => {
+      closeCalls += 1;
+      if (closeCalls === 1) {
+        await new Promise(resolve => { releasePreSubmit = resolve; });
+        await onPrepared("ambiguous-close", {
+          lastValidBlockHeight: 123, recentBlockhash: "ambiguous-blockhash"
+        });
+        throw new Error("close response lost after broadcast");
+      }
+      throw new Error("second CLOSE must not be broadcast");
+    }
+  };
+  const sell = { signature: "ambiguous-target", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let attempt = 0; attempt < 40 && closeCalls === 0; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(closeCalls, 1);
+  const recovery = engine.reconcile();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  releasePreSubmit();
+  await recovery;
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("ambiguous-target").closeSignature,
+    "ambiguous-close");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 0n);
+
+  closeOutcome = { confirmationStatus: "confirmed", err: null };
+  await engine.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("ambiguous-target").closeStatus, "closed");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_123n);
+});
+
+test("prepared CLOSE waits before expiry, then retries only after durable expiry", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-expiry-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "expiry-entry", targetEntrySignature: "expiry-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "expiry-target", side: "SELL", mint }, {
+    signature: "expiry-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("expiry-target", { status: "submitted", signature: "expiry-sell" });
+  first.state.applySellSettlement({
+    mint, targetSignature: "expiry-target", signature: "expiry-sell",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  first.state.persistSellSettlementCloseIntent("expiry-target", {
+    signature: "prepared-close", result: {
+      status: "prepared", signature: "prepared-close",
+      lastValidBlockHeight: 100, recentBlockhash: "prepared-blockhash"
+    }
+  });
+
+  const restarted = new LiveEngine(config, () => {});
+  let currentBlockHeight = 100;
+  let closeCalls = 0;
+  restarted.executor = {
+    signatureStatus: async () => null,
+    currentBlockHeight: async () => currentBlockHeight,
+    closeEmptyTokenAccount: async (_mint, _program, { onPrepared }) => {
+      closeCalls += 1;
+      await onPrepared("retry-close", {
+        lastValidBlockHeight: 200, recentBlockhash: "retry-blockhash"
+      });
+      return { status: "closed", signature: "retry-close", walletDeltaLamports: "123" };
+    }
+  };
+  await restarted.reconcile();
+  assert.equal(closeCalls, 0);
+  assert.equal(restarted.state.getSellSettlement("expiry-target").closeStatus, "pending");
+
+  currentBlockHeight = 101;
+  await restarted.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(restarted.state.getSellSettlement("expiry-target").closeStatus, "closed");
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
+});
+
+test("unfinished full SELL keeps its mint occupied across restart until CLOSE settles", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-occupancy-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "occupancy-entry", targetEntrySignature: "occupancy-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "occupancy-target", side: "SELL", mint }, {
+    signature: "occupancy-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("occupancy-target", { status: "submitted", signature: "occupancy-sell" });
+  first.state.applySellSettlement({
+    mint, targetSignature: "occupancy-target", signature: "occupancy-sell",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+
+  const restarted = new LiveEngine(config, () => {});
+  let prepareCalls = 0;
+  restarted.executor = {
+    prewarm: async () => {},
+    prepare: async () => { prepareCalls += 1; throw new Error("BUY must stay blocked"); }
+  };
+  const result = await restarted.onTrade({
+    signature: "new-buy-after-sell", side: "BUY", mint,
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "position_already_open");
+  assert.equal(prepareCalls, 0);
+  assert.equal(restarted.state.hasHandled("new-buy-after-sell"), false);
+});
+
 test("FAST BUY without inventory provenance is rejected before submit", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
