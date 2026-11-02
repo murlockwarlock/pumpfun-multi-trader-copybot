@@ -4,7 +4,10 @@ import fs from "node:fs";
 import vm from "node:vm";
 import { ExecutionLanes } from "../src/execution-lanes.js";
 
-test("one WS notification submits B while A preparation is stalled", { timeout: 2000 }, async () => {
+import { resolvePumpCandidates } from "../src/route-resolver.js";
+import { WRAPPED_SOL_MINT } from "../src/rpc.js";
+
+for (const slow of ["prepare","resolve"]) test(`one WS notification submits B while A stalls in ${slow}`, { timeout: 2000 }, async () => {
   const source = fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
   const release = Promise.withResolvers(), second = Promise.withResolvers();
   const tasks = new Map(), submitted = [];
@@ -13,17 +16,17 @@ test("one WS notification submits B while A preparation is stalled", { timeout: 
     performance, setImmediate, config: { fastSignalEnabled: true, tradingMode: "live" },
     shadowTrader: null, liveLanes: new ExecutionLanes(), ingressLanes: new ExecutionLanes(),
     signatureTasks: tasks, fastMetrics: { detected: 0 }, log() {}, rememberLatency() {},
-    rpc: { getTransactionWithRetry: async () => null },
-    parsePumpLogSignal: trades => ({ trades }), resolvePumpCandidates: async trades => ({ trades, unsupportedTrades: [] }),
+    rpc: { resolvePumpPool: async () => { await release.promise; return { baseMint: "A", quoteMint: WRAPPED_SOL_MINT }; }, getTransactionWithRetry: async () => null },
+    parsePumpLogSignal: trades => ({ trades }), resolvePumpCandidates,
     trader: { async onTrade({ mint }) {
-      if (mint === "A") await release.promise;
+      if (slow === "prepare" && mint === "A") await release.promise;
       submitted.push(mint);
       if (mint === "B") second.resolve();
       return {};
     } }
   });
   const target = { wallet: "w", fastEnabled: true, liveEnabled: true, ingestion: { has: () => false, markProcessed() {} } };
-  const value = { signature: "one", logs: ["A","B"].map(mint => ({ mint, side: "BUY", signature: "one" })) };
+  const value = { signature: "one", logs: ["A","B"].map(mint => ({ pool: mint === "A" && slow === "resolve" ? "poolA" : null, mint, side: "BUY", signature: "one" })) };
   notify(target, value, 1, Date.now());
   notify(target, value, 1, Date.now());
   const done = Promise.all(tasks.values());

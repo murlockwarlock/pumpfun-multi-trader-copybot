@@ -453,6 +453,33 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       );
     }
 
+    if (target.fastEnabled) {
+      const queued = performance.now();
+      const outcomes = await Promise.allSettled(candidates.map(candidate => {
+        const keys = [candidate.mint, candidate.pool, candidate.boundaryPool].filter(Boolean)
+          .map(key => target.wallet + "/" + key);
+        return ingressLanes.runMany(keys, async () => {
+          const start = performance.now();
+          const { trades } = await resolvePumpCandidates([candidate], rpc);
+          const resolveMs = performance.now() - start;
+          fastMetrics.detected += trades.length;
+          await Promise.all(trades.map(trade => enqueueTrade(attributedTrade({
+            ...trade, decodeMs, resolveMs, ingressQueueMs: start - queued, observedAtMs,
+            signalSource: "processed_logs"
+          }, target), "websocket_processed_fast", { shadowEligible: true })));
+          return trades;
+        });
+      }));
+      const failure = outcomes.find(result => result.status === "rejected");
+      if (failure) throw failure.reason; // Preserve the cursor for backfill.
+      const trades = outcomes.flatMap(result => result.value);
+      target.ingestion.markProcessed(signature);
+      log("fast_signal_dispatched", { signature, sourceWallet: target.wallet, sourceName: target.name,
+        targetSlot: slot, trades: trades.map(t => t.side + ":" + t.mint), signalToResultMs: Date.now() - observedAtMs,
+        liveEnabled: target.liveEnabled });
+      setImmediate(() => auditFastTrade(target, signature, trades, observedAtMs));
+      return true;
+    }
     const keys = candidates.flatMap(candidate => [candidate.mint, candidate.pool, candidate.boundaryPool])
       .filter(Boolean).map(key => target.wallet + "/" + key);
     const ingressStart = performance.now();
@@ -506,39 +533,6 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       }
 
       fastMetrics.detected += trades.length;
-      if (target.fastEnabled) {
-        const dispatchStartedAtMs = Date.now();
-        await Promise.all(trades.map(trade =>
-          enqueueTrade(attributedTrade({
-            ...trade,
-            observedAtMs,
-            signalSource: "processed_logs"
-          }, target), "websocket_processed_fast", { shadowEligible: true })));
-        target.ingestion.markProcessed(signature);
-        log("fast_signal_dispatched", {
-          signature,
-          sourceWallet: target.wallet,
-          sourceName: target.name,
-          targetSlot: slot,
-          trades: trades.map((trade) => `${trade.side}:${trade.mint}`),
-          detectedToDispatchMs: dispatchStartedAtMs - observedAtMs,
-          signalToResultMs: Date.now() - observedAtMs,
-          liveEnabled: target.liveEnabled
-        });
-
-        setImmediate(() => auditFastTrade(target, signature, trades, observedAtMs));
-
-        log("signature_processed", {
-          signature,
-          source: "websocket_processed_fast",
-          sourceWallet: target.wallet,
-          sourceName: target.name,
-          targetSlot: slot,
-          detectedInMs: Date.now() - observedAtMs
-        });
-        return true;
-      }
-
       let tx;
       let confirmedTrades;
       try {
@@ -914,6 +908,7 @@ try {
         name, connected, subscriptions
       })),
       fastLatency: latencySummary(),
+      shadowProbeCoverage: trader.probeCoverage,
       executionLatency: timings.report(),
       fastMetrics
     });

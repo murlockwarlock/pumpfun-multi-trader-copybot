@@ -147,10 +147,88 @@ test("shadow probe budget drops overlap while live BUY prepares", async t => {
   const gate = Promise.withResolvers();
   engine.probeExecutor = { prepare: () => gate.promise };
   const probe = engine.probeBuy(buy(), 0.005);
-  await assert.rejects(engine.probeBuy(buy(), 0.005), /busy or stale/);
+  await assert.rejects(engine.probeBuy(buy(), 0.005), /busy/);
   assert.equal((await engine.onTrade(buy())).type, "LIVE_SUBMITTED");
   gate.resolve({ venue: "analytics" });
   assert.equal((await probe).rpcSource, "analytics");
+});
+
+function persistBuy(engine, entry) {
+  engine.state.reserveSignal(entry, { signature: "copy" + entry.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    rawAmount: "5000000", beforeTokenBalance: "0", lastValidBlockHeight: 10 }, 5000000n);
+  engine.state.updateSignal(entry.signature, { status: "processed" });
+}
+
+test("restored provisional BUY sells at processed before confirmation", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  persistBuy(engine, entry);
+  engine.state.setPosition({ mint: entry.mint, targetEntrySignature: entry.signature,
+    entrySignature: "copy" + entry.mint, provisional: true, rawTokenAmount: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58() });
+  const restored = new LiveEngine(engine.config, () => {});
+  restored.executor = { ...engine.executor, tokenBalance: async (_m,_p,commitment) => {
+    assert.equal(commitment,"processed"); return 50n;
+  } };
+  const exit = { ...entry, side: "SELL", signature: "exit" };
+  assert.equal((await restored.onTrade(exit)).type, "LIVE_SUBMITTED");
+  assert.equal((await restored.onTrade(exit)).reason, "signal_already_handled");
+});
+
+test("pending exit without tokens survives another restart and dispatches on processed balance", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  persistBuy(engine, entry);
+  const first = new LiveEngine(engine.config, () => {});
+  first.executor = { ...engine.executor, tokenBalance: async () => 0n, signatureStatus: async () => null };
+  const exit = { ...entry, side: "SELL", signature: "persisted-exit" };
+  assert.equal((await first.onTrade(exit)).type, "LIVE_EXIT_PENDING");
+  await first.reconcile();
+  const second = new LiveEngine(engine.config, () => {});
+  let sends = 0;
+  second.executor = { ...engine.executor, submit: async p => { sends++; return p.expectedSignature; },
+    signatureStatus: async () => null };
+  await second.reconcile();
+  assert.equal(sends, 1);
+  assert.equal((await second.onTrade(exit)).reason, "signal_already_handled");
+});
+
+for (const rollover of [false,true]) test("confirmed BUY failure refunds principal once, rollover=" + rollover, async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const entry = buy();
+  persistBuy(engine, entry);
+  if (rollover) {
+    engine.state.day = "2000-01-01";
+    engine.state.updateSignal(entry.signature, { spendDay: engine.state.day });
+    engine.state.resetDayIfNeeded();
+  }
+  const restored = new LiveEngine(engine.config, () => {});
+  restored.executor = { signatureStatus: async () => ({ confirmationStatus: "finalized", err: "failed" }),
+    transactionWalletDelta: async () => ({ feeLamports: "5000" }) };
+  await restored.reconcile();
+  await restored.reconcile();
+  const state = new LiveEngine(engine.config, () => {}).state;
+  assert.equal(state.dailySpendLamports, rollover ? 0n : 5000n);
+  assert.equal(state.handledSignals[0].failedFeeLamports, "5000");
+});
+
+test("expired unknown retains budget; hung mint A permits confirmed B recovery", {timeout: 2000}, async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const [a,b,c] = [buy(),buy(),buy()];
+  for (const trade of [a,b,c]) persistBuy(engine, trade);
+  let requests = 0;
+  engine.executor.signatureStatus = async sig => {
+    if (sig === "copy"+a.mint) { requests++; return new Promise(() => {}); }
+    return sig === "copy"+b.mint ? { confirmationStatus: "confirmed" } : null;
+  };
+  engine.executor.currentBlockHeight = async () => 1000;
+  void engine.reconcile();
+  await new Promise(resolve => setImmediate(resolve));
+  void engine.reconcile();
+  assert.equal(requests,1);
+  assert.ok(engine.positions.has(b.mint));
+  assert.equal(engine.state.dailySpendLamports,15000000n);
+  assert.equal(engine.state.handledSignals[2].status,"processed");
 });
 
 test("explicit SELL rejection allows immediate exit retry", async t => {

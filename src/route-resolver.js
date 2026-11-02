@@ -16,29 +16,17 @@ function jupiterRoute(candidate, pool, poolAddress) {
 }
 
 export async function resolvePumpCandidates(candidates, rpc) {
-  const trades = [];
-  const unsupportedTrades = [];
-  for (const candidate of candidates) {
+  const trades = await Promise.all(candidates.map(async candidate => {
     if (candidate.boundaryPool) {
       const pool = await rpc.resolvePumpPool(candidate.boundaryPool);
-      if (pool.quoteMint !== WRAPPED_SOL_MINT) {
-        trades.push(jupiterRoute(candidate, pool, candidate.boundaryPool));
-      } else {
-        trades.push(candidate);
-      }
-      continue;
+      return pool.quoteMint !== WRAPPED_SOL_MINT ? jupiterRoute(candidate, pool, candidate.boundaryPool) : candidate;
     }
     if (!candidate.pool) {
-      trades.push(candidate);
-      continue;
+      return candidate;
     }
     const pool = await rpc.resolvePumpPool(candidate.pool);
     const resolved = { ...candidate, mint: pool.baseMint };
-    if (pool.quoteMint !== WRAPPED_SOL_MINT) {
-      trades.push(jupiterRoute(resolved, pool, candidate.pool));
-    } else {
-      trades.push(resolved);
-    }
-  }
-  return { trades, unsupportedTrades };
+    return pool.quoteMint !== WRAPPED_SOL_MINT ? jupiterRoute(resolved, pool, candidate.pool) : resolved;
+  }));
+  return { trades, unsupportedTrades: [] };
 }

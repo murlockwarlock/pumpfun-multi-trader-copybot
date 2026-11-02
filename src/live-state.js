@@ -95,11 +95,16 @@ export class LiveState {
       (candidate) => candidate.targetSignature === targetSignature
     );
     if (!signal) throw new Error(`Unknown live signal: ${targetSignature}`);
-    if (patch.status === "submit_rejected" && signal.status === "reserved" &&
+    if (((patch.status === "submit_rejected" && signal.status === "reserved") ||
+        (patch.status === "failed_onchain" && patch.failedFeeLamports != null)) &&
+        BigInt(signal.reservedSpend ?? 0) > 0n &&
         signal.side === "BUY" && signal.spendDay === this.day) {
       this.dailySpendLamports -= BigInt(signal.reservedSpend);
+      this.dailySpendLamports += BigInt(patch.failedFeeLamports ?? 0);
       signal.reservedSpend = "0";
     }
+    if (patch.status === "failed_onchain" && signal.side === "BUY" &&
+        this.positions.get(signal.mint)?.entrySignature === signal.signature) this.positions.delete(signal.mint);
     Object.assign(signal, patch, { updatedAt: new Date().toISOString() });
     this.#save();
   }

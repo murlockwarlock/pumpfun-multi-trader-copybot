@@ -96,6 +96,10 @@ export class PumpExecutor {
       // event. Safety balances and final reconciliation still use confirmed.
       commitment: "processed",
       wsEndpoint: config.rpcWsUrl,
+      fetch: (url, options = {}) => {
+        const deadline = AbortSignal.timeout(config.rpcTimeoutMs ?? 10000);
+        return fetch(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
+      },
       confirmTransactionInitialTimeout: config.liveConfirmationTimeoutMs
     });
     this.pump = new OnlinePumpSdk(this.connection);
