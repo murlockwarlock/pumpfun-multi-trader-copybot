@@ -446,10 +446,10 @@ export class LiveEngine {
   }
 
   async #reconcileMint(address) {
-    // Quarantine is sticky.  Reconciliation may collect evidence for an
-    // operator, but a fresh balance or a later confirmation must not turn an
-    // ambiguous mint back into a sellable position automatically.
-    if (this.state.isQuarantined(address)) return;
+    // Quarantine is sticky for ownership and SELL authorization.  It must not
+    // suspend the separate read-only transaction-status path: a confirmed
+    // on-chain failure can still prove that reserved BUY capital was not
+    // spent, and its fee must be accounted for exactly once.
     const orphan = this.#pendingBuys().find(s => s.mint === address && s.pendingExit);
     if (orphan && !this.positions.has(address) && !this.settlements.has(address) && !this.#hasActiveSell(address)) {
       const buyStatus = await this.executor.signatureStatus(orphan.signature).catch(() => null);
@@ -1569,6 +1569,25 @@ export class LiveEngine {
       if (trade.side === "SELL") this.#scheduleExitRetry(trade.mint, `prepare_failed:${message}`);
       const record = this.#skip(trade, `prepare_failed:${message}`);
       this.log("live_prepare_failed", { side: trade.side, mint: trade.mint, message });
+      return record;
+    }
+
+    // The normal PumpExecutor deliberately skips the pre-BUY token-balance RPC
+    // for FAST BUY.  That is safe for quote latency but cannot prove which
+    // tokens remain sellable after the BUY.  Refuse the order before reserving
+    // capital or broadcasting when the executor did not provide an explicit
+    // baseline/isolated-inventory proof.  A verified executor may opt in by
+    // returning beforeTokenBalanceKnown=true; no confirmation wait is added.
+    if (trade.side === "BUY" && trade.fastProfile &&
+        this.config.fastRequireInventoryBaseline !== false &&
+        prepared.beforeTokenBalanceKnown !== true) {
+      const record = this.#skip(trade, "fast_buy_inventory_baseline_unavailable");
+      this.log("live_fast_buy_blocked", {
+        mint: trade.mint,
+        targetSignature: trade.signature,
+        reason: "fast_buy_inventory_baseline_unavailable",
+        evidence: "prepare_did_not_provide_before_token_balance_or_isolated_inventory_proof"
+      });
       return record;
     }
 

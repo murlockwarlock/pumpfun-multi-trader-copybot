@@ -66,9 +66,10 @@ flowchart LR
 
 The normal WebSocket path decodes a processed event immediately, then re-decodes
 the same authenticated event from the confirmed transaction before submission.
-An explicitly allowlisted fast profile can submit from the processed event and
-verify it afterward; a mismatch automatically pauses new live buys. Periodic
-HTTP backfill repairs gaps caused by disconnects or restarts.
+An explicitly allowlisted fast profile can prepare from the processed event and
+verify it afterward; live submission additionally requires the executor to
+provide inventory provenance. A mismatch automatically pauses new live buys.
+Periodic HTTP backfill repairs gaps caused by disconnects or restarts.
 
 ## Quick start
 
@@ -151,9 +152,10 @@ The parser accepts event bytes only while the official Pump program is at the
 top of the Solana program log stack. In monitor-only mode the bot builds, signs,
 but does not submit a real candidate transaction; that read-only probe records
 the actual log-to-ready latency and available token quote. In live mode the same
-path submits through the configured sender. Skipping simulation reduces latency
-but increases the probability that a transaction fails on-chain, so keep the
-fast wallet list explicit and small.
+path submits through the configured sender only when a pre-BUY inventory proof is
+available. Skipping simulation reduces latency but increases the probability
+that a transaction fails on-chain, so keep the fast wallet list explicit and
+small.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
@@ -161,11 +163,12 @@ cannot then consume the separate slippage allowance and land beyond that target-
 relative ceiling. A matching SELL can be built at `processed` only when the
 executor has a trusted, signature-specific processed token-delta source *and a
 measured pre-BUY baseline*. A balance increase or a positive transaction delta
-by itself is never treated as proof of currently sellable inventory. The fast
-path deliberately skips the pre-submit token-balance RPC; if that leaves the
-baseline unknown, the BUY remains durably quarantined after submission and no
-SELL is sent. This keeps the signal-to-submit path fast without guessing which
-fungible tokens belong to the strategy.
+by itself is never treated as proof of currently sellable inventory. The default
+fast PumpExecutor deliberately skips the pre-submit token-balance RPC; when
+that leaves the baseline unknown, FAST BUY is rejected before capital
+reservation or broadcast. A verified isolated-inventory executor may return
+`beforeTokenBalanceKnown=true` to opt into the fast path without adding a
+confirmation wait.
 
 Confirmed BUY recovery records the pre-BUY inventory floor. If current
 inventory is below that floor plus the transaction-specific BUY delta, the

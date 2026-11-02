@@ -357,6 +357,93 @@ test("processed BUY error and missing fee metadata remain recoverable", async t 
   assert.equal(restored.state.dailySpendLamports, 5000n);
 });
 
+test("quarantined BUY still reconciles a confirmed failure and refunds once across restart", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-quarantine-failure-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const first = new LiveEngine(config, () => {});
+  const mint = Keypair.generate().publicKey.toBase58();
+  const buy = { signature: "quarantined-target-buy", side: "BUY", mint };
+  first.state.reserveSignal(buy, {
+    signature: "quarantined-copy-buy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    rawAmount: "5000000", beforeTokenBalance: "0", beforeTokenBalanceKnown: false,
+    lastValidBlockHeight: 123
+  }, 5_000_000n);
+  first.state.updateSignal(buy.signature, {
+    status: "position_quarantined", ownershipStatus: "quarantined",
+    ownershipReason: "inventory_baseline_unproven"
+  });
+  first.state.quarantineMint(mint, {
+    kind: "buy", reason: "inventory_baseline_unproven",
+    signature: "quarantined-copy-buy", targetSignature: buy.signature
+  });
+
+  const restarted = new LiveEngine(config, () => {});
+  let feeReads = 0;
+  restarted.executor = {
+    signatureStatus: async () => ({ confirmationStatus: "finalized", err: { InstructionError: [0, "Custom"] } }),
+    transactionWalletDelta: async () => { feeReads += 1; return { feeLamports: "7000" }; }
+  };
+  await restarted.reconcile();
+  await restarted.reconcile();
+  const restored = new LiveEngine(config, () => {});
+  const signal = restored.state.handledSignals.find(s => s.targetSignature === buy.signature);
+  assert.equal(signal.status, "failed_onchain");
+  assert.equal(restored.state.dailySpendLamports, 7000n);
+  assert.equal(restored.state.isQuarantined(mint), true);
+  assert.equal(restored.positions.has(mint), false);
+  assert.equal(feeReads, 1);
+});
+
+test("audited quarantine resolution restores an orphan position before SELL after restart", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-quarantine-resolution-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const first = new LiveEngine(config, () => {});
+  const mint = Keypair.generate().publicKey.toBase58();
+  const buy = { signature: "orphan-target-buy", side: "BUY", mint };
+  first.state.reserveSignal(buy, {
+    signature: "orphan-copy-buy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    rawAmount: "5000000", beforeTokenBalance: "0", beforeTokenBalanceKnown: false,
+    lastValidBlockHeight: 123
+  }, 5_000_000n);
+  first.state.updateSignal(buy.signature, {
+    status: "position_quarantined", ownershipStatus: "quarantined",
+    ownershipReason: "inventory_baseline_unproven"
+  });
+  first.state.quarantineMint(mint, {
+    kind: "buy", reason: "inventory_baseline_unproven",
+    signature: "orphan-copy-buy", targetSignature: buy.signature
+  });
+  first.state.clearQuarantine(mint, {
+    resolution: "operator matched confirmed token-account inventory to BUY",
+    evidence: { source: "confirmed_token_account_snapshot", rawBalance: "100" },
+    position: {
+      mint, rawTokenAmount: "100", inventoryBaselineRaw: "0",
+      tokenProgram: TOKEN_PROGRAM_ID.toBase58(), entrySignature: "orphan-copy-buy",
+      targetEntrySignature: buy.signature, costLamports: "5000000"
+    }
+  });
+
+  const restarted = new LiveEngine(config, () => {});
+  const submissions = [];
+  restarted.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    tokenBalance: async () => 100n,
+    prepare: async () => ({ expectedSignature: "resolved-copy-sell", mint: new PublicKey(mint),
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve", beforeTokenBalance: 100n,
+      beforeTokenBalanceKnown: true, lastValidBlockHeight: 123 }),
+    submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
+    confirm: async () => new Promise(() => {})
+  };
+  const result = await restarted.onTrade({ signature: "resolved-target-sell", side: "SELL", mint,
+    observedAtMs: Date.now(), signalSource: "processed_logs" });
+  assert.equal(result.type, "LIVE_SUBMITTED");
+  assert.deepEqual(submissions, ["resolved-copy-sell"]);
+  assert.equal(restarted.state.isQuarantined(mint), false);
+  assert.equal(restarted.positions.get(mint).rawTokenAmount, "100");
+});
+
 test("expired unknown retains budget; hung mint A permits confirmed B recovery", {timeout: 2000}, async t => {
   const { engine, buy } = concurrentFixture(t);
   const [a,b,c] = [buy(),buy(),buy()];
@@ -767,13 +854,11 @@ test("SELL with unavailable transaction metadata remains unknown and is not dupl
   assert.equal((await engine.onTrade({ ...sell, signature: "no-metadata-retry" })).reason, "exit_already_pending");
 });
 
-test("fast BUY with pre-existing tokens cannot create a provisional position or SELL them", async t => {
+test("FAST BUY without inventory provenance is rejected before submit", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
   const engine = new LiveEngine(liveConfig(directory), () => {});
-  let releaseConfirmation;
-  const buyConfirmation = new Promise(resolve => { releaseConfirmation = resolve; });
   let balanceReads = 0;
   const submissions = [];
   engine.executor = {
@@ -787,37 +872,31 @@ test("fast BUY with pre-existing tokens cannot create a provisional position or 
     }),
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
     transactionTokenDelta: async () => 0n,
-    confirm: async () => buyConfirmation
+    confirm: async () => "confirmed"
   };
 
   const buy = await engine.onTrade({
     signature: "target-fast-preexisting-buy", side: "BUY", mint: mint.toBase58(),
     averagePriceSol: 0.00004, observedAtMs: Date.now(), signalSource: "processed_logs", fastProfile: true
   });
-  assert.equal(buy.type, "LIVE_SUBMITTED");
-  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(buy.type, "LIVE_SKIP");
+  assert.equal(buy.reason, "fast_buy_inventory_baseline_unavailable");
   assert.equal(engine.positions.size, 0);
   assert.equal(balanceReads, 0);
-  releaseConfirmation("confirmed");
-  for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "submitted"; i++) {
-    await new Promise(resolve => setTimeout(resolve, 5));
-  }
-  assert.equal(engine.positions.size, 0);
+  assert.equal(engine.state.dailySpendLamports, 0n);
   const sell = await engine.onTrade({
     signature: "target-fast-preexisting-sell", side: "SELL", mint: mint.toBase58(),
     observedAtMs: Date.now(), signalSource: "processed_logs"
   });
-  assert.equal(sell.type, "LIVE_EXIT_PENDING");
-  assert.deepEqual(submissions, ["copy-buy"]);
+  assert.equal(sell.reason, "no_live_position");
+  assert.deepEqual(submissions, []);
 });
 
-test("fast BUY with an unknown baseline is quarantined even when its delta is proven", async t => {
+test("default PumpExecutor FAST prepare semantics block a BUY before funds are spent", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-delta-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
   const engine = new LiveEngine(liveConfig(directory), () => {});
-  let releaseConfirmation;
-  const confirmation = new Promise(resolve => { releaseConfirmation = resolve; });
   const submissions = [];
   engine.executor = {
     prewarm: async () => {},
@@ -828,41 +907,34 @@ test("fast BUY with an unknown baseline is quarantined even when its delta is pr
     prepare: async (side) => ({
       expectedSignature: side === "BUY" ? "copy-buy" : "copy-sell",
       mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
-      beforeTokenBalance: side === "BUY" ? 0n : 150n, lastValidBlockHeight: 123
+      beforeTokenBalance: side === "BUY" ? 0n : 150n,
+      beforeTokenBalanceKnown: side === "BUY" ? false : true,
+      lastValidBlockHeight: 123
     }),
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
-    confirm: async () => confirmation
+    confirm: async () => "confirmed"
   };
 
   const buy = await engine.onTrade({
     signature: "target-fast-delta-buy", side: "BUY", mint: mint.toBase58(),
     averagePriceSol: 0.00004, observedAtMs: Date.now(), signalSource: "processed_logs", fastProfile: true
   });
-  assert.equal(buy.type, "LIVE_SUBMITTED");
-  for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status !== "position_quarantined"; i++) {
-    await new Promise(resolve => setTimeout(resolve, 5));
-  }
+  assert.equal(buy.type, "LIVE_SKIP");
+  assert.equal(buy.reason, "fast_buy_inventory_baseline_unavailable");
   assert.equal(engine.positions.has(mint.toBase58()), false);
-  assert.equal(engine.state.handledSignals.at(-1).status, "position_quarantined");
-  assert.equal(engine.inventoryHealth().quarantinedMints, 1);
+  assert.equal(engine.inventoryHealth().quarantinedMints, 0);
   assert.equal((await engine.onTrade({
     signature: "target-fast-delta-sell", side: "SELL", mint: mint.toBase58(),
     observedAtMs: Date.now(), signalSource: "processed_logs"
-  })).reason, "position_ownership_quarantined");
-  assert.deepEqual(submissions, ["copy-buy"]);
-  releaseConfirmation("confirmed");
-  for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "position_quarantined"; i++) {
-    await new Promise(resolve => setTimeout(resolve, 5));
-  }
-  assert.equal(engine.state.handledSignals.at(-1).status, "position_quarantined");
-  assert.equal(engine.positions.has(mint.toBase58()), false);
+  })).reason, "no_live_position");
+  assert.deepEqual(submissions, []);
 });
 
 test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-timeout-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
-  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const engine = new LiveEngine(liveConfig(directory, { fastRequireInventoryBaseline: false }), () => {});
   engine.executor = {
     prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
     tokenBalance: async () => 50n,
@@ -986,6 +1058,7 @@ test("fast profile uses its own drift window and latency prepare options", async
         tokenProgram: TOKEN_PROGRAM_ID,
         venue: "pump-curve",
         beforeTokenBalance: 0n,
+        beforeTokenBalanceKnown: true,
         lastValidBlockHeight: 123,
         expectedTokenOutRaw: "1000000",
         tokenDecimals: 6

@@ -242,32 +242,60 @@ export class LiveState {
     return this.quarantines.has(mint);
   }
 
-  clearQuarantine(mint, resolution) {
-    if (!resolution || typeof resolution !== "string") {
-      throw new Error("Quarantine resolution must be an explicit audit reason");
+  clearQuarantine(mint, options) {
+    if (!options || typeof options !== "object" ||
+        typeof options.resolution !== "string" || !options.resolution.trim() ||
+        !options.evidence || typeof options.evidence !== "object" ||
+        Array.isArray(options.evidence) || Object.keys(options.evidence).length === 0 ||
+        !options.position) {
+      throw new Error(
+        "Quarantine resolution must include audit evidence and a restored position"
+      );
     }
     const existing = this.quarantines.get(mint);
     if (!existing) return false;
+    const suppliedPosition = options.position;
+    if (!suppliedPosition || suppliedPosition.mint !== mint ||
+        !/^\d+$/.test(suppliedPosition.rawTokenAmount ?? "") ||
+        BigInt(suppliedPosition.rawTokenAmount) <= 0n ||
+        !/^\d+$/.test(suppliedPosition.inventoryBaselineRaw ?? "") ||
+        !suppliedPosition.tokenProgram || !suppliedPosition.entrySignature ||
+        !suppliedPosition.targetEntrySignature) {
+      throw new Error(
+        "Quarantine resolution must restore a coherent evidence-backed position"
+      );
+    }
+    const restoredPosition = { ...suppliedPosition };
+    delete restoredPosition.ownershipStatus;
+    delete restoredPosition.ownershipReason;
+    delete restoredPosition.ownershipEvidence;
+    delete restoredPosition.ownershipBlockedAt;
+    if (options.pendingExit) {
+      restoredPosition.exitRequest = {
+        ...(restoredPosition.exitRequest ?? {}),
+        ...options.pendingExit
+      };
+    }
     this.quarantineAudit.push({
-      mint, resolution, at: new Date().toISOString(),
+      mint, resolution: options.resolution.trim(), at: new Date().toISOString(),
       reason: existing.reason,
       signature: existing.signature ?? null,
-      targetSignature: existing.targetSignature ?? null
+      targetSignature: existing.targetSignature ?? null,
+      evidence: options.evidence ?? null,
+      restoredPosition: {
+        rawTokenAmount: restoredPosition.rawTokenAmount,
+        inventoryBaselineRaw: restoredPosition.inventoryBaselineRaw,
+        entrySignature: restoredPosition.entrySignature,
+        targetEntrySignature: restoredPosition.targetEntrySignature,
+        pendingExit: restoredPosition.exitRequest ?? null
+      }
     });
-    const position = this.positions.get(mint);
-    if (position?.ownershipStatus === "quarantined") {
-      const resolvedPosition = { ...position };
-      delete resolvedPosition.ownershipStatus;
-      delete resolvedPosition.ownershipReason;
-      delete resolvedPosition.ownershipEvidence;
-      delete resolvedPosition.ownershipBlockedAt;
-      this.positions.set(mint, resolvedPosition);
-    }
+    this.positions.set(mint, restoredPosition);
     for (const signal of this.handledSignals.filter(candidate => candidate.mint === mint &&
         candidate.status === "position_quarantined")) {
       signal.status = "quarantine_resolved";
       signal.ownershipStatus = "resolved";
-      signal.ownershipResolution = resolution;
+      signal.ownershipResolution = options.resolution.trim();
       signal.updatedAt = new Date().toISOString();
     }
     this.quarantines.delete(mint);
