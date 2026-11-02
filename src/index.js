@@ -47,7 +47,6 @@ let trader;
 let shadowTrader;
 let manualOrders;
 let tradeQueue = Promise.resolve();
-let reconnectAttempt = 0;
 let stopped = false;
 let fallbackActive = 0;
 const fallbackWaiters = [];
@@ -64,6 +63,21 @@ const fastMetrics = {
 };
 const telegram = new TelegramNotifier(config);
 let maintenanceRunning = false;
+const websocketChannels = [
+  { name: "primary", url: config.rpcWsUrl },
+  { name: "fallback", url: config.rpcFallbackWsUrl }
+]
+  .filter((channel) => channel.url)
+  .filter((channel, index, channels) =>
+    channels.findIndex((candidate) => candidate.url === channel.url) === index
+  )
+  .map((channel) => ({
+    ...channel,
+    reconnectAttempt: 0,
+    connected: false,
+    subscriptions: 0,
+    socket: null
+  }));
 
 function log(event, details = {}) {
   console.log(JSON.stringify({ at: new Date().toISOString(), event, ...details }));
@@ -680,28 +694,35 @@ async function pollBackfill(forceLog = false) {
   return results.some(Boolean);
 }
 
-function scheduleReconnect() {
+function scheduleReconnect(channel) {
   if (stopped) return;
-  const delayMs = Math.min(30_000, 1_000 * 2 ** reconnectAttempt++);
-  log("websocket_closed", { reconnectInMs: delayMs });
-  setTimeout(connect, delayMs);
+  channel.connected = false;
+  channel.subscriptions = 0;
+  channel.socket = null;
+  const delayMs = Math.min(30_000, 1_000 * 2 ** channel.reconnectAttempt++);
+  log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs });
+  const timer = setTimeout(() => connect(channel), delayMs);
+  timer.unref();
 }
 
-function connect() {
+function connect(channel) {
   if (stopped) return;
   let ws;
   const requestTargets = new Map();
   const subscriptionTargets = new Map();
   try {
-    ws = new WebSocket(config.rpcWsUrl);
+    ws = new WebSocket(channel.url);
+    channel.socket = ws;
   } catch (error) {
-    log("websocket_open_error", { message: error.message });
-    scheduleReconnect();
+    log("websocket_open_error", { websocketSource: channel.name, message: error.message });
+    scheduleReconnect(channel);
     return;
   }
 
   ws.addEventListener("open", () => {
-    reconnectAttempt = 0;
+    channel.reconnectAttempt = 0;
+    channel.connected = true;
+    channel.subscriptions = 0;
     targetRuntimes.forEach((target, index) => {
       const id = index + 1;
       requestTargets.set(id, target);
@@ -713,6 +734,7 @@ function connect() {
       }));
     });
     log("subscribing", {
+      websocketSource: channel.name,
       traders: targetRuntimes.map(({ name, wallet, liveEnabled }) => ({
         name,
         wallet,
@@ -736,7 +758,9 @@ function connect() {
     const requestedTarget = requestTargets.get(payload.id);
     if (requestedTarget && payload.result) {
       subscriptionTargets.set(payload.result, requestedTarget);
+      channel.subscriptions = subscriptionTargets.size;
       log("subscribed", {
+        websocketSource: channel.name,
         subscriptionId: payload.result,
         sourceWallet: requestedTarget.wallet,
         sourceName: requestedTarget.name,
@@ -747,6 +771,7 @@ function connect() {
     }
     if (requestedTarget && payload.error) {
       log("subscription_error", {
+        websocketSource: channel.name,
         sourceWallet: requestedTarget.wallet,
         sourceName: requestedTarget.name,
         message: payload.error.message,
@@ -766,13 +791,14 @@ function connect() {
   });
 
   ws.addEventListener("error", () => ws.close());
-  ws.addEventListener("close", scheduleReconnect);
+  ws.addEventListener("close", () => scheduleReconnect(channel));
 }
 
 function stop() {
   if (stopped) return;
   stopped = true;
   manualOrders?.stop();
+  for (const channel of websocketChannels) channel.socket?.close();
   log("stopped");
   process.exit(0);
 }
@@ -831,7 +857,14 @@ try {
   }
   await initializeIngestions();
   if (!(await pollBackfill(true))) throw new Error("Initial HTTP backfill check failed");
-  connect();
+  websocketChannels.forEach((channel, index) => {
+    if (index === 0 || config.rpcFallbackWsStaggerMs === 0) {
+      connect(channel);
+      return;
+    }
+    const timer = setTimeout(() => connect(channel), config.rpcFallbackWsStaggerMs);
+    timer.unref();
+  });
   setInterval(pollBackfill, config.pollIntervalMs);
   setTimeout(pollBackfill, 1_000);
   setInterval(() => {
@@ -847,6 +880,9 @@ try {
       fallbackActive,
       fallbackQueued: fallbackWaiters.length,
       signaturesInFlight: signatureTasks.size,
+      websocketChannels: websocketChannels.map(({ name, connected, subscriptions }) => ({
+        name, connected, subscriptions
+      })),
       fastLatency: latencySummary(),
       fastMetrics
     });

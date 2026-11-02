@@ -159,6 +159,13 @@ export const config = Object.freeze({
   rpcHttpUrl: process.env.RPC_HTTP_URL ?? "https://api.mainnet-beta.solana.com",
   rpcFallbackHttpUrl: process.env.RPC_FALLBACK_HTTP_URL ?? "",
   rpcWsUrl: process.env.RPC_WS_URL ?? "wss://api.mainnet-beta.solana.com",
+  rpcFallbackWsUrl: process.env.RPC_FALLBACK_WS_URL ?? "",
+  rpcFallbackWsStaggerMs: numberSetting("RPC_FALLBACK_WS_STAGGER_MS", 30_000, {
+    min: 0,
+    max: 240_000
+  }),
+  analyticsRpcHttpUrl:
+    process.env.ANALYTICS_RPC_HTTP_URL ?? "https://api.mainnet-beta.solana.com",
   paperTradeSol: numberSetting("PAPER_TRADE_SOL", 0.015, { min: 0.001, max: 1 }),
   maxOpenPositions: numberSetting("MAX_OPEN_POSITIONS", 1, { min: 1, max: 20 }),
   maxDailyLossSol: numberSetting("MAX_DAILY_LOSS_SOL", 0.02, { min: 0.001, max: 10 }),
@@ -240,6 +247,16 @@ export const config = Object.freeze({
     min: 100,
     max: 10_000
   }),
+  liveProcessedBalanceTimeoutMs: numberSetting(
+    "LIVE_PROCESSED_BALANCE_TIMEOUT_MS",
+    3_000,
+    { min: 500, max: 10_000 }
+  ),
+  liveProcessedBalancePollMs: numberSetting(
+    "LIVE_PROCESSED_BALANCE_POLL_MS",
+    100,
+    { min: 50, max: 1_000 }
+  ),
   liveMaxDailyLossSol: numberSetting(
     "LIVE_MAX_DAILY_LOSS_SOL",
     numberSetting("MAX_DAILY_LOSS_SOL", 0.02, { min: 0.001, max: 10 }),

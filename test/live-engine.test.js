@@ -73,13 +73,88 @@ test("returns after live submission while confirmation settles in the background
     assert.equal(result.type, "LIVE_SUBMITTED");
     assert.equal(prepareOptions.executionRoute, "jupiter");
     assert.ok(Date.now() - startedAt < 200);
-    assert.equal(engine.positions.size, 0);
-
-    releaseConfirmation("confirmed");
     for (let attempt = 0; attempt < 20 && engine.positions.size === 0; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 5));
     }
+    assert.equal(engine.positions.size, 1);
+    assert.equal(engine.positions.get(mint.toBase58()).provisional, true);
+
+    releaseConfirmation("confirmed");
+    for (
+      let attempt = 0;
+      attempt < 20 && engine.positions.get(mint.toBase58())?.provisional;
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
     assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "100");
+    assert.equal(engine.positions.get(mint.toBase58()).provisional, false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("submits an early SELL from the processed BUY balance before BUY confirmation", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-early-sell-"));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const buyConfirmation = new Promise(() => {});
+  const sellConfirmation = new Promise(() => {});
+  const submissions = [];
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    waitForTokenBalanceChange: async () => 100n,
+    tokenBalance: async (_mint, _program, commitment) => {
+      assert.equal(commitment, "processed");
+      return 100n;
+    },
+    prepare: async (side, _mint, _rawAmount, options) => ({
+      expectedSignature: side === "BUY" ? "copy-buy" : "copy-sell",
+      mint,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      venue: "pump-curve",
+      beforeTokenBalance: side === "BUY" ? 0n : 100n,
+      lastValidBlockHeight: 123,
+      expectedTokenOutRaw: side === "BUY" ? "100" : null,
+      tokenDecimals: 0,
+      balanceCommitment: options.balanceCommitment
+    }),
+    submit: async (prepared) => {
+      submissions.push(prepared.expectedSignature);
+      return prepared.expectedSignature;
+    },
+    confirm: async (signature) => signature === "copy-buy"
+      ? buyConfirmation
+      : sellConfirmation
+  };
+
+  try {
+    const buy = await engine.onTrade({
+      signature: "target-buy",
+      side: "BUY",
+      mint: mint.toBase58(),
+      averagePriceSol: 0.00004,
+      observedAtMs: Date.now(),
+      signalSource: "processed_logs",
+      fastProfile: true
+    });
+    assert.equal(buy.type, "LIVE_SUBMITTED");
+    for (let attempt = 0; attempt < 20 && engine.positions.size === 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.equal(engine.positions.get(mint.toBase58()).provisional, true);
+
+    const sell = await engine.onTrade({
+      signature: "target-sell",
+      side: "SELL",
+      mint: mint.toBase58(),
+      observedAtMs: Date.now(),
+      signalSource: "processed_logs"
+    });
+    assert.equal(sell.type, "LIVE_SUBMITTED");
+    assert.equal(sell.signature, "copy-sell");
+    assert.deepEqual(submissions, ["copy-buy", "copy-sell"]);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -208,6 +283,8 @@ test("fast profile uses its own drift window and latency prepare options", async
     assert.equal(prepareOptions.venueHint, "pump-curve");
     assert.equal(prepareOptions.skipSimulation, true);
     assert.equal(prepareOptions.skipBeforeTokenBalance, true);
+    assert.equal(prepareOptions.targetAveragePriceSol, 0.0042);
+    assert.equal(prepareOptions.maxEntryDriftBps, 2_500);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -271,6 +348,51 @@ test("creates a durable max-hold exit request", async () => {
     assert.equal(trades[0].signalSource, "max_hold");
     const restarted = new LiveEngine(liveConfig(directory, { liveMaxHoldMs: 60_000 }), () => {});
     assert.equal(restarted.positions.get(mint.toBase58()).exitRequest.reason, "max_hold");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("restart reconciliation finalizes a durable processed BUY position", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-reconcile-"));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.reserveSignal({
+    signature: "target-reconcile-buy",
+    side: "BUY",
+    mint: mint.toBase58()
+  }, {
+    signature: "copy-reconcile-buy",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "0",
+    rawAmount: "5000000",
+    lastValidBlockHeight: 123,
+    venue: "pump-curve"
+  }, 5_000_000n);
+  engine.state.updateSignal("target-reconcile-buy", { status: "processed" });
+  engine.state.setPosition({
+    mint: mint.toBase58(),
+    rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(),
+    entrySignature: "copy-reconcile-buy",
+    targetEntrySignature: "target-reconcile-buy",
+    costLamports: "5000000",
+    provisional: true
+  });
+  engine.executor = {
+    signatureStatus: async () => ({ err: null, confirmationStatus: "confirmed" }),
+    currentBlockHeight: async () => 100,
+    tokenBalance: async () => 100n,
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "-5000100" })
+  };
+
+  try {
+    const trades = await engine.maintenanceTrades();
+    assert.deepEqual(trades, []);
+    const position = engine.positions.get(mint.toBase58());
+    assert.equal(position.provisional, false);
+    assert.equal(position.entryWalletDeltaLamports, "-5000100");
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

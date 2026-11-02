@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-52%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -21,7 +21,8 @@ limits, crash recovery, and auditable JSONL logs.
 ## Highlights
 
 - Monitor up to 50 named Solana wallets from one process.
-- Independent `processed` WebSocket subscriptions and durable backfill cursors.
+- Redundant, staggered `processed` WebSocket subscriptions and durable backfill
+  cursors.
 - Decode official Pump bonding-curve and PumpSwap events with program-stack
   provenance checks; normal profiles re-check before submission, while an
   explicit launch-sniper profile submits first and audits confirmation after.
@@ -31,10 +32,12 @@ limits, crash recovery, and auditable JSONL logs.
   another trader's position.
 - Separate the monitoring list from the live execution allowlist.
 - Enforce global position, daily spend, reserve, realized-loss, signal-age, and
-  price-drift limits.
+  price-drift limits, including target-relative min-out protection on-chain.
 - Run a fee-aware shadow portfolio for every monitored trader alongside guarded
   live execution, Telegram reports, and exact realized PnL accounting.
 - Recover incomplete settlements and retry emergency exits after restarts.
+- Make a submitted BUY sellable from its processed token balance while confirmed
+  settlement and exact accounting continue in the background.
 - Deploy atomically with systemd health checks and automatic rollback.
 
 ## Architecture
@@ -87,6 +90,9 @@ TARGET_WALLETS=alpha:SOLANA_WALLET_1,beta:SOLANA_WALLET_2
 LIVE_TRADER_WALLETS=none
 RPC_HTTP_URL=https://your-solana-rpc.example
 RPC_WS_URL=wss://your-solana-rpc.example
+RPC_FALLBACK_HTTP_URL=https://your-independent-fallback.example
+RPC_FALLBACK_WS_URL=wss://your-independent-fallback.example
+RPC_FALLBACK_WS_STAGGER_MS=30000
 ```
 
 `TARGET_WALLET` is retained as a backwards-compatible single-wallet fallback.
@@ -148,6 +154,12 @@ path submits through the configured sender. Skipping simulation reduces latency
 but increases the probability that a transaction fails on-chain, so keep the
 fast wallet list explicit and small.
 
+For fast profiles, the configured entry-drift ceiling is also converted into a
+minimum token output inside the signed transaction. A quote that passes locally
+cannot then consume the separate slippage allowance and land beyond that target-
+relative ceiling. Once a BUY is observed at `processed`, a matching SELL can be
+built immediately without waiting for full BUY confirmation.
+
 ## Live mode
 
 Live execution is fail-closed. It requires all of the following:
@@ -195,7 +207,9 @@ touch data/STOP_LIVE
 | Per-trader ownership | Prevent cross-trader SELL signals from closing the wrong position |
 | Shadow portfolios | Compare monitored traders using isolated, fee-aware simulations |
 | Signal-age limit | Avoid copying stale transactions after reconnects |
-| Entry-drift limit | Reject a BUY when the available price moved too far |
+| Entry-drift min-out | Reject a bad quote and enforce the target-relative ceiling inside the transaction |
+| Processed BUY readiness | Permit an immediate SELL while final BUY accounting continues in background |
+| Dual WSS and execution RPC | Deduplicate two staggered feeds and retry transport/rate-limit failures through the fallback |
 | Daily spend/loss caps | Bound aggregate exposure across every followed trader |
 | SOL reserve | Keep enough balance for exits and transaction fees |
 | Durable cursors | Resume each tracked wallet without silently losing gaps |
@@ -222,8 +236,9 @@ npm test
 
 The test suite covers event parsing, confirmed fast-signal verification, signer
 checks, multi-hop normalization, independent shadow portfolios, multi-trader
-position isolation, durable state, live settlement, price drift, max-hold exits,
-token-account cleanup, RPC failover, and reporting.
+position isolation, processed-before-confirmed exits, durable state, live
+settlement, on-chain price drift, max-hold exits, token-account cleanup, RPC
+failover, and reporting.
 
 ## Deployment
 

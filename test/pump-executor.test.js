@@ -9,18 +9,42 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID
 } from "@solana/spl-token";
-import { PumpExecutor } from "../src/pump-executor.js";
+import { minimumTargetTokenOutRaw, PumpExecutor } from "../src/pump-executor.js";
+
+test("derives an exact atomic min-out from the target price cap", () => {
+  assert.equal(
+    minimumTargetTokenOutRaw(5_000_000n, 6, 0.00000004, 2_500),
+    100_000_000_000n
+  );
+});
+
+test("uses the execution fallback RPC after a primary rate-limit error", async () => {
+  const executor = Object.create(PumpExecutor.prototype);
+  executor.wallet = Keypair.generate();
+  executor.connection = {
+    getBalance: async () => { throw new Error("429 Too Many Requests"); }
+  };
+  executor.fallbackExecutor = {
+    balanceLamports: async () => 123_456_789
+  };
+
+  assert.equal(await executor.balanceLamports(), 123_456_789);
+});
 
 function closeExecutor({ rawBalance = 0n, accountInfo = { lamports: 2_039_280 } } = {}) {
   const wallet = Keypair.generate();
-  const executor = Object.create(PumpExecutor.prototype);
-  executor.config = {
+  const config = {
+    rpcHttpUrl: "https://rpc.invalid",
+    rpcWsUrl: "wss://rpc.invalid",
+    rpcFallbackHttpUrl: "",
+    liveSendRoute: "rpc",
+    liveTipSol: 0,
     liveComputeUnitLimit: 400_000,
     livePriorityFeeSol: 0.0001,
     liveSimulate: false,
     liveConfirmationTimeoutMs: 1_000
   };
-  executor.wallet = wallet;
+  const executor = new PumpExecutor(config, wallet, { enableFallback: false });
   executor.tokenBalance = async () => rawBalance;
   executor.connection = {
     getAccountInfo: async () => accountInfo,

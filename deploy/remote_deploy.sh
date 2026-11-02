@@ -112,6 +112,12 @@ else
 fi
 grep -Eq '^RPC_HTTP_URL=https://' "$ENV_FILE"
 grep -Eq '^RPC_WS_URL=wss://' "$ENV_FILE"
+if grep -q '^RPC_FALLBACK_HTTP_URL=.' "$ENV_FILE"; then
+    grep -Eq '^RPC_FALLBACK_HTTP_URL=https://' "$ENV_FILE"
+fi
+if grep -q '^RPC_FALLBACK_WS_URL=.' "$ENV_FILE"; then
+    grep -Eq '^RPC_FALLBACK_WS_URL=wss://' "$ENV_FILE"
+fi
 grep -Fqx "LOG_FILE=$DATA_DIR/paper-trades.jsonl" "$ENV_FILE"
 grep -Fqx "STATE_FILE=$DATA_DIR/paper-state.json" "$ENV_FILE"
 grep -Fqx "INGESTION_STATE_FILE=$DATA_DIR/ingestion-state.json" "$ENV_FILE"

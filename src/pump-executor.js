@@ -43,8 +43,52 @@ function compactSimulationLogs(logs) {
   return (logs ?? []).slice(-5).join(" | ").slice(0, 1_000);
 }
 
+function isRpcTransportError(error) {
+  return /(?:429|too many requests|fetch failed|timed? ?out|timeout|econn|enotfound|socket|network|http 5(?:02|03|04)|failed to get|confirmed transaction unavailable)/i
+    .test(error?.message ?? String(error));
+}
+
+function decimalFraction(value) {
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const [coefficient, exponentText = "0"] = value.toString().toLowerCase().split("e");
+  const exponent = Number(exponentText);
+  if (!Number.isInteger(exponent)) return null;
+  const [whole, fraction = ""] = coefficient.split(".");
+  const digits = `${whole}${fraction}`.replace(/^\+/, "");
+  if (!/^\d+$/.test(digits)) return null;
+  const scale = fraction.length - exponent;
+  return scale >= 0
+    ? { numerator: BigInt(digits), denominator: 10n ** BigInt(scale) }
+    : { numerator: BigInt(digits) * 10n ** BigInt(-scale), denominator: 1n };
+}
+
+function ceilDiv(numerator, denominator) {
+  return (numerator + denominator - 1n) / denominator;
+}
+
+export function minimumTargetTokenOutRaw(
+  rawQuoteLamports,
+  tokenDecimals,
+  targetAveragePriceSol,
+  maxEntryDriftBps
+) {
+  if (!Number.isInteger(tokenDecimals) || tokenDecimals < 0 || tokenDecimals > 18) return null;
+  if (!Number.isInteger(maxEntryDriftBps) || maxEntryDriftBps < 0) return null;
+  const price = decimalFraction(targetAveragePriceSol);
+  if (!price?.numerator) return null;
+  const numerator = BigInt(rawQuoteLamports) * price.denominator * 10_000n *
+    10n ** BigInt(tokenDecimals);
+  const denominator = 1_000_000_000n * price.numerator *
+    BigInt(10_000 + maxEntryDriftBps);
+  return ceilDiv(numerator, denominator);
+}
+
+function bnMax(left, right) {
+  return left.gte(right) ? left : right;
+}
+
 export class PumpExecutor {
-  constructor(config, wallet) {
+  constructor(config, wallet, { enableFallback = true } = {}) {
     this.config = config;
     this.wallet = wallet;
     this.connection = new Connection(config.rpcHttpUrl, {
@@ -61,9 +105,35 @@ export class PumpExecutor {
     this.marketRequests = new Map();
     this.latestBlockhash = null;
     this.pumpParameters = null;
+    this.rpcSource = enableFallback ? "primary" : "fallback";
+    this.fallbackExecutor = enableFallback && config.rpcFallbackHttpUrl
+      ? new PumpExecutor({
+          ...config,
+          rpcHttpUrl: config.rpcFallbackHttpUrl,
+          rpcWsUrl: config.rpcFallbackWsUrl || config.rpcWsUrl,
+          rpcFallbackHttpUrl: "",
+          rpcFallbackWsUrl: "",
+          heliusApiKey: ""
+        }, wallet, { enableFallback: false })
+      : null;
   }
 
   async initialize() {
+    const primary = this.#initializeLocal();
+    if (!this.fallbackExecutor) return primary;
+    const [primaryResult, fallbackResult] = await Promise.allSettled([
+      primary,
+      this.fallbackExecutor.initialize()
+    ]);
+    if (primaryResult.status === "rejected" && fallbackResult.status === "rejected") {
+      throw new Error(
+        `Both execution RPCs failed initialization: ${primaryResult.reason?.message ?? primaryResult.reason} | ` +
+        `${fallbackResult.reason?.message ?? fallbackResult.reason}`
+      );
+    }
+  }
+
+  async #initializeLocal() {
     await Promise.all([
       this.sender.warmup(),
       this._refreshBlockhash(),
@@ -108,19 +178,50 @@ export class PumpExecutor {
   }
 
   async balanceLamports() {
-    return this.connection.getBalance(this.wallet.publicKey, "confirmed");
+    try {
+      return await this.connection.getBalance(this.wallet.publicKey, "confirmed");
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.balanceLamports();
+    }
   }
 
-  async tokenBalance(mint, tokenProgram) {
+  async tokenBalance(mint, tokenProgram, commitment = "confirmed") {
     const account = getAssociatedTokenAddressSync(
       mint,
       this.wallet.publicKey,
       true,
       tokenProgram
     );
-    const info = await this.connection.getAccountInfo(account, "confirmed");
+    let info;
+    try {
+      info = await this.connection.getAccountInfo(account, commitment);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.tokenBalance(mint, tokenProgram, commitment);
+    }
     if (!info) return 0n;
     return BigInt(unpackAccount(account, info, tokenProgram).amount.toString());
+  }
+
+  async waitForTokenBalanceChange(
+    mint,
+    tokenProgram,
+    before,
+    side,
+    { commitment = "processed", timeoutMs = 3_000, pollMs = 100 } = {}
+  ) {
+    const deadline = Date.now() + timeoutMs;
+    let last = BigInt(before);
+    while (Date.now() <= deadline) {
+      last = await this.tokenBalance(mint, tokenProgram, commitment);
+      if (side === "BUY" ? last > before : last < before) return last;
+      await sleep(pollMs);
+    }
+    throw new Error(
+      `${commitment} token balance did not ${side === "BUY" ? "increase" : "decrease"} ` +
+      `within ${timeoutMs}ms (before=${before}, last=${last})`
+    );
   }
 
   async #loadMarket(mint, venueHint = null) {
@@ -165,7 +266,10 @@ export class PumpExecutor {
   }
 
   prewarm(mintAddress, { venueHint = null } = {}) {
-    return this.#market(new PublicKey(mintAddress), venueHint);
+    return this.#market(new PublicKey(mintAddress), venueHint).catch((error) => {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.prewarm(mintAddress, { venueHint });
+    });
   }
 
   #jupiterHeaders(json = false) {
@@ -177,7 +281,14 @@ export class PumpExecutor {
     };
   }
 
-  async #prepareJupiter(side, mint, rawAmount, market) {
+  async #prepareJupiter(
+    side,
+    mint,
+    rawAmount,
+    market,
+    balanceCommitment = "confirmed",
+    hardMinimumTokenOut = null
+  ) {
     const inputMint = side === "BUY" ? JUPITER_SOL_MINT : mint.toBase58();
     const outputMint = side === "BUY" ? mint.toBase58() : JUPITER_SOL_MINT;
     const url = new URL(`${this.config.jupiterApiUrl.replace(/\/$/, "")}/order`);
@@ -186,14 +297,16 @@ export class PumpExecutor {
       outputMint,
       amount: rawAmount.toString(),
       taker: this.wallet.publicKey.toBase58(),
-      slippageBps: String(this.config.liveSlippageBps)
+      slippageBps: String(side === "BUY" && hardMinimumTokenOut !== null
+        ? 0
+        : this.config.liveSlippageBps)
     });
     const [response, beforeTokenBalance] = await Promise.all([
       fetch(url, {
         headers: this.#jupiterHeaders(),
         signal: AbortSignal.timeout(this.config.jupiterTimeoutMs)
       }),
-      this.tokenBalance(mint, market.tokenProgram)
+      this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
     ]);
     if (!response.ok) {
       throw new Error(`Jupiter order HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -208,6 +321,12 @@ export class PumpExecutor {
     }
     if (order.inAmount && BigInt(order.inAmount) !== rawAmount) {
       throw new Error(`Jupiter changed input amount from ${rawAmount} to ${order.inAmount}`);
+    }
+    if (
+      side === "BUY" && hardMinimumTokenOut !== null &&
+      (!/^\d+$/.test(order.outAmount ?? "") || BigInt(order.outAmount) < hardMinimumTokenOut)
+    ) {
+      throw new Error("Jupiter quote exceeds the target-relative entry price limit");
     }
     if (!order.requestId) throw new Error("Jupiter order has no requestId");
     const lastValidBlockHeight = Number(order.lastValidBlockHeight);
@@ -242,11 +361,13 @@ export class PumpExecutor {
       jupiterRouter: order.router ?? "unknown",
       jupiterExpectedOut: order.outAmount ?? null,
       expectedTokenOutRaw: side === "BUY" ? order.outAmount ?? null : null,
-      tokenDecimals: market.tokenDecimals
+      hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null,
+      tokenDecimals: market.tokenDecimals,
+      rpcSource: this.rpcSource
     };
   }
 
-  async #tradeInstructions(side, mint, rawAmount, market = null) {
+  async #tradeInstructions(side, mint, rawAmount, market = null, hardMinimumTokenOut = null) {
     market ??= await this.#market(mint);
     const slippage = this.config.liveSlippageBps / 100;
 
@@ -277,9 +398,16 @@ export class PumpExecutor {
           isMayhemMode: state.pool.isMayhemMode,
           creatorFeeBps: state.pool.creatorFeeBps
         });
-        const minBaseOut = quote.base
+        const slippageMinimum = quote.base
           .mul(new BN(10_000 - this.config.liveSlippageBps))
           .div(new BN(10_000));
+        const hardMinimum = hardMinimumTokenOut === null
+          ? new BN(0)
+          : new BN(hardMinimumTokenOut.toString());
+        if (hardMinimum.gt(quote.base)) {
+          throw new Error("PumpSwap quote exceeds the target-relative entry price limit");
+        }
+        const minBaseOut = bnMax(slippageMinimum, hardMinimum);
         if (minBaseOut.isZero()) throw new Error("PumpSwap quote returned zero tokens");
         instructions = await PUMP_AMM_SDK.buyExactQuoteInV2Instructions(
           state,
@@ -288,6 +416,11 @@ export class PumpExecutor {
         );
         expectedTokenOutRaw = quote.base.toString();
       } else if (side === "BUY") {
+        if (hardMinimumTokenOut !== null) {
+          throw new Error(
+            "Target-relative entry protection is unavailable for legacy PumpSwap v1"
+          );
+        }
         // Legacy v1 pools have no exact-quote instruction. Reduce the quoted
         // input so the SDK's slippage-expanded max remains within the hard cap.
         const cappedQuote = new BN(rawAmount.toString())
@@ -306,7 +439,8 @@ export class PumpExecutor {
         instructions,
         tokenProgram: market.tokenProgram,
         venue: "pumpswap",
-        expectedTokenOutRaw
+        expectedTokenOutRaw,
+        hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }
 
@@ -337,23 +471,39 @@ export class PumpExecutor {
         quoteTransferFee: state.quoteTransferFee
       });
       if (tokenAmount.isZero()) throw new Error("Pump quote returned zero tokens");
+      const hardMinimum = hardMinimumTokenOut === null
+        ? new BN(0)
+        : new BN(hardMinimumTokenOut.toString());
+      if (hardMinimum.gt(tokenAmount)) {
+        throw new Error("Pump quote exceeds the target-relative entry price limit");
+      }
+      const instructionAmount = hardMinimum.isZero()
+        ? tokenAmount
+        : bnMax(
+            tokenAmount,
+            hardMinimum
+              .mul(new BN(10_000))
+              .add(new BN(10_000 - this.config.liveSlippageBps - 1))
+              .div(new BN(10_000 - this.config.liveSlippageBps))
+          );
       const instructions = await PUMP_SDK.buyExactQuoteInV3Instructions({
         bondingCurve: state.bondingCurve,
         associatedUserAccountInfo: state.associatedUserAccountInfo,
         mint,
         user: this.wallet.publicKey,
-        amount: tokenAmount,
+        amount: instructionAmount,
         quoteAmount,
         slippage,
         tokenProgram: market.tokenProgram,
         quoteTokenProgram: state.quoteTokenProgram,
-        partialFill: true
+        partialFill: hardMinimum.isZero()
       });
       return {
         instructions,
         tokenProgram: market.tokenProgram,
         venue: "pump-curve",
-        expectedTokenOutRaw: tokenAmount.toString()
+        expectedTokenOutRaw: tokenAmount.toString(),
+        hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }
 
@@ -380,22 +530,46 @@ export class PumpExecutor {
     return { instructions, tokenProgram: market.tokenProgram, venue: "pump-curve" };
   }
 
-  async prepare(side, mintAddress, rawAmount, {
+  async #prepareOnce(side, mintAddress, rawAmount, {
     executionRoute = null,
     venueHint = null,
     skipSimulation = false,
-    skipBeforeTokenBalance = false
+    skipBeforeTokenBalance = false,
+    balanceCommitment = "confirmed",
+    targetAveragePriceSol = null,
+    maxEntryDriftBps = null
   } = {}) {
     const mint = new PublicKey(mintAddress);
     const market = await this.#market(mint, venueHint);
+    const hardMinimumTokenOut = side === "BUY"
+      ? minimumTargetTokenOutRaw(
+          rawAmount,
+          market.tokenDecimals,
+          targetAveragePriceSol,
+          maxEntryDriftBps
+        )
+      : null;
     if (executionRoute === "jupiter") {
-      return this.#prepareJupiter(side, mint, BigInt(rawAmount), market);
+      return this.#prepareJupiter(
+        side,
+        mint,
+        BigInt(rawAmount),
+        market,
+        balanceCommitment,
+        hardMinimumTokenOut
+      );
     }
     const [trade, beforeTokenBalance, tip, latest] = await Promise.all([
-      this.#tradeInstructions(side, mint, BigInt(rawAmount), market),
+      this.#tradeInstructions(
+        side,
+        mint,
+        BigInt(rawAmount),
+        market,
+        hardMinimumTokenOut
+      ),
       skipBeforeTokenBalance
         ? Promise.resolve(0n)
-        : this.tokenBalance(mint, market.tokenProgram),
+        : this.tokenBalance(mint, market.tokenProgram, balanceCommitment),
       this.sender.tipInstruction(this.wallet.publicKey),
       this._recentBlockhash()
     ]);
@@ -443,11 +617,31 @@ export class PumpExecutor {
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,
-      tokenDecimals: market.tokenDecimals
+      hardMinimumTokenOutRaw: trade.hardMinimumTokenOutRaw ?? null,
+      tokenDecimals: market.tokenDecimals,
+      rpcSource: this.rpcSource
     };
   }
 
+  async prepare(side, mintAddress, rawAmount, options = {}) {
+    try {
+      return await this.#prepareOnce(side, mintAddress, rawAmount, options);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      const prepared = await this.fallbackExecutor.prepare(
+        side,
+        mintAddress,
+        rawAmount,
+        options
+      );
+      return { ...prepared, rpcSource: "fallback" };
+    }
+  }
+
   async submit(prepared) {
+    if (prepared.rpcSource === "fallback" && this.fallbackExecutor) {
+      return this.fallbackExecutor.submit(prepared);
+    }
     if (prepared.jupiterRequestId) {
       const response = await fetch(
         `${this.config.jupiterApiUrl.replace(/\/$/, "")}/execute`,
@@ -581,7 +775,7 @@ export class PumpExecutor {
     };
   }
 
-  async transactionWalletDelta(signature) {
+  async #transactionWalletDeltaOnce(signature) {
     let transaction = null;
     for (let attempt = 0; attempt < 8 && !transaction; attempt += 1) {
       transaction = await this.connection.getTransaction(signature, {
@@ -608,7 +802,16 @@ export class PumpExecutor {
     };
   }
 
-  async confirm(signature, prepared) {
+  async transactionWalletDelta(signature) {
+    try {
+      return await this.#transactionWalletDeltaOnce(signature);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.transactionWalletDelta(signature);
+    }
+  }
+
+  async #confirmOnce(signature, prepared) {
     const deadline = Date.now() + this.config.liveConfirmationTimeoutMs;
     while (Date.now() < deadline) {
       const response = await this.connection.getSignatureStatuses([signature], {
@@ -628,14 +831,33 @@ export class PumpExecutor {
     throw new Error(`Confirmation timed out after ${this.config.liveConfirmationTimeoutMs}ms`);
   }
 
-  async signatureStatus(signature) {
-    const response = await this.connection.getSignatureStatuses([signature], {
-      searchTransactionHistory: true
-    });
-    return response.value[0];
+  async confirm(signature, prepared) {
+    try {
+      return await this.#confirmOnce(signature, prepared);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.confirm(signature, prepared);
+    }
   }
 
-  currentBlockHeight() {
-    return this.connection.getBlockHeight("confirmed");
+  async signatureStatus(signature) {
+    try {
+      const response = await this.connection.getSignatureStatuses([signature], {
+        searchTransactionHistory: true
+      });
+      return response.value[0];
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.signatureStatus(signature);
+    }
+  }
+
+  async currentBlockHeight() {
+    try {
+      return await this.connection.getBlockHeight("confirmed");
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.currentBlockHeight();
+    }
   }
 }

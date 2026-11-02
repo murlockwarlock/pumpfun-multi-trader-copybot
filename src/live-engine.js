@@ -8,7 +8,7 @@ import { PumpExecutor } from "./pump-executor.js";
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const LIVE_CONFIRMATION = "I_UNDERSTAND_REAL_FUNDS";
 const ACTIVE_SIGNAL_STATUSES = new Set([
-  "reserved", "submitted", "confirmation_unknown", "submit_failed"
+  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed"
 ]);
 
 const solToLamports = (sol) => BigInt(Math.round(sol * LAMPORTS_PER_SOL));
@@ -336,14 +336,33 @@ export class LiveEngine {
       let pnl = null;
       if (signal.side === "BUY") {
         const bought = after - before;
-        if (!this.state.positions.has(signal.mint)) {
-          const entryDelta = await this.#transactionDelta(signal.signature, -BigInt(signal.rawAmount));
+        const entryDelta = await this.#transactionDelta(
+          signal.signature,
+          -BigInt(signal.rawAmount)
+        );
+        const existing = this.state.positions.get(signal.mint);
+        const laterSellExists = this.state.handledSignals.some((candidate) =>
+          candidate.mint === signal.mint && candidate.side === "SELL" &&
+          Date.parse(candidate.at ?? "") >= Date.parse(signal.at ?? "") &&
+          !["failed_onchain", "expired_no_balance_change", "submit_failed"].includes(
+            candidate.status
+          )
+        );
+        if (!existing && !laterSellExists) {
           this.state.setPosition({
             mint: signal.mint, rawTokenAmount: bought.toString(),
             tokenProgram: signal.tokenProgram, venue: signal.venue, openedAt: signal.at,
             entrySignature: signal.signature, targetEntrySignature: signal.targetSignature,
             costLamports: signal.rawAmount, entryWalletDeltaLamports: entryDelta.toString(),
+            provisional: false,
             sourceWallet: signal.sourceWallet ?? null, sourceName: signal.sourceName ?? null
+          });
+        } else if (existing?.entrySignature === signal.signature) {
+          this.state.setPosition({
+            ...existing,
+            rawTokenAmount: existing.exitRequest ? existing.rawTokenAmount : bought.toString(),
+            entryWalletDeltaLamports: entryDelta.toString(),
+            provisional: false
           });
         }
       } else {
@@ -448,7 +467,82 @@ export class LiveEngine {
     return [...this.settlements.values()].filter((entry) => entry.side === "BUY").length;
   }
 
-  async #settleTrade(trade, rawAmount, prepared, signature) {
+  async #primeProcessedBuy(trade, rawAmount, prepared, signature, readiness) {
+    const timeoutMs = this.config.liveProcessedBalanceTimeoutMs ?? 3_000;
+    const pollMs = this.config.liveProcessedBalancePollMs ?? 100;
+    try {
+      const afterTokenBalance = typeof this.executor.waitForTokenBalanceChange === "function"
+        ? await this.executor.waitForTokenBalanceChange(
+            prepared.mint,
+            prepared.tokenProgram,
+            prepared.beforeTokenBalance,
+            "BUY",
+            { commitment: "processed", timeoutMs, pollMs }
+          )
+        : await this.executor.tokenBalance(
+            prepared.mint,
+            prepared.tokenProgram,
+            "processed"
+          );
+      const bought = afterTokenBalance - prepared.beforeTokenBalance;
+      if (bought <= 0n) {
+        readiness.error = "processed_balance_not_increased";
+        return { ready: false, error: readiness.error };
+      }
+
+      const existing = this.state.positions.get(trade.mint);
+      if (!existing) {
+        readiness.created = true;
+        this.state.setPosition({
+          mint: trade.mint,
+          rawTokenAmount: bought.toString(),
+          tokenProgram: prepared.tokenProgram.toBase58(),
+          venue: prepared.venue,
+          openedAt: new Date().toISOString(),
+          entrySignature: signature,
+          targetEntrySignature: trade.signature,
+          costLamports: rawAmount.toString(),
+          provisional: true,
+          sourceWallet: trade.sourceWallet ?? null,
+          sourceName: trade.sourceName ?? null
+        });
+      } else if (existing.entrySignature !== signature) {
+        throw new Error("processed buy conflicts with another live position");
+      }
+
+      readiness.ready = true;
+      readiness.rawTokenAmount = bought;
+      const signal = this.state.handledSignals.find(
+        (candidate) => candidate.targetSignature === trade.signature
+      );
+      if (signal && !["confirmed", "reconciled_confirmed"].includes(signal.status)) {
+        this.state.updateSignal(trade.signature, {
+          status: "processed",
+          processedTokenBalance: afterTokenBalance.toString()
+        });
+      }
+      this.log("live_buy_processed", {
+        mint: trade.mint,
+        signature,
+        targetSignature: trade.signature,
+        rawTokenAmount: bought.toString(),
+        sourceWallet: trade.sourceWallet ?? null,
+        sourceName: trade.sourceName ?? null
+      });
+      return { ready: true, rawTokenAmount: bought };
+    } catch (error) {
+      readiness.error = errorMessage(error);
+      this.log("live_buy_processed_wait_failed", {
+        mint: trade.mint,
+        signature,
+        targetSignature: trade.signature,
+        message: readiness.error
+      });
+      return { ready: false, error: readiness.error };
+    }
+  }
+
+  async #settleTrade(trade, rawAmount, prepared, signature, readiness = null) {
     let confirmation = "confirmed";
     let afterTokenBalance;
     try {
@@ -485,25 +579,33 @@ export class LiveEngine {
         return this.#skip(trade, "confirmed_but_no_token_balance_increase");
       }
       const entryDelta = await this.#transactionDelta(signature, -rawAmount);
+      const existing = this.state.positions.get(trade.mint);
       const position = {
+        ...(existing?.entrySignature === signature ? existing : {}),
         mint: trade.mint, rawTokenAmount: bought.toString(),
         tokenProgram: prepared.tokenProgram.toBase58(), venue: prepared.venue,
-        openedAt: new Date().toISOString(), entrySignature: signature,
+        openedAt: existing?.openedAt ?? new Date().toISOString(), entrySignature: signature,
         targetEntrySignature: trade.signature, costLamports: rawAmount.toString(),
         entryWalletDeltaLamports: entryDelta.toString(),
+        provisional: false,
         sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
       };
-      this.state.setPosition(position);
+      if (existing?.exitRequest) {
+        position.rawTokenAmount = existing.rawTokenAmount;
+      }
+      const closedWhileConfirming = !existing && readiness?.created;
+      if (!closedWhileConfirming) this.state.setPosition(position);
       this.state.updateSignal(trade.signature, {
         status: "confirmed", signature, confirmation,
-        entryWalletDeltaLamports: entryDelta.toString()
+        entryWalletDeltaLamports: entryDelta.toString(),
+        closedWhileConfirming
       });
       const record = {
         type: "LIVE_BUY", at: position.openedAt, mint: trade.mint,
         sourceWallet: position.sourceWallet, sourceName: position.sourceName,
         rawTokenAmount: bought.toString(), spendSol: Number(rawAmount) / LAMPORTS_PER_SOL,
         walletDeltaLamports: entryDelta.toString(), venue: prepared.venue,
-        signature, targetSignature: trade.signature, confirmation
+        signature, targetSignature: trade.signature, confirmation, closedWhileConfirming
       };
       this.#write(record);
       return record;
@@ -560,7 +662,11 @@ export class LiveEngine {
   }
 
   #startSettlement(trade, rawAmount, prepared, signature) {
-    const promise = this.#settleTrade(trade, rawAmount, prepared, signature)
+    const readiness = { ready: false, created: false, error: null };
+    const readyPromise = trade.side === "BUY"
+      ? this.#primeProcessedBuy(trade, rawAmount, prepared, signature, readiness)
+      : Promise.resolve({ ready: true });
+    const promise = this.#settleTrade(trade, rawAmount, prepared, signature, readiness)
       .then((record) => {
         this.log("live_settled", {
           side: trade.side, mint: trade.mint, signature,
@@ -595,7 +701,7 @@ export class LiveEngine {
           signature, error: errorMessage(error)
         };
       });
-    const entry = { side: trade.side, promise };
+    const entry = { side: trade.side, promise, readyPromise, readiness };
     this.settlements.set(trade.mint, entry);
     const cleanup = () => {
       if (this.settlements.get(trade.mint) === entry) this.settlements.delete(trade.mint);
@@ -653,10 +759,15 @@ export class LiveEngine {
     if (trade.side !== "BUY") throw new Error("Only BUY signals can be probed");
     const startedAtMs = Date.now();
     const rawAmount = solToLamports(spendSol);
+    const maxEntryDriftBps = trade.fastProfile
+      ? this.config.fastMaxEntryDriftBps ?? this.config.liveMaxEntryDriftBps ?? 500
+      : this.config.liveMaxEntryDriftBps ?? 500;
     const prepared = await this.#prepareWithFallback(trade, rawAmount, {
       venueHint: trade.venue ?? null,
       skipSimulation: true,
-      skipBeforeTokenBalance: true
+      skipBeforeTokenBalance: true,
+      targetAveragePriceSol: trade.averagePriceSol ?? null,
+      maxEntryDriftBps
     });
     const preparedAtMs = Date.now();
     const expectedTokenOutRaw = prepared.expectedTokenOutRaw ?? null;
@@ -671,6 +782,8 @@ export class LiveEngine {
     return {
       venue: prepared.venue,
       expectedTokenOutRaw,
+      hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
+      rpcSource: prepared.rpcSource ?? "primary",
       tokenDecimals,
       copyPriceSol,
       entryDriftBps: this.#entryDriftBps(trade, prepared, rawAmount),
@@ -699,7 +812,16 @@ export class LiveEngine {
     if (this.state.hasHandled(trade.signature)) return this.#skip(trade, "signal_already_handled");
 
     const pending = this.settlements.get(trade.mint);
-    if (pending) await pending.promise;
+    if (pending) {
+      if (trade.side === "SELL" && pending.side === "BUY") {
+        const ready = await pending.readyPromise;
+        if (!ready?.ready && !this.state.positions.has(trade.mint)) {
+          await pending.promise;
+        }
+      } else {
+        await pending.promise;
+      }
+    }
 
     const signalAgeMs = trade.signalSource === "processed_logs" && Number.isFinite(trade.observedAtMs)
       ? Math.max(0, Date.now() - trade.observedAtMs)
@@ -742,7 +864,9 @@ export class LiveEngine {
         existing, trade, trade.signalSource === "max_hold" ? "max_hold" : "target_sell"
       );
       const current = await this.executor.tokenBalance(
-        new PublicKey(position.mint), new PublicKey(position.tokenProgram)
+        new PublicKey(position.mint),
+        new PublicKey(position.tokenProgram),
+        position.provisional ? "processed" : "confirmed"
       );
       if (current === 0n) {
         this.state.deletePosition(trade.mint);
@@ -755,12 +879,23 @@ export class LiveEngine {
     let prepared;
     let preparedAtMs;
     let entryDriftBps = null;
+    const maxEntryDriftBps = trade.side === "BUY"
+      ? trade.fastProfile
+        ? this.config.fastMaxEntryDriftBps ?? this.config.liveMaxEntryDriftBps ?? 500
+        : this.config.liveMaxEntryDriftBps ?? 500
+      : null;
     const prepareStartedAtMs = Date.now();
     try {
       prepared = await this.#prepareWithFallback(trade, rawAmount, {
         venueHint: trade.venue ?? null,
         skipSimulation: Boolean(trade.fastProfile && this.config.fastSkipSimulation),
-        skipBeforeTokenBalance: Boolean(trade.fastProfile && trade.side === "BUY")
+        skipBeforeTokenBalance: Boolean(trade.fastProfile && trade.side === "BUY"),
+        balanceCommitment: trade.side === "SELL" &&
+          this.state.positions.get(trade.mint)?.provisional
+          ? "processed"
+          : "confirmed",
+        targetAveragePriceSol: trade.side === "BUY" ? trade.averagePriceSol ?? null : null,
+        maxEntryDriftBps
       });
       preparedAtMs = Date.now();
     } catch (error) {
@@ -778,9 +913,6 @@ export class LiveEngine {
         return this.#skip(trade, `signal_too_old_after_prepare_${currentAge ?? "unknown"}ms`);
       }
       entryDriftBps = this.#entryDriftBps(trade, prepared, rawAmount);
-      const maxEntryDriftBps = trade.fastProfile
-        ? this.config.fastMaxEntryDriftBps ?? this.config.liveMaxEntryDriftBps ?? 500
-        : this.config.liveMaxEntryDriftBps ?? 500;
       if (entryDriftBps !== null && entryDriftBps > maxEntryDriftBps) {
         return this.#skip(trade, `entry_price_drift_${entryDriftBps}bps`);
       }
@@ -810,6 +942,8 @@ export class LiveEngine {
       tokenProgram: prepared.tokenProgram.toBase58(),
       beforeTokenBalance: prepared.beforeTokenBalance.toString(),
       rawAmount: rawAmount.toString(), lastValidBlockHeight: prepared.lastValidBlockHeight,
+      hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
+      rpcSource: prepared.rpcSource ?? "primary",
       sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
     };
     if (!this.state.reserveSignal(trade, reservation, trade.side === "BUY" ? rawAmount : 0n)) {
@@ -843,6 +977,8 @@ export class LiveEngine {
       fastProfile: Boolean(trade.fastProfile),
       sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null,
       entryDriftBps,
+      hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
+      rpcSource: prepared.rpcSource ?? "primary",
       prepareMs: preparedAtMs - prepareStartedAtMs,
       signalToPreparedMs: Number.isFinite(trade.observedAtMs)
         ? preparedAtMs - trade.observedAtMs : null,
