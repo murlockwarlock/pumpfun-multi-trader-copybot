@@ -125,6 +125,7 @@ async function sendAdminReport(title, day = utcDay()) {
     `Потрачено сегодня: ${snapshot.dailySpendSol.toFixed(9)} SOL`,
     `PnL-счётчик риска: ${snapshot.dailyRealizedPnlSol >= 0 ? "+" : ""}${snapshot.dailyRealizedPnlSol.toFixed(9)} SOL`,
     `Убытков подряд: ${snapshot.consecutiveLosses}`,
+    `Quarantine mint: ${snapshot.quarantinedMints} (без позиции: ${snapshot.quarantinedBuysWithoutPosition}, позиции: ${snapshot.quarantinedPositions})`,
     `Новые BUY: ${snapshot.buyPauseActive ? "на паузе" : "разрешены"}`,
     shadowReport ? "" : null,
     shadowReport ? formatShadowReport(shadowReport) : null
@@ -901,6 +902,7 @@ try {
       tradingMode: config.tradingMode,
       openPositions: trader.positions.size,
       unresolvedExits: trader.unresolvedExitCount,
+      ...trader.inventoryHealth(),
       shadowOpenPositions: shadowTrader?.positions.size ?? 0,
       fallbackActive,
       fallbackQueued: fallbackWaiters.length,

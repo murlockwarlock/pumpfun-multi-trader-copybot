@@ -63,3 +63,29 @@ test("tracks realized loss and resets UTC daily risk counters", () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
+
+test("quarantine is mint-scoped, sticky across restart, and cannot delete its position", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-quarantine-state-"));
+  try {
+    const file = path.join(tempDir, "state.json");
+    const state = new LiveState(file);
+    state.setPosition({ mint: "mint-1", rawTokenAmount: "100", ownershipStatus: "quarantined" });
+    state.quarantineMint("mint-1", {
+      kind: "buy", reason: "inventory_baseline_unproven", signature: "copy-buy",
+      targetSignature: "target-buy", evidence: { observedTokenBalance: "120" }
+    });
+    assert.equal(state.deletePosition("mint-1"), false);
+    assert.equal(state.positions.has("mint-1"), true);
+
+    const restarted = new LiveState(file);
+    assert.equal(restarted.isQuarantined("mint-1"), true);
+    assert.equal(restarted.getQuarantine("mint-1").firstSeenAt !== undefined, true);
+    assert.throws(() => restarted.clearQuarantine("mint-1"), /explicit audit reason/);
+    assert.equal(restarted.clearQuarantine("mint-1", "operator verified transaction flow"), true);
+    const audited = new LiveState(file);
+    assert.equal(audited.isQuarantined("mint-1"), false);
+    assert.equal(audited.quarantineAudit.at(-1).resolution, "operator verified transaction flow");
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});

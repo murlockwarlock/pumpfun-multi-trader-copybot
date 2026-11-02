@@ -9,7 +9,10 @@ import { PumpExecutor } from "./pump-executor.js";
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const LIVE_CONFIRMATION = "I_UNDERSTAND_REAL_FUNDS";
 const ACTIVE_SIGNAL_STATUSES = new Set([
-  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed"
+  "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed",
+  // A quarantined BUY still occupies its mint and capital reservation.  It is
+  // deliberately handled as an active exposure, not as a terminal signal.
+  "position_quarantined"
 ]);
 const RECOVERABLE_EXIT_STATUSES = new Set(["expired_no_balance_change", "legacy_exit_unknown"]);
 
@@ -59,7 +62,27 @@ export class LiveEngine {
       consecutiveLosses: this.state.consecutiveLosses,
       buyPauseActive: this.#buyPauseActive(),
       openPositions: this.state.positions.size,
-      unresolvedExits: this.unresolvedExitCount
+      unresolvedExits: this.unresolvedExitCount,
+      ...this.inventoryHealth()
+    };
+  }
+
+  inventoryHealth() {
+    const quarantinedPositions = [...this.state.positions.values()]
+      .filter(position => position.ownershipStatus === "quarantined").length;
+    const quarantinedBuysWithoutPosition = [...this.state.quarantines.values()]
+      .filter(quarantine => !this.state.positions.has(quarantine.mint)).length;
+    return {
+      quarantinedMints: this.state.quarantines.size,
+      quarantinedBuysWithoutPosition,
+      quarantinedPositions,
+      quarantines: [...this.state.quarantines.values()].map(quarantine => ({
+        mint: quarantine.mint,
+        reason: quarantine.reason,
+        signature: quarantine.signature ?? null,
+        targetSignature: quarantine.targetSignature ?? null,
+        firstSeenAt: quarantine.firstSeenAt
+      }))
     };
   }
 
@@ -283,37 +306,60 @@ export class LiveEngine {
   }
 
   #quarantinePosition(position, reason, details = {}) {
+    const quarantine = this.state.quarantineMint(position.mint, {
+      kind: "position",
+      reason,
+      signature: position.entrySignature ?? null,
+      targetSignature: position.targetEntrySignature ?? null,
+      evidence: details
+    });
     const updated = {
       ...position,
       ownershipStatus: "quarantined",
       ownershipReason: reason,
       ownershipEvidence: details,
-      ownershipBlockedAt: new Date().toISOString()
+      ownershipBlockedAt: position.ownershipBlockedAt ?? quarantine.record.firstSeenAt
     };
     this.state.setPosition(updated);
-    this.log("live_position_quarantined", {
-      mint: position.mint,
-      entrySignature: position.entrySignature ?? null,
-      reason,
-      ...details
-    });
+    if (quarantine.created) {
+      this.log("live_position_quarantined", {
+        mint: position.mint,
+        entrySignature: position.entrySignature ?? null,
+        reason,
+        ...details
+      });
+    }
     return updated;
   }
 
   #quarantineBuy(signal, reason, details = {}) {
+    const quarantine = this.state.quarantineMint(signal.mint, {
+      kind: "buy",
+      reason,
+      signature: signal.signature ?? null,
+      targetSignature: signal.targetSignature,
+      evidence: details
+    });
     this.state.updateSignal(signal.targetSignature, {
       status: "position_quarantined",
       ownershipStatus: "quarantined",
       ownershipReason: reason,
-      ownershipEvidence: details
+      ownershipEvidence: details,
+      quarantineFirstSeenAt: quarantine.record.firstSeenAt
     });
-    this.log("live_position_quarantined", {
-      mint: signal.mint,
-      targetSignature: signal.targetSignature,
-      signature: signal.signature ?? null,
-      reason,
-      ...details
-    });
+    const position = this.state.positions.get(signal.mint);
+    if (position && position.ownershipStatus !== "quarantined") {
+      this.#quarantinePosition(position, reason, details);
+    }
+    if (quarantine.created) {
+      this.log("live_position_quarantined", {
+        mint: signal.mint,
+        targetSignature: signal.targetSignature,
+        signature: signal.signature ?? null,
+        reason,
+        ...details
+      });
+    }
   }
 
   #inventoryBaseline(position) {
@@ -400,6 +446,10 @@ export class LiveEngine {
   }
 
   async #reconcileMint(address) {
+    // Quarantine is sticky.  Reconciliation may collect evidence for an
+    // operator, but a fresh balance or a later confirmation must not turn an
+    // ambiguous mint back into a sellable position automatically.
+    if (this.state.isQuarantined(address)) return;
     const orphan = this.#pendingBuys().find(s => s.mint === address && s.pendingExit);
     if (orphan && !this.positions.has(address) && !this.settlements.has(address) && !this.#hasActiveSell(address)) {
       const buyStatus = await this.executor.signatureStatus(orphan.signature).catch(() => null);
@@ -443,7 +493,15 @@ export class LiveEngine {
       );
       const before = orphan.beforeTokenBalanceKnown === true && /^\d+$/.test(orphan.beforeTokenBalance ?? "")
         ? BigInt(orphan.beforeTokenBalance) : null;
-      if (before !== null && balance < before + executedDelta) {
+      if (before === null) {
+        this.#quarantineBuy(orphan, "inventory_baseline_unproven", {
+          transactionTokenDelta: executedDelta.toString(),
+          observedTokenBalance: balance.toString(),
+          evidence: "post_buy_balance_cannot_reconstruct_pre_buy_inventory_or_intervening_flows"
+        });
+        return;
+      }
+      if (balance < before + executedDelta) {
         this.#quarantineBuy(orphan, "post_buy_inventory_ambiguous", {
           beforeTokenBalance: before.toString(),
           transactionTokenDelta: executedDelta.toString(),
@@ -452,22 +510,13 @@ export class LiveEngine {
         });
         return;
       }
-      if (before === null && balance < executedDelta) {
-        this.#quarantineBuy(orphan, "buy_delta_exceeds_observed_inventory", {
-          transactionTokenDelta: executedDelta.toString(),
-          observedTokenBalance: balance.toString(),
-          evidence: "confirmed_buy_delta_exceeds_current_balance"
-        });
-        return;
-      }
       const bought = executedDelta;
       if (bought > 0n && !this.positions.has(address)) {
-        const inventoryBaseline = before ?? (balance - bought);
         this.state.setPosition({
           mint: address, rawTokenAmount: bought.toString(), tokenProgram: orphan.tokenProgram,
           venue: orphan.venue, openedAt: orphan.at, entrySignature: orphan.signature,
           targetEntrySignature: orphan.targetSignature, costLamports: orphan.rawAmount,
-          inventoryBaselineRaw: inventoryBaseline.toString(),
+          inventoryBaselineRaw: before.toString(),
           provisional: buyStatus.confirmationStatus === "processed",
           sourceWallet: orphan.sourceWallet, sourceName: orphan.sourceName
         });
@@ -594,6 +643,14 @@ export class LiveEngine {
           candidate.side === "SELL" && candidate.entrySignature === signal.signature &&
           ["confirmed", "reconciled_confirmed", "confirmed_pending_close"].includes(candidate.status)
         );
+        if (signal.beforeTokenBalanceKnown !== true && !exitedWhileConfirming) {
+          this.#quarantineBuy(signal, "inventory_baseline_unproven", {
+            transactionTokenDelta: executedTokenDelta?.toString() ?? null,
+            observedTokenBalance: after.toString(),
+            evidence: "post_buy_balance_cannot_reconstruct_pre_buy_inventory_or_intervening_flows"
+          });
+          continue;
+        }
         if (executedTokenDelta !== null && signal.beforeTokenBalanceKnown === true &&
             after < before + executedTokenDelta && !exitedWhileConfirming) {
           this.#quarantineBuy(signal, "post_buy_inventory_ambiguous", {
@@ -609,6 +666,14 @@ export class LiveEngine {
           -BigInt(signal.rawAmount)
         );
         const existing = this.state.positions.get(signal.mint);
+        if (this.state.isQuarantined(signal.mint) || existing?.ownershipStatus === "quarantined") {
+          this.#quarantineBuy(signal, "inventory_quarantine_sticky", {
+            transactionTokenDelta: executedTokenDelta?.toString() ?? null,
+            observedTokenBalance: after.toString(),
+            evidence: "existing_durable_inventory_quarantine"
+          });
+          continue;
+        }
         const laterSellExists = this.state.handledSignals.some((candidate) =>
           candidate.mint === signal.mint && candidate.side === "SELL" &&
           Date.parse(candidate.at ?? "") >= Date.parse(signal.at ?? "") &&
@@ -622,8 +687,7 @@ export class LiveEngine {
             tokenProgram: signal.tokenProgram, venue: signal.venue, openedAt: signal.at,
             entrySignature: signal.signature, targetEntrySignature: signal.targetSignature,
             costLamports: signal.rawAmount, entryWalletDeltaLamports: entryDelta.toString(),
-            inventoryBaselineRaw: signal.beforeTokenBalanceKnown === true
-              ? before.toString() : (after - bought).toString(),
+            inventoryBaselineRaw: before.toString(),
             provisional: false,
             sourceWallet: signal.sourceWallet ?? null, sourceName: signal.sourceName ?? null
           });
@@ -631,9 +695,7 @@ export class LiveEngine {
           this.state.setPosition({
             ...existing,
             rawTokenAmount: existing.exitRequest ? existing.rawTokenAmount : bought.toString(),
-            inventoryBaselineRaw: existing.inventoryBaselineRaw ?? (
-              signal.beforeTokenBalanceKnown === true ? before.toString() : (after - bought).toString()
-            ),
+            inventoryBaselineRaw: existing.inventoryBaselineRaw ?? before.toString(),
             entryWalletDeltaLamports: entryDelta.toString(),
             provisional: false
           });
@@ -774,29 +836,32 @@ export class LiveEngine {
       );
       const before = prepared.beforeTokenBalanceKnown === true
         ? prepared.beforeTokenBalance : 0n;
-      if (prepared.beforeTokenBalanceKnown === true && afterTokenBalance < before + delta) {
-        readiness.error = "processed_inventory_ambiguous";
-        this.state.updateSignal(trade.signature, {
-          ownershipStatus: "quarantined",
-          ownershipReason: readiness.error,
-          ownershipEvidence: {
-            beforeTokenBalance: before.toString(),
+      if (prepared.beforeTokenBalanceKnown !== true) {
+        readiness.error = "inventory_baseline_unproven";
+        this.#quarantineBuy(
+          this.state.handledSignals.find(candidate => candidate.targetSignature === trade.signature) ?? {
+            ...trade, targetSignature: trade.signature, signature
+          },
+          readiness.error,
+          {
             processedTokenDelta: delta.toString(),
-            observedTokenBalance: afterTokenBalance.toString()
+            observedTokenBalance: afterTokenBalance.toString(),
+            evidence: "post_buy_balance_cannot_reconstruct_pre_buy_inventory_or_intervening_flows"
           }
-        });
-        this.log("live_position_quarantined", {
-          mint: trade.mint, signature, targetSignature: trade.signature,
-          reason: readiness.error,
-          beforeTokenBalance: before.toString(),
-          processedTokenDelta: delta.toString(),
-          observedTokenBalance: afterTokenBalance.toString()
-        });
+        );
         return { ready: false, deferred: true, error: readiness.error };
       }
-      if (prepared.beforeTokenBalanceKnown !== true && afterTokenBalance < delta) {
-        readiness.error = "processed_token_balance_unavailable";
-        return { ready: false, error: readiness.error };
+      if (afterTokenBalance < before + delta) {
+        readiness.error = "processed_inventory_ambiguous";
+        this.#quarantineBuy(this.state.handledSignals.find(
+          candidate => candidate.targetSignature === trade.signature
+        ) ?? { ...trade, targetSignature: trade.signature, signature }, readiness.error, {
+          beforeTokenBalance: before.toString(),
+          processedTokenDelta: delta.toString(),
+          observedTokenBalance: afterTokenBalance.toString(),
+          evidence: "confirmed_buy_delta_but_inventory_below_expected"
+        });
+        return { ready: false, deferred: true, error: readiness.error };
       }
       const bought = delta;
       readiness.processedEvidence = "processed_transaction_delta";
@@ -810,10 +875,12 @@ export class LiveEngine {
       }
 
       const existing = this.state.positions.get(trade.mint);
+      if (this.state.isQuarantined(trade.mint) || existing?.ownershipStatus === "quarantined") {
+        readiness.error = "inventory_quarantine_sticky";
+        return { ready: false, deferred: true, error: readiness.error };
+      }
       if (!existing) {
         readiness.created = true;
-        const inventoryBaseline = prepared.beforeTokenBalanceKnown === true
-          ? before : afterTokenBalance - bought;
         this.state.setPosition({
           mint: trade.mint,
           rawTokenAmount: bought.toString(),
@@ -823,7 +890,7 @@ export class LiveEngine {
           entrySignature: signature,
           targetEntrySignature: trade.signature,
           costLamports: rawAmount.toString(),
-          inventoryBaselineRaw: inventoryBaseline.toString(),
+          inventoryBaselineRaw: before.toString(),
           provisional: true,
           sourceWallet: trade.sourceWallet ?? null,
           sourceName: trade.sourceName ?? null
@@ -897,30 +964,47 @@ export class LiveEngine {
             signature, trade.mint, this.wallet?.publicKey, "confirmed"
           ).catch(() => null))
         : null;
+      const buySignal = this.state.handledSignals.find(
+        candidate => candidate.targetSignature === trade.signature
+      );
+      if (buySignal?.ownershipStatus === "quarantined" || this.state.isQuarantined(trade.mint)) {
+        if (buySignal && buySignal.status !== "position_quarantined") {
+          this.#quarantineBuy(buySignal, "inventory_quarantine_sticky", {
+            observedTokenBalance: afterTokenBalance.toString(),
+            evidence: "fresh_settlement_cannot_clear_existing_quarantine"
+          });
+        }
+        return {
+          type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+          targetSignature: trade.signature, signature, mint: trade.mint,
+          side: trade.side, error: "BUY inventory remains quarantined"
+        };
+      }
       if (executedTokenDelta !== null && executedTokenDelta > 0n) {
         const exitedWhileConfirming = this.state.handledSignals.some(candidate =>
           candidate.side === "SELL" && candidate.entrySignature === signature &&
           ["confirmed", "reconciled_confirmed", "confirmed_pending_close"].includes(candidate.status)
         );
+        if (prepared.beforeTokenBalanceKnown !== true && !exitedWhileConfirming) {
+          this.#quarantineBuy(buySignal, "inventory_baseline_unproven", {
+            transactionTokenDelta: executedTokenDelta.toString(),
+            observedTokenBalance: afterTokenBalance.toString(),
+            evidence: "post_buy_balance_cannot_reconstruct_pre_buy_inventory_or_intervening_flows"
+          });
+          return {
+            type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+            targetSignature: trade.signature, signature, mint: trade.mint,
+            side: trade.side, error: "confirmed BUY baseline is unproven"
+          };
+        }
         if (prepared.beforeTokenBalanceKnown === true &&
             afterTokenBalance < prepared.beforeTokenBalance + executedTokenDelta &&
             !exitedWhileConfirming) {
-          this.state.updateSignal(trade.signature, {
-            status: "position_quarantined", signature,
-            ownershipStatus: "quarantined",
-            ownershipReason: "post_buy_inventory_ambiguous",
-            ownershipEvidence: {
-              beforeTokenBalance: prepared.beforeTokenBalance.toString(),
-              transactionTokenDelta: executedTokenDelta.toString(),
-              observedTokenBalance: afterTokenBalance.toString()
-            }
-          });
-          this.log("live_position_quarantined", {
-            mint: trade.mint, targetSignature: trade.signature, signature,
-            reason: "post_buy_inventory_ambiguous",
+          this.#quarantineBuy(buySignal, "post_buy_inventory_ambiguous", {
             beforeTokenBalance: prepared.beforeTokenBalance.toString(),
             transactionTokenDelta: executedTokenDelta.toString(),
-            observedTokenBalance: afterTokenBalance.toString()
+            observedTokenBalance: afterTokenBalance.toString(),
+            evidence: "confirmed_buy_delta_but_inventory_below_expected"
           });
           return {
             type: "LIVE_UNKNOWN", at: new Date().toISOString(),
@@ -929,21 +1013,10 @@ export class LiveEngine {
             sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
           };
         }
-        if (prepared.beforeTokenBalanceKnown !== true && afterTokenBalance < executedTokenDelta &&
-            !exitedWhileConfirming) {
-          this.state.updateSignal(trade.signature, {
-            status: "confirmation_unknown", signature,
-            recoveryEvidence: "confirmed_buy_token_delta_exceeds_balance"
-          });
-          return {
-            type: "LIVE_UNKNOWN", at: new Date().toISOString(),
-            targetSignature: trade.signature, signature, mint: trade.mint,
-            side: trade.side, error: "confirmed BUY token delta exceeds balance"
-          };
-        }
         bought = executedTokenDelta;
         attribution = "confirmed_transaction_delta";
-      } else if (readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
+      } else if (readiness?.processedEvidence && readiness.rawTokenAmount > 0n &&
+          prepared.beforeTokenBalanceKnown === true) {
         bought = readiness.rawTokenAmount;
         attribution = readiness.processedEvidence;
       } else if (typeof this.executor.transactionTokenDelta !== "function" &&
@@ -972,6 +1045,18 @@ export class LiveEngine {
       }
       const entryDelta = await this.#transactionDelta(signature, -rawAmount);
       const existing = this.state.positions.get(trade.mint);
+      if (this.state.isQuarantined(trade.mint) || existing?.ownershipStatus === "quarantined") {
+        this.#quarantineBuy(buySignal, "inventory_quarantine_sticky", {
+          transactionTokenDelta: executedTokenDelta?.toString() ?? null,
+          observedTokenBalance: afterTokenBalance.toString(),
+          evidence: "settlement_refused_to_clear_durable_quarantine"
+        });
+        return {
+          type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+          targetSignature: trade.signature, signature, mint: trade.mint,
+          side: trade.side, error: "BUY inventory remains quarantined"
+        };
+      }
       const position = {
         ...(existing?.entrySignature === signature ? existing : {}),
         mint: trade.mint, rawTokenAmount: bought.toString(),
@@ -979,11 +1064,8 @@ export class LiveEngine {
         openedAt: existing?.openedAt ?? new Date().toISOString(), entrySignature: signature,
         targetEntrySignature: trade.signature, costLamports: rawAmount.toString(),
         entryWalletDeltaLamports: entryDelta.toString(),
-        inventoryBaselineRaw: existing?.inventoryBaselineRaw ?? (
-          prepared.beforeTokenBalanceKnown === true
-            ? prepared.beforeTokenBalance.toString()
-            : (afterTokenBalance - bought).toString()
-        ),
+        inventoryBaselineRaw: existing?.inventoryBaselineRaw ??
+          prepared.beforeTokenBalance.toString(),
         provisional: false,
         sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
       };
@@ -1016,6 +1098,19 @@ export class LiveEngine {
       });
       return this.#skip(trade, "position_missing_during_sell_settlement");
     }
+    if (this.state.isQuarantined(trade.mint) || position.ownershipStatus === "quarantined") {
+      this.state.updateSignal(trade.signature, {
+        status: "confirmation_unknown", signature,
+        recoveryEvidence: "sell_settlement_blocked_by_inventory_quarantine"
+      });
+      const unknown = {
+        type: "LIVE_UNKNOWN", at: new Date().toISOString(), targetSignature: trade.signature,
+        signature, mint: trade.mint, side: trade.side,
+        error: "SELL settlement blocked by inventory quarantine"
+      };
+      this.#write(unknown);
+      return unknown;
+    }
     let executedTokenDelta = null;
     if (typeof this.executor.transactionTokenDelta === "function") {
       executedTokenDelta = toBigIntOrNull(await this.executor.transactionTokenDelta(
@@ -1035,6 +1130,25 @@ export class LiveEngine {
         type: "LIVE_UNKNOWN", at: new Date().toISOString(), targetSignature: trade.signature,
         signature, mint: trade.mint, side: trade.side,
         error: "confirmed transaction has no observed token delta"
+      };
+      this.#write(unknown);
+      return unknown;
+    }
+    if (sold > BigInt(position.rawTokenAmount)) {
+      this.#quarantinePosition(position, "sell_delta_exceeds_owned_inventory", {
+        ownedTokenAmount: position.rawTokenAmount,
+        transactionTokenDelta: executedTokenDelta?.toString() ?? null,
+        observedSoldAmount: sold.toString(),
+        evidence: "transaction_specific_sell_exceeds_proven_strategy_inventory"
+      });
+      this.state.updateSignal(trade.signature, {
+        status: "confirmation_unknown", signature,
+        recoveryEvidence: "confirmed_sell_exceeds_proven_inventory"
+      });
+      const unknown = {
+        type: "LIVE_UNKNOWN", at: new Date().toISOString(), targetSignature: trade.signature,
+        signature, mint: trade.mint, side: trade.side,
+        error: "confirmed SELL exceeded proven strategy inventory"
       };
       this.#write(unknown);
       return unknown;
@@ -1290,7 +1404,7 @@ export class LiveEngine {
     }
     if (trade.side === "SELL") {
       const ownedPosition = this.state.positions.get(trade.mint);
-      if (ownedPosition?.ownershipStatus === "quarantined") {
+      if (this.state.isQuarantined(trade.mint) || ownedPosition?.ownershipStatus === "quarantined") {
         return this.#skip(trade, "position_ownership_quarantined");
       }
       if (ownedPosition && !this.#samePositionSource(ownedPosition, trade)) {
@@ -1344,6 +1458,9 @@ export class LiveEngine {
     let balanceCommitment = "confirmed";
 
     if (trade.side === "BUY") {
+      if (this.state.isQuarantined(trade.mint)) {
+        return this.#skip(trade, "mint_inventory_quarantined");
+      }
       this.#enforceRiskLimits();
       if (this.#buyPauseActive()) return this.#skip(trade, "buy_pause_active");
       if (signalAgeMs === null || signalAgeMs > maxSignalAgeMs) {
@@ -1352,7 +1469,7 @@ export class LiveEngine {
       if (this.state.positions.has(trade.mint)) return this.#skip(trade, "position_already_open");
       const pendingBuys = this.#pendingBuys();
       const occupied = new Set([...this.state.positions.keys(), ...this.preparingBuys.keys(),
-        ...pendingBuys.map(signal => signal.mint)]);
+        ...pendingBuys.map(signal => signal.mint), ...this.state.quarantines.keys()]);
       if (occupied.has(trade.mint)) return this.#skip(trade, "position_already_open");
       if (occupied.size >= this.config.maxOpenPositions) {
         return this.#skip(trade, "max_open_positions");
@@ -1385,15 +1502,24 @@ export class LiveEngine {
       );
       balanceCommitment = position.provisional ? "processed" : "confirmed";
       prewarm = startPrewarm();
-      const current = await this.executor.tokenBalance(
-        new PublicKey(position.mint),
-        new PublicKey(position.tokenProgram),
-        position.provisional ? "processed" : "confirmed"
-      );
+      let current;
+      try {
+        current = await this.executor.tokenBalance(
+          new PublicKey(position.mint),
+          new PublicKey(position.tokenProgram),
+          position.provisional ? "processed" : "confirmed"
+        );
+      } catch (error) {
+        this.#scheduleExitRetry(trade.mint, `balance_unavailable:${errorMessage(error)}`);
+        return this.#skip(trade, "sell_balance_unavailable");
+      }
       if (current === 0n) {
-        if (position.provisional) return this.#skip(trade, "awaiting_processed_balance");
-        this.state.deletePosition(trade.mint);
-        return this.#skip(trade, "position_balance_already_zero");
+        this.#quarantinePosition(position, "out_of_band_inventory_change", {
+          ownedTokenAmount: position.rawTokenAmount,
+          observedTokenBalance: "0",
+          evidence: "open_position_balance_zero_without_transaction_specific_sell"
+        });
+        return this.#skip(trade, "position_inventory_disappeared");
       }
       const inventoryBaseline = this.#inventoryBaseline(position);
       if (inventoryBaseline === null) {
@@ -1460,14 +1586,17 @@ export class LiveEngine {
 
     if (trade.side === "SELL") {
       const position = this.state.positions.get(trade.mint);
-      if (position?.ownershipStatus === "quarantined") {
+      if (this.state.isQuarantined(trade.mint) || position?.ownershipStatus === "quarantined") {
         return this.#skip(trade, "position_ownership_quarantined");
       }
       const sellable = bigintMin(BigInt(position.rawTokenAmount), prepared.beforeTokenBalance);
       if (sellable === 0n) {
-        if (position.provisional) return this.#skip(trade, "awaiting_processed_balance");
-        this.state.deletePosition(trade.mint);
-        return this.#skip(trade, "position_balance_already_zero");
+        this.#quarantinePosition(position, "out_of_band_inventory_change", {
+          ownedTokenAmount: position.rawTokenAmount,
+          observedTokenBalance: prepared.beforeTokenBalance.toString(),
+          evidence: "prepared_sell_balance_zero_without_transaction_specific_sell"
+        });
+        return this.#skip(trade, "position_inventory_disappeared");
       }
       const inventoryBaseline = this.#inventoryBaseline(position);
       if (inventoryBaseline === null) {

@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -36,9 +36,9 @@ limits, crash recovery, and auditable JSONL logs.
 - Run a fee-aware shadow portfolio for every monitored trader alongside guarded
   live execution, Telegram reports, and exact realized PnL accounting.
 - Recover incomplete settlements and retry emergency exits after restarts.
-- Make a submitted BUY sellable from processed evidence only when a measured
-  baseline or trusted processed token delta exists; otherwise keep the exit
-  pending until confirmed transaction attribution is available.
+- Make a submitted BUY sellable only when a measured pre-BUY baseline and
+  sufficient post-BUY inventory are proven; a positive transaction delta alone
+  never proves the currently available strategy inventory.
 - Deploy atomically with systemd health checks and automatic rollback.
 
 ## Architecture
@@ -159,18 +159,45 @@ For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
 cannot then consume the separate slippage allowance and land beyond that target-
 relative ceiling. A matching SELL can be built at `processed` only when the
-executor has a trusted, signature-specific processed token-delta source. A
-balance increase by itself is never treated as BUY provenance. Standard Solana
-transaction metadata is confirmed-only, so the default executor logs the
-deferral and waits for confirmed attribution rather than selling a pre-existing
-or externally transferred balance.
+executor has a trusted, signature-specific processed token-delta source *and a
+measured pre-BUY baseline*. A balance increase or a positive transaction delta
+by itself is never treated as proof of currently sellable inventory. The fast
+path deliberately skips the pre-submit token-balance RPC; if that leaves the
+baseline unknown, the BUY remains durably quarantined after submission and no
+SELL is sent. This keeps the signal-to-submit path fast without guessing which
+fungible tokens belong to the strategy.
 
 Confirmed BUY recovery records the pre-BUY inventory floor. If current
 inventory is below that floor plus the transaction-specific BUY delta, the
-position is quarantined as ownership-ambiguous and remains non-sellable across
-restart. Confirmed SELL settlement uses its own transaction token delta as the
-source of sold quantity; missing metadata is surfaced as unknown instead of
-using an arbitrary balance snapshot or rebroadcasting blindly.
+mint is quarantined as ownership-ambiguous and remains non-sellable across
+restart, even if a later foreign transfer restores the numeric balance.
+Confirmed SELL settlement uses its own transaction token delta as the source of
+sold quantity; missing metadata or a delta larger than the proven position is
+surfaced as unknown instead of using an arbitrary balance snapshot or
+rebroadcasting blindly.
+
+### Inventory ownership model
+
+The durable state for one mint distinguishes these facts instead of treating a
+single balance snapshot as a complete ledger:
+
+| State | Meaning |
+|---|---|
+| `beforeTokenBalance` + `beforeTokenBalanceKnown` | Measured pre-BUY baseline, or explicitly unknown in the low-latency path |
+| Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
+| Position `rawTokenAmount` | Remaining strategy amount after confirmed, transaction-specific SELL deltas |
+| `inventoryBaselineRaw` | The baseline floor that must remain below the strategy amount before SELL is allowed |
+| `quarantines[mint]` | Sticky evidence that baseline/history/flow is incomplete or inconsistent; keyed by mint and durable beyond signal pruning |
+| Pending/ambiguous signals | Reserved exposure whose outcome is not yet known; ambiguous submits are never blindly retried |
+
+The strategy sellable amount is non-zero only when the baseline is known, the
+current balance is at least `baseline + position amount`, and no mint-scoped
+quarantine exists. External deficits, unexplained zero balances, unavailable
+metadata, and SELL deltas exceeding the proven amount preserve the position and
+enter quarantine rather than creating a fake SELL or PnL result. Standard Solana
+RPC does not guarantee a complete historical sequence of every fungible-token
+movement between two observations; when that sequence cannot be proven, the
+implementation fails closed and requires an explicit audited resolution.
 
 ## Live mode
 

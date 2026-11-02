@@ -14,6 +14,11 @@ export class LiveState {
     this.dailyRealizedPnlLamports = 0n;
     this.consecutiveLosses = 0;
     this.positions = new Map();
+    // A quarantine is keyed by mint rather than by a signal.  Handled signals
+    // are intentionally bounded, while an ownership ambiguity must survive
+    // pruning and every restart until an explicit audited resolution.
+    this.quarantines = new Map();
+    this.quarantineAudit = [];
     this.handledSignals = [];
     fs.mkdirSync(path.dirname(file), { recursive: true });
     this.#load();
@@ -37,9 +42,50 @@ export class LiveState {
       }
       this.positions.set(position.mint, position);
     }
+    const quarantines = Array.isArray(state.quarantines) ? state.quarantines : [];
+    for (const quarantine of quarantines) {
+      if (!quarantine?.mint || quarantine.status !== "quarantined") continue;
+      this.quarantines.set(quarantine.mint, quarantine);
+    }
+    this.quarantineAudit = Array.isArray(state.quarantineAudit) ? state.quarantineAudit : [];
     this.handledSignals = state.handledSignals.filter(
       (signal) => typeof signal?.targetSignature === "string"
     );
+    // Migrate the previous PR's signal/position-only quarantine records into
+    // the mint-scoped durable map before any occupancy decision is made.
+    for (const signal of this.handledSignals) {
+      if (signal.status !== "position_quarantined" && signal.ownershipStatus !== "quarantined") continue;
+      if (this.quarantines.has(signal.mint)) continue;
+      const firstSeenAt = signal.quarantineFirstSeenAt ?? signal.updatedAt ?? signal.at ?? new Date().toISOString();
+      this.quarantines.set(signal.mint, {
+        mint: signal.mint,
+        status: "quarantined",
+        kind: "buy",
+        reason: signal.ownershipReason ?? "legacy_position_quarantined",
+        signature: signal.signature ?? null,
+        targetSignature: signal.targetSignature ?? null,
+        firstSeenAt,
+        updatedAt: signal.updatedAt ?? firstSeenAt,
+        lastReason: signal.ownershipReason ?? "legacy_position_quarantined",
+        evidence: signal.ownershipEvidence ?? {}
+      });
+    }
+    for (const position of this.positions.values()) {
+      if (position.ownershipStatus !== "quarantined" || this.quarantines.has(position.mint)) continue;
+      const firstSeenAt = position.ownershipBlockedAt ?? position.openedAt ?? new Date().toISOString();
+      this.quarantines.set(position.mint, {
+        mint: position.mint,
+        status: "quarantined",
+        kind: "position",
+        reason: position.ownershipReason ?? "legacy_position_quarantined",
+        signature: position.entrySignature ?? null,
+        targetSignature: position.targetEntrySignature ?? null,
+        firstSeenAt,
+        updatedAt: firstSeenAt,
+        lastReason: position.ownershipReason ?? "legacy_position_quarantined",
+        evidence: position.ownershipEvidence ?? {}
+      });
+    }
   }
 
   #save() {
@@ -51,6 +97,8 @@ export class LiveState {
       dailyRealizedPnlLamports: this.dailyRealizedPnlLamports.toString(),
       consecutiveLosses: this.consecutiveLosses,
       positions: [...this.positions.values()],
+      quarantines: [...this.quarantines.values()],
+      quarantineAudit: this.quarantineAudit.slice(-200),
       handledSignals: this.handledSignals.slice(-this.handledLimit)
     };
     const temporary = `${this.file}.tmp`;
@@ -103,8 +151,23 @@ export class LiveState {
       this.dailySpendLamports += BigInt(patch.failedFeeLamports ?? 0);
       signal.reservedSpend = "0";
     }
+    const quarantine = this.quarantines.get(signal.mint);
+    if (quarantine && signal.side === "BUY" && patch.status !== "submit_rejected" &&
+        patch.status !== "failed_onchain") {
+      // Never let a later balance snapshot or settlement status overwrite a
+      // durable ownership quarantine.  Only an explicit resolution operation
+      // may remove this mint from the quarantine map.
+      patch = {
+        ...patch,
+        status: "position_quarantined",
+        ownershipStatus: "quarantined",
+        ownershipReason: signal.ownershipReason ?? quarantine.reason,
+        ownershipEvidence: signal.ownershipEvidence ?? quarantine.evidence
+      };
+    }
     if (patch.status === "failed_onchain" && signal.side === "BUY" &&
-        this.positions.get(signal.mint)?.entrySignature === signal.signature) this.positions.delete(signal.mint);
+        this.positions.get(signal.mint)?.entrySignature === signal.signature &&
+        this.positions.get(signal.mint)?.ownershipStatus !== "quarantined") this.positions.delete(signal.mint);
     Object.assign(signal, patch, { updatedAt: new Date().toISOString() });
     this.#save();
   }
@@ -127,12 +190,88 @@ export class LiveState {
   }
 
   setPosition(position) {
-    this.positions.set(position.mint, position);
+    const quarantine = this.quarantines.get(position.mint);
+    const stored = quarantine
+      ? {
+          ...position,
+          ownershipStatus: "quarantined",
+          ownershipReason: position.ownershipReason ?? quarantine.reason,
+          ownershipEvidence: position.ownershipEvidence ?? quarantine.evidence,
+          ownershipBlockedAt: position.ownershipBlockedAt ?? quarantine.firstSeenAt
+        }
+      : position;
+    this.positions.set(position.mint, stored);
     this.#save();
   }
 
-  deletePosition(mint) {
+  deletePosition(mint, { allowQuarantined = false } = {}) {
+    if (!allowQuarantined && this.positions.get(mint)?.ownershipStatus === "quarantined") {
+      return false;
+    }
     this.positions.delete(mint);
     this.#save();
+    return true;
+  }
+
+  quarantineMint(mint, details = {}) {
+    const now = new Date().toISOString();
+    const existing = this.quarantines.get(mint);
+    const record = {
+      ...(existing ?? {}),
+      mint,
+      status: "quarantined",
+      kind: existing?.kind ?? details.kind ?? "inventory",
+      reason: existing?.reason ?? details.reason ?? "unknown",
+      signature: existing?.signature ?? details.signature ?? null,
+      targetSignature: existing?.targetSignature ?? details.targetSignature ?? null,
+      firstSeenAt: existing?.firstSeenAt ?? details.firstSeenAt ?? now,
+      updatedAt: now,
+      lastReason: details.reason ?? existing?.lastReason ?? null,
+      evidence: { ...(existing?.evidence ?? {}), ...(details.evidence ?? {}) }
+    };
+    this.quarantines.set(mint, record);
+    this.#save();
+    return { created: !existing, record };
+  }
+
+  getQuarantine(mint) {
+    return this.quarantines.get(mint) ?? null;
+  }
+
+  isQuarantined(mint) {
+    return this.quarantines.has(mint);
+  }
+
+  clearQuarantine(mint, resolution) {
+    if (!resolution || typeof resolution !== "string") {
+      throw new Error("Quarantine resolution must be an explicit audit reason");
+    }
+    const existing = this.quarantines.get(mint);
+    if (!existing) return false;
+    this.quarantineAudit.push({
+      mint, resolution, at: new Date().toISOString(),
+      reason: existing.reason,
+      signature: existing.signature ?? null,
+      targetSignature: existing.targetSignature ?? null
+    });
+    const position = this.positions.get(mint);
+    if (position?.ownershipStatus === "quarantined") {
+      const resolvedPosition = { ...position };
+      delete resolvedPosition.ownershipStatus;
+      delete resolvedPosition.ownershipReason;
+      delete resolvedPosition.ownershipEvidence;
+      delete resolvedPosition.ownershipBlockedAt;
+      this.positions.set(mint, resolvedPosition);
+    }
+    for (const signal of this.handledSignals.filter(candidate => candidate.mint === mint &&
+        candidate.status === "position_quarantined")) {
+      signal.status = "quarantine_resolved";
+      signal.ownershipStatus = "resolved";
+      signal.ownershipResolution = resolution;
+      signal.updatedAt = new Date().toISOString();
+    }
+    this.quarantines.delete(mint);
+    this.#save();
+    return true;
   }
 }
