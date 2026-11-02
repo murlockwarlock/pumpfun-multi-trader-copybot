@@ -273,6 +273,11 @@ export class LiveEngine {
     );
   }
 
+  #isAmbiguousSubmitError(error) {
+    return /(?:timeout|timed out|fetch failed|econn|enotfound|socket|network|http 5\d\d)/i
+      .test(errorMessage(error));
+  }
+
   async #reconcilePendingSignals() {
     const pendingCloses = this.state.handledSignals.filter(
       (signal) => signal.status === "confirmed_pending_close"
@@ -1020,6 +1025,24 @@ export class LiveEngine {
       this.state.updateSignal(trade.signature, { status: "submitted", signature });
     } catch (error) {
       const message = errorMessage(error);
+      if (this.#isAmbiguousSubmitError(error)) {
+        const expectedSignature = prepared.expectedSignature;
+        this.state.updateSignal(trade.signature, {
+          status: "confirmation_unknown",
+          signature: expectedSignature,
+          submitError: message
+        });
+        const record = {
+          type: "LIVE_SUBMIT_UNKNOWN", stage: "submit", at: new Date().toISOString(),
+          targetSignature: trade.signature, signature: expectedSignature,
+          mint: trade.mint, side: trade.side, error: message,
+          sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
+        };
+        this.#write(record);
+        this.log("live_submit_unknown", record);
+        this.#startSettlement(trade, rawAmount, prepared, expectedSignature);
+        return record;
+      }
       this.state.updateSignal(trade.signature, {
         status: "submit_failed", signature: prepared.expectedSignature, error: message
       });
