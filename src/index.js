@@ -13,7 +13,7 @@ import {
 } from "./parser.js";
 import { SolanaRpc } from "./rpc.js";
 import { resolvePumpCandidates } from "./route-resolver.js";
-import { ShadowEngine } from "./shadow-engine.js";
+import { ShadowClient } from "./shadow-client.js";
 import { TelegramNotifier } from "./telegram-notifier.js";
 import {
 
@@ -223,9 +223,9 @@ async function updateShadow(enriched, shadowBlockReason) {
       });
     }
   }
-  const shadowResult = measuredShadowBlockReason
+  const shadowResult = await (measuredShadowBlockReason
     ? shadowTrader.blockTrade(shadowTrade, measuredShadowBlockReason)
-    : shadowTrader.onTrade(shadowTrade);
+    : shadowTrader.onTrade(shadowTrade));
   log("shadow_result", shadowResult);
 }
 
@@ -252,7 +252,7 @@ function enqueueTrade(
     }
     const result = liveBlockReason && config.tradingMode === "live"
       ? trader.blockTrade(enriched, liveBlockReason)
-      : await trader.onTrade(enriched);
+      : await (trader.executeInLane ? trader.executeInLane(enriched) : trader.onTrade(enriched));
     const completedAtMs = Date.now();
     const signalToResultMs = Number.isFinite(trade.observedAtMs)
       ? completedAtMs - trade.observedAtMs
@@ -861,10 +861,10 @@ try {
       if (identity.enabled) log("telegram_ready", { username: identity.username });
     }).catch(error => log("telegram_verify_error", { message: error.message }));
     const { LiveEngine } = await import("./live-engine.js");
-    trader = new LiveEngine(config, log);
+    trader = new LiveEngine(config, log, liveLanes);
     await trader.initialize();
     if (config.shadowEnabled) {
-      shadowTrader = new ShadowEngine(config);
+      shadowTrader = await ShadowClient.open(config);
       log("shadow_executor_ready", {
         traders: config.targetTraders.length,
         tradeSol: config.shadowTradeSol,

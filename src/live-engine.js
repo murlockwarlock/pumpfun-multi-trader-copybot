@@ -1,3 +1,4 @@
+import { ExecutionLanes } from "./execution-lanes.js";
 import fs from "node:fs";
 import path from "node:path";
 import { PublicKey } from "@solana/web3.js";
@@ -16,7 +17,8 @@ const bigintMin = (left, right) => left < right ? left : right;
 const errorMessage = (error) => error?.message ?? String(error);
 
 export class LiveEngine {
-  constructor(config, log) {
+  constructor(config, log, lanes = new ExecutionLanes()) {
+    this.lanes = lanes;
     this.config = config;
     this.log = log;
     this.state = new LiveState(config.liveStateFile);
@@ -274,8 +276,10 @@ export class LiveEngine {
   }
 
   #isAmbiguousSubmitError(error) {
-    return /(?:timeout|timed out|fetch failed|econn|enotfound|socket|network|http 5\d\d)/i
-      .test(errorMessage(error));
+    const message = errorMessage(error);
+    if (/timeout|timed out|network|socket|econn|aborted/i.test(message)) return true;
+    // Only explicit rejection evidence releases the reservation immediately.
+    return !/simulation failed|preflight failure|insufficient funds|signature verification fail|invalid transaction|blockhash not found|(?:sendTransaction|Jupiter execute) HTTP (?:400|401|403|413|422)\b/i.test(message);
   }
 
   async #reconcilePendingSignals() {
@@ -353,7 +357,7 @@ export class LiveEngine {
         const laterSellExists = this.state.handledSignals.some((candidate) =>
           candidate.mint === signal.mint && candidate.side === "SELL" &&
           Date.parse(candidate.at ?? "") >= Date.parse(signal.at ?? "") &&
-          !["failed_onchain", "expired_no_balance_change", "submit_failed"].includes(
+          !["failed_onchain", "expired_no_balance_change", "submit_rejected"].includes(
             candidate.status
           )
         );
@@ -819,10 +823,19 @@ export class LiveEngine {
       await new Promise(resolve => setTimeout(resolve, this.config.liveProcessedBalancePollMs ?? 100));
       if (this.settlements.get(trade.mint) === pending) await Promise.race([pending.pollProcessed(), pending.promise]);
     }
-    if (this.positions.has(trade.mint)) await this.#execute(trade, {}, true);
+    if (this.positions.has(trade.mint)) await this.lanes.run(trade.mint, () => this.#execute(trade, {}, true));
   }
 
-  async onTrade(trade) {
+  onTrade(trade) {
+    return this.lanes.run(trade.mint, () => this.executeInLane(trade));
+  }
+
+  async executeInLane(trade) {
+    if (trade.sourceWallet && !trade.signature.includes(":")) {
+      const legacy = this.state.handledSignals.find(s => s.targetSignature === trade.signature && s.mint === trade.mint && s.side === trade.side);
+      if (legacy) return this.#skip(trade, "signal_already_handled");
+      trade = { ...trade, sourceSignature: trade.signature, signature: `${trade.signature}:${trade.sourceWallet}:${trade.side}:${trade.mint}` };
+    }
     const reservation = { amount: 0n };
     try {
       return await this.#execute(trade, reservation);
@@ -1002,6 +1015,7 @@ export class LiveEngine {
     }
 
     const reservation = {
+      sourceSignature: trade.sourceSignature ?? trade.signature,
       venue: prepared.venue, signature: prepared.expectedSignature,
       tokenProgram: prepared.tokenProgram.toBase58(),
       beforeTokenBalance: prepared.beforeTokenBalance.toString(),
@@ -1044,7 +1058,7 @@ export class LiveEngine {
         return record;
       }
       this.state.updateSignal(trade.signature, {
-        status: "submit_failed", signature: prepared.expectedSignature, error: message
+        status: "submit_rejected", signature: prepared.expectedSignature, error: message
       });
       if (trade.side === "SELL") this.#scheduleExitRetry(trade.mint, `submit_failed:${message}`);
       const record = {

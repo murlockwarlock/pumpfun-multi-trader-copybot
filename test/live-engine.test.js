@@ -93,12 +93,54 @@ test("pending exit survives duplicate signals and adjusted SELL uses processed",
   assert.equal((await engine.onTrade(exit)).type, "LIVE_EXIT_PENDING");
   assert.equal((await engine.onTrade(exit)).reason, "exit_already_pending");
   const dispatch = engine.pendingExits.get(entry.mint);
+  const release = Promise.withResolvers();
+  const competing = engine.lanes.run(entry.mint, () => release.promise);
   tokens.resolve(100n);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.filter(call => call.side === "SELL").length, 0);
+  release.resolve();
+  await competing;
   await dispatch;
   const sells = calls.filter(call => call.side === "SELL");
   assert.equal(sells.length, 2);
   assert.ok(sells.every(call => call.options.balanceCommitment === "processed"));
   assert.equal(engine.state.handledSignals.filter(s => s.side === "SELL").length, 1);
+});
+
+test("explicit SELL rejection allows immediate exit retry", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const trade = { ...buy(), side: "SELL" };
+  engine.state.setPosition({ mint: trade.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(), rawTokenAmount: "50" });
+  engine.executor.submit = async () => { throw Error("simulation failed"); };
+  assert.equal((await engine.onTrade(trade)).type, "LIVE_FAILED");
+  assert.equal(engine.state.handledSignals.at(-1).status, "submit_rejected");
+  engine.executor.submit = async p => p.expectedSignature;
+  assert.equal((await engine.onTrade({ ...trade, signature: "emergency" })).type, "LIVE_SUBMITTED");
+});
+
+test("ambiguous submit persists signature, suppresses rebroadcast and reconciles after restart", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const trade = buy();
+  let sends = 0;
+  engine.executor.submit = async () => { sends++; throw Error("timeout"); };
+  const result = await engine.onTrade(trade);
+  assert.equal(result.type, "LIVE_SUBMIT_UNKNOWN");
+  assert.equal(result.signature, "BUY" + trade.mint);
+  assert.equal((await engine.onTrade(trade)).reason, "signal_already_handled");
+  const restored = new LiveEngine(engine.config, () => {});
+  restored.executor = { ...engine.executor, currentBlockHeight: async () => 100,
+    signatureStatus: async sig => { assert.equal(sig, result.signature); return { confirmationStatus: "confirmed" }; } };
+  await restored.maintenanceTrades();
+  assert.equal(restored.positions.get(trade.mint).entrySignature, result.signature);
+  assert.equal((await restored.onTrade(trade)).reason, "signal_already_handled");
+  assert.equal(sends, 1);
+});
+
+test("two resolved mints share source signature and dedupe independently", async t => {
+  const { engine, buy } = concurrentFixture(t, { maxOpenPositions: 2 });
+  const trades = [buy(), buy()].map(trade => ({ ...trade, signature: "sourceTx", sourceWallet: "wallet" }));
+  for (const trade of trades) assert.equal((await engine.onTrade(trade)).type, "LIVE_SUBMITTED");
+  for (const trade of trades) assert.equal((await engine.onTrade(trade)).reason, "signal_already_handled");
 });
 
 test("returns after live submission while confirmation settles in the background", async () => {
