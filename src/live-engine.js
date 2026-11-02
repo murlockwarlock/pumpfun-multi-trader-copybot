@@ -15,6 +15,10 @@ const RECOVERABLE_EXIT_STATUSES = new Set(["expired_no_balance_change", "legacy_
 
 const solToLamports = (sol) => BigInt(Math.round(sol * LAMPORTS_PER_SOL));
 const bigintMin = (left, right) => left < right ? left : right;
+const toBigIntOrNull = (value) => {
+  if (value === null || value === undefined) return null;
+  try { return BigInt(value); } catch { return null; }
+};
 const errorMessage = (error) => error?.message ?? String(error);
 
 export class LiveEngine {
@@ -299,6 +303,39 @@ export class LiveEngine {
     return !/simulation failed|preflight failure|insufficient funds|signature verification fail|invalid transaction|blockhash not found|(?:sendTransaction|Jupiter execute) HTTP (?:400|401|403|413|422)\b/i.test(message);
   }
 
+  async #finalizeFailedBuy(signal, status) {
+    if (signal.side !== "BUY" || !["confirmed", "finalized"].includes(status?.confirmationStatus)) {
+      return false;
+    }
+    let fee;
+    try {
+      fee = (await this.executor.transactionWalletDelta(signal.signature)).feeLamports;
+    } catch (error) {
+      this.log("live_buy_failure_pending", {
+        mint: signal.mint, targetSignature: signal.targetSignature,
+        signature: signal.signature, reason: "transaction_fee_unavailable",
+        message: errorMessage(error)
+      });
+      return false;
+    }
+    if (!/^\d+$/.test(String(fee ?? ""))) {
+      this.log("live_buy_failure_pending", {
+        mint: signal.mint, targetSignature: signal.targetSignature,
+        signature: signal.signature, reason: "transaction_fee_unavailable"
+      });
+      return false;
+    }
+    this.state.updateSignal(signal.targetSignature, {
+      status: "failed_onchain", error: JSON.stringify(status.err),
+      failedFeeLamports: String(fee), pendingExit: null
+    });
+    this.log("live_buy_failed_onchain", {
+      mint: signal.mint, targetSignature: signal.targetSignature,
+      signature: signal.signature, failedFeeLamports: String(fee)
+    });
+    return true;
+  }
+
   recoveryJobs = new Map();
 
   reconcile() {
@@ -319,17 +356,37 @@ export class LiveEngine {
     if (orphan && !this.positions.has(address) && !this.settlements.has(address) && !this.#hasActiveSell(address)) {
       const buyStatus = await this.executor.signatureStatus(orphan.signature).catch(() => null);
       if (buyStatus?.err) {
-        this.state.updateSignal(orphan.targetSignature, {
-          status: "failed_onchain", error: JSON.stringify(buyStatus.err)
+        if (["confirmed", "finalized"].includes(buyStatus.confirmationStatus)) {
+          await this.#finalizeFailedBuy(orphan, buyStatus);
+        } else {
+          this.log("live_buy_failure_pending", {
+            mint: orphan.mint, targetSignature: orphan.targetSignature,
+            signature: orphan.signature, reason: "processed_error_not_final"
+          });
+        }
+        return;
+      }
+      let executedDelta = null;
+      if (["confirmed", "finalized"].includes(buyStatus?.confirmationStatus)) {
+        executedDelta = typeof this.executor.transactionTokenDelta === "function"
+          ? await this.executor.transactionTokenDelta(
+              orphan.signature, address, this.wallet?.publicKey, "confirmed"
+            ).catch(() => null)
+          : null;
+      } else if (buyStatus?.confirmationStatus === "processed" &&
+        typeof this.executor.processedTokenDelta === "function") {
+        executedDelta = await this.executor.processedTokenDelta(
+          orphan.signature, address, this.wallet?.publicKey, orphan.tokenProgram
+        ).catch(() => null);
+      } else {
+        this.log("live_buy_processed_deferred", {
+          mint: orphan.mint, signature: orphan.signature,
+          targetSignature: orphan.targetSignature,
+          reason: "transaction_metadata_requires_confirmed"
         });
         return;
       }
-      if (!["processed", "confirmed", "finalized"].includes(buyStatus?.confirmationStatus)) return;
-      const executedDelta = typeof this.executor.transactionTokenDelta === "function"
-        ? await this.executor.transactionTokenDelta(orphan.signature, address, this.wallet?.publicKey,
-          buyStatus.confirmationStatus === "processed" ? "processed" : "confirmed")
-          .catch(() => null)
-        : null;
+      executedDelta = toBigIntOrNull(executedDelta);
       if (executedDelta === null || executedDelta <= 0n) return;
       const balance = await this.executor.tokenBalance(new PublicKey(address), new PublicKey(orphan.tokenProgram), "processed");
       const bought = bigintMin(executedDelta, balance);
@@ -338,7 +395,8 @@ export class LiveEngine {
           mint: address, rawTokenAmount: bought.toString(), tokenProgram: orphan.tokenProgram,
           venue: orphan.venue, openedAt: orphan.at, entrySignature: orphan.signature,
           targetEntrySignature: orphan.targetSignature, costLamports: orphan.rawAmount,
-          provisional: true, sourceWallet: orphan.sourceWallet, sourceName: orphan.sourceName
+          provisional: buyStatus.confirmationStatus === "processed",
+          sourceWallet: orphan.sourceWallet, sourceName: orphan.sourceName
         });
         await this.onTrade(orphan.pendingExit);
       }
@@ -418,24 +476,31 @@ export class LiveEngine {
       }
       if (!["confirmed","finalized"].includes(status?.confirmationStatus)) continue;
       if (status.err) {
-        const fee = signal.side === "BUY" ? (await this.executor.transactionWalletDelta(signal.signature)).feeLamports : "0";
-        if (!/^\d+$/.test(fee)) continue;
-        this.state.updateSignal(signal.targetSignature, {
-          status: "failed_onchain", error: JSON.stringify(status.err), failedFeeLamports: fee
-        });
-        if (signal.side === "SELL") this.#scheduleExitRetry(signal.mint, "failed_onchain");
+        if (signal.side === "BUY") {
+          await this.#finalizeFailedBuy(signal, status);
+        } else {
+          this.state.updateSignal(signal.targetSignature, {
+            status: "failed_onchain", error: JSON.stringify(status.err)
+          });
+          this.#scheduleExitRetry(signal.mint, "failed_onchain");
+        }
         continue;
       }
 
       const after = await this.executor.tokenBalance(mint, tokenProgram);
       let executedTokenDelta = null;
-      let changed = signal.side === "BUY" ? after > before : after < before;
-      if (signal.side === "SELL" && !changed && typeof this.executor.transactionTokenDelta === "function") {
-        executedTokenDelta = await this.executor.transactionTokenDelta(signal.signature, signal.mint, this.wallet?.publicKey,
-          status.confirmationStatus === "processed" ? "processed" : "confirmed")
-          .catch(() => null);
-        if (executedTokenDelta !== null) changed = executedTokenDelta < 0n;
+      if (typeof this.executor.transactionTokenDelta === "function") {
+        executedTokenDelta = toBigIntOrNull(await this.executor.transactionTokenDelta(
+          signal.signature, signal.mint, this.wallet?.publicKey, "confirmed"
+        ).catch(() => null));
       }
+      let changed = signal.side === "BUY"
+        ? executedTokenDelta !== null
+          ? executedTokenDelta > 0n
+          : signal.beforeTokenBalanceKnown === true && after > before
+        : executedTokenDelta !== null
+          ? executedTokenDelta < 0n
+          : after < before;
       if (!changed) {
         // A confirmed BUY can already have been fully exited on processed.
         const exited = signal.side === "BUY" && this.state.handledSignals.some(s =>
@@ -449,7 +514,8 @@ export class LiveEngine {
       }
       let pnl = null;
       if (signal.side === "BUY") {
-        const bought = after - before;
+        const bought = executedTokenDelta !== null && executedTokenDelta > 0n
+          ? executedTokenDelta : after - before;
         const entryDelta = await this.#transactionDelta(
           signal.signature,
           -BigInt(signal.rawAmount)
@@ -586,24 +652,57 @@ export class LiveEngine {
     const timeoutMs = this.config.liveProcessedBalanceTimeoutMs ?? 3_000;
     const pollMs = this.config.liveProcessedBalancePollMs ?? 100;
     try {
-      const afterTokenBalance = typeof this.executor.waitForTokenBalanceChange === "function"
-        ? await this.executor.waitForTokenBalanceChange(
-            prepared.mint,
-            prepared.tokenProgram,
-            prepared.beforeTokenBalance,
-            "BUY",
-            { commitment: "processed", timeoutMs, pollMs }
-          )
-        : await this.executor.tokenBalance(
-            prepared.mint,
-            prepared.tokenProgram,
-            "processed"
-          );
+      let afterTokenBalance;
+      let bought;
+      if (prepared.beforeTokenBalanceKnown === false) {
+        // Standard Solana history RPC cannot prove a processed token delta.
+        // Only an explicitly supplied streaming attribution source may unlock
+        // an early SELL; otherwise settlement waits for confirmed metadata.
+        if (typeof this.executor.processedTokenDelta !== "function") {
+          readiness.error = "processed_token_attribution_unavailable";
+          this.log("live_buy_processed_deferred", {
+            mint: trade.mint, signature, targetSignature: trade.signature,
+            reason: readiness.error,
+            fallback: "wait_for_confirmed_transaction_metadata"
+          });
+          return { ready: false, deferred: true, error: readiness.error };
+        }
+        const delta = toBigIntOrNull(await this.executor.processedTokenDelta(
+          signature, prepared.mint, this.wallet?.publicKey, prepared.tokenProgram
+        ));
+        if (delta === null || delta <= 0n) {
+          readiness.error = "processed_transaction_has_no_token_delta";
+          return { ready: false, error: readiness.error };
+        }
+        afterTokenBalance = await this.executor.tokenBalance(
+          prepared.mint, prepared.tokenProgram, "processed"
+        );
+        bought = bigintMin(delta, afterTokenBalance);
+        if (bought <= 0n) {
+          readiness.error = "processed_token_balance_unavailable";
+          return { ready: false, error: readiness.error };
+        }
+        readiness.processedEvidence = "processed_transaction_delta";
+      } else {
+        afterTokenBalance = typeof this.executor.waitForTokenBalanceChange === "function"
+          ? await this.executor.waitForTokenBalanceChange(
+              prepared.mint,
+              prepared.tokenProgram,
+              prepared.beforeTokenBalance,
+              "BUY",
+              { commitment: "processed", timeoutMs, pollMs }
+            )
+          : await this.executor.tokenBalance(
+              prepared.mint,
+              prepared.tokenProgram,
+              "processed"
+            );
+        bought = afterTokenBalance - prepared.beforeTokenBalance;
+      }
       const buySignal = this.state.handledSignals.find(s => s.targetSignature === trade.signature);
       if (!buySignal || !ACTIVE_SIGNAL_STATUSES.has(buySignal.status)) {
         return { ready: this.positions.get(trade.mint)?.entrySignature === signature };
       }
-      const bought = afterTokenBalance - prepared.beforeTokenBalance;
       if (bought <= 0n) {
         readiness.error = "processed_balance_not_increased";
         return { ready: false, error: readiness.error };
@@ -637,7 +736,9 @@ export class LiveEngine {
       if (signal && !["confirmed", "reconciled_confirmed"].includes(signal.status)) {
         this.state.updateSignal(trade.signature, {
           status: "processed",
-          processedTokenBalance: afterTokenBalance.toString()
+          processedTokenBalance: afterTokenBalance.toString(),
+          processedTokenDelta: bought.toString(),
+          processedEvidence: readiness.processedEvidence ?? "balance_baseline"
         });
       }
       this.log("live_buy_processed", {
@@ -685,7 +786,39 @@ export class LiveEngine {
     }
 
     if (trade.side === "BUY") {
-      const bought = afterTokenBalance - prepared.beforeTokenBalance;
+      let bought = afterTokenBalance - prepared.beforeTokenBalance;
+      let attribution = prepared.beforeTokenBalanceKnown === false
+        ? null : "balance_baseline";
+      if (prepared.beforeTokenBalanceKnown === false) {
+        const executedTokenDelta = typeof this.executor.transactionTokenDelta === "function"
+          ? toBigIntOrNull(await this.executor.transactionTokenDelta(
+              signature, trade.mint, this.wallet?.publicKey, "confirmed"
+            ).catch(() => null))
+          : null;
+        if (executedTokenDelta !== null && executedTokenDelta > 0n) {
+          bought = executedTokenDelta;
+          attribution = "confirmed_transaction_delta";
+        } else if (readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
+          bought = readiness.rawTokenAmount;
+          attribution = readiness.processedEvidence;
+        } else {
+          this.state.updateSignal(trade.signature, {
+            status: "confirmation_unknown", signature,
+            recoveryEvidence: "confirmed_buy_token_delta_unavailable"
+          });
+          const unknown = {
+            type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+            targetSignature: trade.signature, signature, mint: trade.mint,
+            side: trade.side, error: "confirmed BUY token attribution unavailable",
+            sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
+          };
+          this.#write(unknown);
+          return unknown;
+        }
+      } else if (bought <= 0n && readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
+        bought = readiness.rawTokenAmount;
+        attribution = readiness.processedEvidence;
+      }
       if (bought <= 0n) {
         this.state.updateSignal(trade.signature, { status: "confirmed_no_tokens", signature });
         return this.#skip(trade, "confirmed_but_no_token_balance_increase");
@@ -710,7 +843,7 @@ export class LiveEngine {
       this.state.updateSignal(trade.signature, {
         status: "confirmed", signature, confirmation,
         entryWalletDeltaLamports: entryDelta.toString(),
-        closedWhileConfirming
+        closedWhileConfirming, tokenAttribution: attribution
       });
       const record = {
         type: "LIVE_BUY", at: position.openedAt, mint: trade.mint,
@@ -750,7 +883,6 @@ export class LiveEngine {
         error: "confirmed transaction has no observed token delta"
       };
       this.#write(unknown);
-      this.log("live_sell_unknown", unknown);
       return unknown;
     }
     const remaining = BigInt(position.rawTokenAmount) > sold
@@ -797,13 +929,16 @@ export class LiveEngine {
       : Promise.resolve({ ready: true });
     const promise = this.#settleTrade(trade, rawAmount, prepared, signature, readiness)
       .then((record) => {
-        this.log("live_settled", {
-          side: trade.side, mint: trade.mint, signature,
-          resultType: record.type, realizedPnlSol: record.realizedPnlSol,
-          sourceWallet: trade.sourceWallet ?? null,
-          sourceName: trade.sourceName ?? null
-        });
+        if (["LIVE_BUY", "LIVE_SELL"].includes(record.type)) {
+          this.log("live_settled", {
+            side: trade.side, mint: trade.mint, signature,
+            resultType: record.type, realizedPnlSol: record.realizedPnlSol,
+            sourceWallet: trade.sourceWallet ?? null,
+            sourceName: trade.sourceName ?? null
+          });
+        }
         if (record.type === "LIVE_UNKNOWN") {
+          this.log(record.side === "SELL" ? "live_sell_unknown" : "live_unknown", record);
           const timer = setTimeout(
             () => this.reconcile().catch((error) => {
               this.log("live_reconcile_retry_error", { message: errorMessage(error) });
@@ -827,7 +962,7 @@ export class LiveEngine {
         });
         return {
           type: "LIVE_SETTLEMENT_ERROR", targetSignature: trade.signature,
-          signature, error: errorMessage(error)
+          signature, mint: trade.mint, side: trade.side, error: errorMessage(error)
         };
       });
     const entry = { side: trade.side, promise, readyPromise, readiness, trade,
@@ -858,7 +993,13 @@ export class LiveEngine {
             firstError: errorMessage(firstError)
           });
         }
-        return prepared;
+        return {
+          ...prepared,
+          beforeTokenBalanceKnown: prepared.beforeTokenBalanceKnown ?? !(
+            trade.side === "BUY" && prepareOptions.skipBeforeTokenBalance &&
+            prepareOptions.executionRoute !== "jupiter"
+          )
+        };
       } catch (error) {
         firstError ??= error;
         if (index === routes.length - 1) {
@@ -956,10 +1097,10 @@ export class LiveEngine {
   }
 
   async #dispatchPendingExit(trade, pending) {
-    await Promise.race([pending.readyPromise, pending.promise]);
-    while (!this.positions.has(trade.mint) && this.settlements.get(trade.mint) === pending) {
-      await new Promise(resolve => setTimeout(resolve, this.config.liveProcessedBalancePollMs ?? 100));
-      if (this.settlements.get(trade.mint) === pending) await Promise.race([pending.pollProcessed(), pending.promise]);
+    const readiness = await Promise.race([pending.readyPromise, pending.promise]);
+    if (!readiness?.ready && !this.positions.has(trade.mint)) {
+      await pending.promise;
+      return;
     }
     if (this.positions.has(trade.mint)) await this.lanes.run(trade.mint, () => this.#execute(trade, {}, true));
   }
@@ -1167,6 +1308,7 @@ export class LiveEngine {
       venue: prepared.venue, signature: prepared.expectedSignature,
       tokenProgram: prepared.tokenProgram.toBase58(),
       beforeTokenBalance: prepared.beforeTokenBalance.toString(),
+      beforeTokenBalanceKnown: prepared.beforeTokenBalanceKnown === true,
       rawAmount: rawAmount.toString(), lastValidBlockHeight: prepared.lastValidBlockHeight,
       hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
       rpcSource: prepared.rpcSource ?? "primary",

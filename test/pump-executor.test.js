@@ -9,13 +9,46 @@ import {
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID
 } from "@solana/spl-token";
-import { minimumTargetTokenOutRaw, PumpExecutor } from "../src/pump-executor.js";
+import {
+  minimumTargetTokenOutRaw,
+  PumpExecutor,
+  transactionMetadataCommitment
+} from "../src/pump-executor.js";
 
 test("derives an exact atomic min-out from the target price cap", () => {
   assert.equal(
     minimumTargetTokenOutRaw(5_000_000n, 6, 0.00000004, 2_500),
     100_000_000_000n
   );
+});
+
+test("downgrades unsupported processed transaction metadata requests to confirmed", async () => {
+  const wallet = Keypair.generate();
+  const executor = new PumpExecutor({
+    rpcHttpUrl: "https://rpc.invalid", rpcWsUrl: "wss://rpc.invalid",
+    rpcFallbackHttpUrl: "", liveSendRoute: "rpc", liveTipSol: 0,
+    liveComputeUnitLimit: 400_000, livePriorityFeeSol: 0.0001,
+    liveSimulate: false, liveConfirmationTimeoutMs: 1_000
+  }, wallet, { enableFallback: false });
+  const mint = Keypair.generate().publicKey;
+  const commitments = [];
+  executor.connection = {
+    getParsedTransaction: async (_signature, options) => {
+      commitments.push(options.commitment);
+      if (options.commitment === "processed") {
+        throw new Error("Method does not support commitment below confirmed");
+      }
+      return {
+        meta: {
+          preTokenBalances: [{ mint: mint.toBase58(), owner: wallet.publicKey.toBase58(), uiTokenAmount: { amount: "50" } }],
+          postTokenBalances: [{ mint: mint.toBase58(), owner: wallet.publicKey.toBase58(), uiTokenAmount: { amount: "150" } }]
+        }
+      };
+    }
+  };
+  assert.equal(transactionMetadataCommitment("processed"), "confirmed");
+  assert.equal(await executor.transactionTokenDelta("copy", mint, wallet.publicKey, "processed"), 100n);
+  assert.deepEqual(commitments, ["confirmed"]);
 });
 
 test("uses the execution fallback RPC after a primary rate-limit error", async () => {

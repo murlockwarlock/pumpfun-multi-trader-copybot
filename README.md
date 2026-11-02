@@ -36,8 +36,9 @@ limits, crash recovery, and auditable JSONL logs.
 - Run a fee-aware shadow portfolio for every monitored trader alongside guarded
   live execution, Telegram reports, and exact realized PnL accounting.
 - Recover incomplete settlements and retry emergency exits after restarts.
-- Make a submitted BUY sellable from its processed token balance while confirmed
-  settlement and exact accounting continue in the background.
+- Make a submitted BUY sellable from processed evidence only when a measured
+  baseline or trusted processed token delta exists; otherwise keep the exit
+  pending until confirmed transaction attribution is available.
 - Deploy atomically with systemd health checks and automatic rollback.
 
 ## Architecture
@@ -157,8 +158,11 @@ fast wallet list explicit and small.
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
 cannot then consume the separate slippage allowance and land beyond that target-
-relative ceiling. Once a BUY is observed at `processed`, a matching SELL can be
-built immediately without waiting for full BUY confirmation.
+relative ceiling. A matching SELL can be built at `processed` only when the
+executor has a measured pre-BUY baseline or a trusted processed token-delta
+source. Standard Solana transaction metadata is confirmed-only, so the default
+executor logs the deferral and waits for confirmed attribution rather than
+selling a pre-existing balance.
 
 ## Live mode
 

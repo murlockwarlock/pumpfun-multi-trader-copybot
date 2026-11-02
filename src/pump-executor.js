@@ -35,6 +35,12 @@ import { priorityMicroLamports, TransactionSender } from "./transaction-sender.j
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const JUPITER_SOL_MINT = NATIVE_MINT.toBase58();
 
+export function transactionMetadataCommitment(commitment) {
+  // Transaction history RPC is confirmed/finalized only; processed metadata
+  // must come from an explicit streaming provider, never this JSON-RPC call.
+  return commitment === "finalized" ? "finalized" : "confirmed";
+}
+
 function isTokenProgram(program) {
   return program.equals(TOKEN_PROGRAM_ID) || program.equals(TOKEN_2022_PROGRAM_ID);
 }
@@ -366,6 +372,7 @@ export class PumpExecutor {
       jupiterExpectedOut: order.outAmount ?? null,
       expectedTokenOutRaw: side === "BUY" ? order.outAmount ?? null : null,
       hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null,
+      beforeTokenBalanceKnown: true,
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };
@@ -622,6 +629,7 @@ export class PumpExecutor {
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,
       hardMinimumTokenOutRaw: trade.hardMinimumTokenOutRaw ?? null,
+      beforeTokenBalanceKnown: !skipBeforeTokenBalance,
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };
@@ -818,14 +826,17 @@ export class PumpExecutor {
   async transactionTokenDelta(signature, mintAddress, ownerAddress, commitment = "confirmed") {
     const mint = mintAddress.toBase58 ? mintAddress.toBase58() : String(mintAddress);
     const owner = ownerAddress?.toBase58 ? ownerAddress.toBase58() : String(ownerAddress ?? "");
+    const metadataCommitment = transactionMetadataCommitment(commitment);
     try {
       const transaction = await this.connection.getParsedTransaction(signature, {
-        commitment, maxSupportedTransactionVersion: 0
+        commitment: metadataCommitment, maxSupportedTransactionVersion: 0
       });
       return this.#tokenDeltaFromTransaction(transaction, signature, mint, owner);
     } catch (error) {
       if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
-      return this.fallbackExecutor.transactionTokenDelta(signature, mintAddress, ownerAddress, commitment);
+      return this.fallbackExecutor.transactionTokenDelta(
+        signature, mintAddress, ownerAddress, metadataCommitment
+      );
     }
   }
 

@@ -6,13 +6,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { LiveEngine } from "../src/live-engine.js";
 
-// Load the actual PR baseline beside current code without starting either service.
-const source = execFileSync("git", ["show", "49b0a58:src/live-engine.js"], { encoding: "utf8" })
-  .replace(/from "([^"]+)"/g, (_, spec) => {
-    const url = spec.startsWith(".") ? new URL("../src/" + spec, import.meta.url).href : import.meta.resolve(spec);
-    return "from " + JSON.stringify(url);
-  });
-const baseline = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+// Load historical baselines beside current code without starting a service.
+async function loadRevision(revision) {
+  const source = execFileSync("git", ["show", `${revision}:src/live-engine.js`], { encoding: "utf8" })
+    .replace(/from "([^"]+)"/g, (_, spec) => {
+      const url = spec.startsWith(".") ? new URL("../src/" + spec, import.meta.url).href : import.meta.resolve(spec);
+      return "from " + JSON.stringify(url);
+    });
+  return import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+}
+const baseline = await loadRevision("49b0a58");
+const previousHead = await loadRevision("1b784bf");
 
 function pool() {
   const slots = Array.from({ length: 4 }, () => Promise.resolve());
@@ -23,7 +27,7 @@ function pool() {
   } };
 }
 
-for (const Engine of [baseline.LiveEngine, LiveEngine]) {
+for (const [label, Engine] of [["49b0a58", baseline.LiveEngine], ["1b784bf", previousHead.LiveEngine], ["current", LiveEngine]]) {
   const dir = mkdtempSync(path.join(tmpdir(), "probe-load-"));
   try {
     const engine = new Engine({ liveStateFile: path.join(dir,"state"), liveLogFile: path.join(dir,"log"),
@@ -48,7 +52,7 @@ for (const Engine of [baseline.LiveEngine, LiveEngine]) {
     assert.equal(completedByWallet.reduce((a,b) => a+b, 0) + dropped, 2400);
     console.log("Per wallet: 100 requested each; completed counts", completedByWallet);
     samples.sort((a,b) => a-b);
-    console.log(Engine === LiveEngine ? "current" : "49b0a58", { requested: 2400, completed: 2400-dropped, dropped, reason: 'busy (fresh concurrent requests)',
+    console.log(label, { requested: 2400, completed: 2400-dropped, dropped, reason: 'busy (fresh concurrent requests)',
       submitMs: [50,95,99].map(p => +samples[p-1].toFixed(2)) });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }

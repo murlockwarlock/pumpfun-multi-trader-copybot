@@ -100,6 +100,11 @@ export class TelegramNotifier {
         "Курсор продвинут; остальные сделки продолжают обрабатываться."
       ].filter(Boolean).join("\n");
       options = { dedupeKey: `quarantine:${details.signature}`, dedupeMs: 86_400_000 };
+    } else if (
+      event === "live_settled" &&
+      !["LIVE_BUY", "LIVE_SELL"].includes(details.resultType)
+    ) {
+      return Promise.resolve(false);
     } else if (event === "live_settled") {
       const pnl = details.realizedPnlSol === undefined
         ? null
@@ -173,6 +178,14 @@ export class TelegramNotifier {
         "Повторная отправка остановлена до проверки on-chain состояния."
       ].filter(Boolean).join("\n");
       options = { dedupeKey: `sell-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_unknown") {
+      text = [
+        "🚨 Результат live-транзакции не определён",
+        `Mint: ${short(details.mint, 10)}`,
+        details.signature ? `Tx: https://solscan.io/tx/${details.signature}` : null,
+        details.error ?? "Проверьте транзакцию вручную; повторная отправка не выполняется."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `live-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
     } else if (event === "admin_report") {
       text = details.text;
     }
