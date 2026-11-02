@@ -151,7 +151,7 @@ async function runLiveMaintenance() {
   maintenanceRunning = true;
   try {
     const trades = await trader.maintenanceTrades();
-    for (const trade of trades) await enqueueTrade(trade, trade.signalSource);
+    await Promise.all(trades.map(trade => enqueueTrade(trade, trade.signalSource)));
   } catch (error) {
     log("live_maintenance_error", { message: error.message });
   } finally {
@@ -324,13 +324,12 @@ async function processConfirmedSignature(target, signature, source, observedAtMs
       liveBlockReason: unsupported.reason
     });
   }
-  for (const original of trades) {
-    await enqueueTrade(attributedTrade({
+  await Promise.all(trades.map(original =>
+    enqueueTrade(attributedTrade({
       ...original,
       observedAtMs,
       signalSource: "confirmed_transaction"
-    }, target), source, { shadowEligible: true });
-  }
+    }, target), source, { shadowEligible: true })));
   target.ingestion.markProcessed(signature);
   return true;
 }
@@ -509,13 +508,12 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
       fastMetrics.detected += trades.length;
       if (target.fastEnabled) {
         const dispatchStartedAtMs = Date.now();
-        for (const trade of trades) {
-          await enqueueTrade(attributedTrade({
+        await Promise.all(trades.map(trade =>
+          enqueueTrade(attributedTrade({
             ...trade,
             observedAtMs,
             signalSource: "processed_logs"
-          }, target), "websocket_processed_fast", { shadowEligible: true });
-        }
+          }, target), "websocket_processed_fast", { shadowEligible: true })));
         target.ingestion.markProcessed(signature);
         log("fast_signal_dispatched", {
           signature,
@@ -572,14 +570,13 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
           confirmed: comparison.confirmed,
           verificationMs
         });
-        for (const trade of confirmedTrades) {
-          await enqueueTrade(attributedTrade({
+        await Promise.all(confirmedTrades.map(trade =>
+          enqueueTrade(attributedTrade({
             ...trade,
             observedAtMs,
             decodeMs, resolveMs, ingressQueueMs,
             signalSource: "verified_fast"
-          }, target), "websocket_verified_fast", { shadowEligible: true });
-        }
+          }, target), "websocket_verified_fast", { shadowEligible: true })));
       } else {
         fastMetrics.mismatches += 1;
         log("fast_signal_mismatch", {
@@ -592,16 +589,15 @@ function processWebsocketSignature(target, value, slot, observedAtMs) {
           action: "live_blocked"
         });
         const safeShadowTrades = confirmedTrades.length > 0 ? confirmedTrades : trades;
-        for (const trade of safeShadowTrades) {
-          await enqueueTrade(attributedTrade({
+        await Promise.all(safeShadowTrades.map(trade =>
+          enqueueTrade(attributedTrade({
             ...trade,
             observedAtMs,
             signalSource: "confirmed_mismatch"
           }, target), "websocket_fast_mismatch", {
             shadowEligible: confirmedTrades.length > 0,
             liveBlockReason: "fast_signal_mismatch"
-          });
-        }
+          })));
       }
       target.ingestion.markProcessed(signature);
       log("signature_processed", {

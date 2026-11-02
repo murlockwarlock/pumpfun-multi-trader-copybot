@@ -62,7 +62,7 @@ export class LiveEngine {
     this.executor = new PumpExecutor(this.config, this.wallet);
     await this.executor.initialize();
     await this.#resetDailyRiskIfNeeded();
-    await this.#reconcilePendingSignals();
+    await this.reconcile();
 
     const balance = BigInt(await this.executor.balanceLamports());
     const required = solToLamports(this.config.liveMinReserveSol) +
@@ -282,6 +282,12 @@ export class LiveEngine {
     return !/simulation failed|preflight failure|insufficient funds|signature verification fail|invalid transaction|blockhash not found|(?:sendTransaction|Jupiter execute) HTTP (?:400|401|403|413|422)\b/i.test(message);
   }
 
+  reconcile() {
+    this.reconciliation ??= this.#reconcilePendingSignals()
+      .finally(() => { this.reconciliation = null; });
+    return this.reconciliation;
+  }
+
   async #reconcilePendingSignals() {
     const pendingCloses = this.state.handledSignals.filter(
       (signal) => signal.status === "confirmed_pending_close"
@@ -313,7 +319,7 @@ export class LiveEngine {
       const mint = new PublicKey(signal.mint);
       const tokenProgram = new PublicKey(signal.tokenProgram);
       const before = BigInt(signal.beforeTokenBalance);
-      let status = await this.executor.signatureStatus(signal.signature).catch(() => null);
+      const status = await this.executor.signatureStatus(signal.signature).catch(() => null);
       if (status?.err) {
         this.state.updateSignal(signal.targetSignature, {
           status: "failed_onchain", error: JSON.stringify(status.err)
@@ -321,16 +327,14 @@ export class LiveEngine {
         if (signal.side === "SELL") this.#scheduleExitRetry(signal.mint, "failed_onchain");
         continue;
       }
-      let height = await this.executor.currentBlockHeight();
+      const height = await this.executor.currentBlockHeight();
       if (
         !["confirmed", "finalized"].includes(status?.confirmationStatus) &&
         height <= Number(signal.lastValidBlockHeight)
       ) {
-        await this.executor.confirm(signal.signature, {
-          lastValidBlockHeight: Number(signal.lastValidBlockHeight)
-        }).catch(() => null);
-        status = await this.executor.signatureStatus(signal.signature).catch(() => null);
-        height = await this.executor.currentBlockHeight();
+        // Maintenance polls again. Keep the durable reservation until the
+        // signature resolves or its blockhash expires.
+        continue;
       }
 
       const after = await this.executor.tokenBalance(mint, tokenProgram);
@@ -424,11 +428,12 @@ export class LiveEngine {
 
   async maintenanceTrades() {
     await this.#resetDailyRiskIfNeeded();
-    await this.#reconcilePendingSignals();
+    void this.reconcile().catch(error => this.log("reconcile_error", { message: errorMessage(error) }));
     const now = Date.now();
     const trades = [];
     for (const [mint, original] of this.state.positions) {
       if (this.settlements.has(mint) || this.pendingExits.has(mint) || this.#hasActiveSell(mint)) continue;
+      if (this.#pendingBuys().some(signal => signal.mint === mint)) continue;
       let position = original;
       const entry = this.state.handledSignals.find(s => s.targetSignature === position.targetEntrySignature);
       if (entry?.pendingExit && !position.exitRequest) {
@@ -698,7 +703,7 @@ export class LiveEngine {
         });
         if (record.type === "LIVE_UNKNOWN") {
           const timer = setTimeout(
-            () => this.#reconcilePendingSignals().catch((error) => {
+            () => this.reconcile().catch((error) => {
               this.log("live_reconcile_retry_error", { message: errorMessage(error) });
             }),
             5_000
@@ -780,12 +785,32 @@ export class LiveEngine {
 
   async probeBuy(trade, spendSol = this.config.shadowTradeSol ?? this.config.liveTradeSol) {
     if (trade.side !== "BUY") throw new Error("Only BUY signals can be probed");
+    if (this.probeActive || Date.now() - trade.observedAtMs > this.config.fastMaxSignalAgeMs) {
+      throw new Error("shadow probe busy or stale");
+    }
+    this.probeActive = true;
+    try {
+      return await this.#quoteProbe(trade, spendSol);
+    } finally {
+      this.probeActive = false;
+    }
+  }
+
+  async #quoteProbe(trade, spendSol) {
     const startedAtMs = Date.now();
     const rawAmount = solToLamports(spendSol);
     const maxEntryDriftBps = trade.fastProfile
       ? this.config.fastMaxEntryDriftBps ?? this.config.liveMaxEntryDriftBps ?? 500
       : this.config.liveMaxEntryDriftBps ?? 500;
-    const prepared = await this.#prepareWithFallback(trade, rawAmount, {
+    if (!this.probeExecutor) {
+      this.probeExecutor = new PumpExecutor({
+        ...this.config, rpcHttpUrl: this.config.analyticsRpcHttpUrl, rpcWsUrl: undefined,
+        heliusApiKey: this.executor.sender.heliusApiKey,
+        rpcFallbackHttpUrl: "", rpcFallbackWsUrl: ""
+      }, this.wallet);
+    }
+    const prepared = await this.probeExecutor.prepare("BUY", trade.mint, rawAmount, {
+      executionRoute: trade.executionRoute ?? null,
       venueHint: trade.venue ?? null,
       skipSimulation: true,
       skipBeforeTokenBalance: true,
@@ -806,7 +831,7 @@ export class LiveEngine {
       venue: prepared.venue,
       expectedTokenOutRaw,
       hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
-      rpcSource: prepared.rpcSource ?? "primary",
+      rpcSource: "analytics",
       tokenDecimals,
       copyPriceSol,
       entryDriftBps: this.#entryDriftBps(trade, prepared, rawAmount),
@@ -865,6 +890,14 @@ export class LiveEngine {
       return this.#skip(trade, "exit_already_pending");
     }
     const pending = this.settlements.get(trade.mint);
+    if (!pending && trade.side === "SELL") {
+      const unresolved = this.#pendingBuys().find(signal => signal.mint === trade.mint);
+      if (unresolved) {
+        if (!this.#samePositionSource(unresolved, trade)) return this.#skip(trade, "position_owned_by_other_trader");
+        this.state.updateSignal(unresolved.targetSignature, { pendingExit: trade });
+        return { type: "LIVE_EXIT_PENDING", mint: trade.mint, targetSignature: trade.signature };
+      }
+    }
     if (pending) {
       if (trade.side === "SELL" && pending.side === "BUY") {
         if (!this.#samePositionSource(pending.trade, trade)) return this.#skip(trade, "position_owned_by_other_trader");

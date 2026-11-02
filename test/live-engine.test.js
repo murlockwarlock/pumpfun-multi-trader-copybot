@@ -107,6 +107,52 @@ test("pending exit survives duplicate signals and adjusted SELL uses processed",
   assert.equal(engine.state.handledSignals.filter(s => s.side === "SELL").length, 1);
 });
 
+test("terminal BUY refunds once across retries and restart; ambiguous BUY keeps budget", async t => {
+  const { engine, buy } = concurrentFixture(t, { liveMaxDailySpendSol: 0.005 });
+  engine.executor.submit = async () => { throw Error("simulation failed"); };
+  let entry;
+  for (let i = 0; i < 3; i++) {
+    entry = buy();
+    assert.equal((await engine.onTrade(entry)).type, "LIVE_FAILED");
+    assert.equal(engine.state.dailySpendLamports, 0n);
+  }
+  const restored = new LiveEngine(engine.config, () => {});
+  restored.executor = { ...engine.executor, submit: async () => { throw Error("timeout"); } };
+  assert.equal((await restored.onTrade(buy())).type, "LIVE_SUBMIT_UNKNOWN");
+  restored.state.updateSignal(entry.signature, { status: "submit_rejected" });
+  assert.equal(restored.state.dailySpendLamports, 5000000n);
+  assert.equal(new LiveEngine(engine.config, () => {}).state.dailySpendLamports, 5000000n);
+});
+
+test("unresolved confirmation permits emergency SELL for another mint", {timeout: 2000}, async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const unresolved = buy();
+  engine.state.reserveSignal(unresolved, { signature: "unknown", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    rawAmount: "50", beforeTokenBalance: "0", lastValidBlockHeight: 100 });
+  const status = Promise.withResolvers();
+  engine.executor.signatureStatus = () => status.promise;
+  engine.executor.currentBlockHeight = async () => 1;
+  const other = buy();
+  engine.state.setPosition({ mint: other.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    rawTokenAmount: "50", openedAt: new Date(0).toISOString() });
+  const [exit] = await engine.maintenanceTrades();
+  assert.equal(exit.mint, other.mint);
+  assert.equal((await engine.onTrade(exit)).type, "LIVE_SUBMITTED");
+  status.resolve(null);
+  await engine.reconcile();
+});
+
+test("shadow probe budget drops overlap while live BUY prepares", async t => {
+  const { engine, buy } = concurrentFixture(t);
+  const gate = Promise.withResolvers();
+  engine.probeExecutor = { prepare: () => gate.promise };
+  const probe = engine.probeBuy(buy(), 0.005);
+  await assert.rejects(engine.probeBuy(buy(), 0.005), /busy or stale/);
+  assert.equal((await engine.onTrade(buy())).type, "LIVE_SUBMITTED");
+  gate.resolve({ venue: "analytics" });
+  assert.equal((await probe).rpcSource, "analytics");
+});
+
 test("explicit SELL rejection allows immediate exit retry", async t => {
   const { engine, buy } = concurrentFixture(t);
   const trade = { ...buy(), side: "SELL" };
@@ -130,7 +176,7 @@ test("ambiguous submit persists signature, suppresses rebroadcast and reconciles
   const restored = new LiveEngine(engine.config, () => {});
   restored.executor = { ...engine.executor, currentBlockHeight: async () => 100,
     signatureStatus: async sig => { assert.equal(sig, result.signature); return { confirmationStatus: "confirmed" }; } };
-  await restored.maintenanceTrades();
+  await restored.reconcile();
   assert.equal(restored.positions.get(trade.mint).entrySignature, result.signature);
   assert.equal((await restored.onTrade(trade)).reason, "signal_already_handled");
   assert.equal(sends, 1);
@@ -408,7 +454,7 @@ test("shadow probe measures the actual ready-to-submit quote without sending", a
   const mint = Keypair.generate().publicKey;
   const engine = new LiveEngine(liveConfig(directory), () => {});
   let options;
-  engine.executor = {
+  engine.probeExecutor = {
     prepare: async (_side, _mint, _rawAmount, value) => {
       options = value;
       return {
@@ -501,6 +547,7 @@ test("restart reconciliation finalizes a durable processed BUY position", async 
   };
 
   try {
+    await engine.reconcile();
     const trades = await engine.maintenanceTrades();
     assert.deepEqual(trades, []);
     const position = engine.positions.get(mint.toBase58());

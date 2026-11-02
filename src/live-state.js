@@ -80,7 +80,9 @@ export class LiveState {
       mint: trade.mint,
       status: "reserved",
       at: new Date().toISOString(),
-      ...details
+      ...details,
+      spendDay: this.day,
+      reservedSpend: dailySpendLamports.toString()
     });
     this.dailySpendLamports += BigInt(dailySpendLamports);
     this.handledSignals = this.handledSignals.slice(-this.handledLimit);
@@ -93,6 +95,11 @@ export class LiveState {
       (candidate) => candidate.targetSignature === targetSignature
     );
     if (!signal) throw new Error(`Unknown live signal: ${targetSignature}`);
+    if (patch.status === "submit_rejected" && signal.status === "reserved" &&
+        signal.side === "BUY" && signal.spendDay === this.day) {
+      this.dailySpendLamports -= BigInt(signal.reservedSpend);
+      signal.reservedSpend = "0";
+    }
     Object.assign(signal, patch, { updatedAt: new Date().toISOString() });
     this.#save();
   }

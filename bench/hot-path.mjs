@@ -52,7 +52,7 @@ async function measure(source) {
 }
 const [before, previousPR, after] = await Promise.all([
   measure(execFileSync("git", ["show", "08b9df6:src/index.js"], { encoding: "utf8" })),
-  measure(execFileSync("git", ["show", "2901072:src/index.js"], { encoding: "utf8" })),
+  measure(execFileSync("git", ["show", "d872aa9:src/index.js"], { encoding: "utf8" })),
   measure(fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8"))
 ]);
 console.log({ before, previousPR, after, unit: "ms since notification" });
