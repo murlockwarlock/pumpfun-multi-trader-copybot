@@ -17,6 +17,7 @@ async function loadRevision(revision) {
 }
 const baseline = await loadRevision("49b0a58");
 const previousHead = await loadRevision("1b784bf");
+const reviewHead = await loadRevision("ae07a26");
 
 function pool() {
   const slots = Array.from({ length: 4 }, () => Promise.resolve());
@@ -27,7 +28,8 @@ function pool() {
   } };
 }
 
-for (const [label, Engine] of [["49b0a58", baseline.LiveEngine], ["1b784bf", previousHead.LiveEngine], ["current", LiveEngine]]) {
+for (const [label, Engine] of [["49b0a58", baseline.LiveEngine], ["1b784bf", previousHead.LiveEngine],
+  ["ae07a26", reviewHead.LiveEngine], ["current", LiveEngine]]) {
   const dir = mkdtempSync(path.join(tmpdir(), "probe-load-"));
   try {
     const engine = new Engine({ liveStateFile: path.join(dir,"state"), liveLogFile: path.join(dir,"log"),

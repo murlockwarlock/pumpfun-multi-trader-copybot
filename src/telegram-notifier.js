@@ -186,6 +186,16 @@ export class TelegramNotifier {
         details.error ?? "Проверьте транзакцию вручную; повторная отправка не выполняется."
       ].filter(Boolean).join("\n");
       options = { dedupeKey: `live-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_position_quarantined") {
+      text = [
+        "🚨 Позиция изолирована: принадлежность токенов не доказана",
+        `Mint: ${short(details.mint, 10)}`,
+        details.entrySignature || details.signature
+          ? `Tx: https://solscan.io/tx/${details.entrySignature ?? details.signature}` : null,
+        `Причина: ${details.reason ?? "unknown"}`,
+        "Автоматическая продажа заблокирована; требуется проверка истории переводов."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `position-quarantined:${details.mint}`, dedupeMs: 300_000 };
     } else if (event === "admin_report") {
       text = details.text;
     }

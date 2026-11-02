@@ -41,7 +41,7 @@ function concurrentFixture(t, overrides = {}) {
     prepare: async (side, mint, raw, options) => {
       calls.push({ side, mint, options });
       return { expectedSignature: side + mint, mint: new PublicKey(mint), tokenProgram: TOKEN_PROGRAM_ID,
-        venue: "pump-curve", beforeTokenBalance: side === "BUY" ? 0n : 50n, lastValidBlockHeight: 123 };
+        venue: "pump-curve", beforeTokenBalance: side === "BUY" ? 0n : 100n, lastValidBlockHeight: 123 };
     },
     submit: async prepared => prepared.expectedSignature,
     waitForTokenBalanceChange: () => never, confirm: () => never,
@@ -86,7 +86,7 @@ test("two live mints overlap in prepare and submit", { timeout: 3000 }, async t 
 test("pending exit survives duplicate signals and adjusted SELL uses processed", async t => {
   const { engine, buy, calls } = concurrentFixture(t);
   const tokens = Promise.withResolvers();
-  engine.executor.waitForTokenBalanceChange = () => tokens.promise;
+  engine.executor.processedTokenDelta = () => tokens.promise.then(() => 100n);
   const entry = buy();
   await engine.onTrade(entry);
   const exit = { ...entry, signature: "exit", side: "SELL" };
@@ -102,7 +102,7 @@ test("pending exit survives duplicate signals and adjusted SELL uses processed",
   await competing;
   await dispatch;
   const sells = calls.filter(call => call.side === "SELL");
-  assert.equal(sells.length, 2);
+  assert.equal(sells.length, 1);
   assert.ok(sells.every(call => call.options.balanceCommitment === "processed"));
   assert.equal(engine.state.handledSignals.filter(s => s.side === "SELL").length, 1);
 });
@@ -134,7 +134,7 @@ test("unresolved confirmation permits emergency SELL for another mint", {timeout
   engine.executor.currentBlockHeight = async () => 1;
   const other = buy();
   engine.state.setPosition({ mint: other.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
-    rawTokenAmount: "50", openedAt: new Date(0).toISOString() });
+    rawTokenAmount: "50", inventoryBaselineRaw: "0", openedAt: new Date(0).toISOString() });
   const [exit] = await engine.maintenanceTrades();
   assert.equal(exit.mint, other.mint);
   assert.equal((await engine.onTrade(exit)).type, "LIVE_SUBMITTED");
@@ -236,9 +236,14 @@ test("confirmed SELL with stale balance becomes unknown without a duplicate", as
   const { engine, buy } = concurrentFixture(t);
   const entry = buy();
   engine.state.setPosition({ mint: entry.mint, rawTokenAmount: "50", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
-    openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
+    inventoryBaselineRaw: "0", openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
   engine.executor.tokenBalance = async () => 50n;
   engine.executor.confirm = async () => "confirmed";
+  engine.executor.prepare = async (side, mint, raw, options) => ({
+    expectedSignature: "stale-sell", mint: new PublicKey(mint), tokenProgram: TOKEN_PROGRAM_ID,
+    venue: "pump-curve", beforeTokenBalance: side === "SELL" ? 50n : 0n,
+    lastValidBlockHeight: 123, balanceCommitment: options.balanceCommitment
+  });
   const sell = { ...entry, side: "SELL", signature: "stale-sell" };
   assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
   for (let i = 0; i < 20 && engine.state.handledSignals.at(-1).status === "submitted"; i++) {
@@ -252,7 +257,7 @@ test("confirmed SELL uses transaction token delta when wallet balance is stale",
   const { engine, buy } = concurrentFixture(t);
   const entry = buy();
   engine.state.setPosition({ mint: entry.mint, rawTokenAmount: "50", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
-    openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
+    inventoryBaselineRaw: "0", openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
   engine.executor.tokenBalance = async () => 50n;
   engine.executor.confirm = async () => "confirmed";
   engine.executor.transactionTokenDelta = async () => -50n;
@@ -272,7 +277,7 @@ test("unknown SELL settlement emits a warning event, never live_settled", async 
   const events = [];
   const engine = new LiveEngine(liveConfig(directory), (event, details) => events.push({ event, details }));
   engine.state.setPosition({ mint: mint.toBase58(), rawTokenAmount: "50",
-    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
+    inventoryBaselineRaw: "0", tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(), entrySignature: "copy-buy" });
   engine.executor = {
     prewarm: async () => {}, tokenBalance: async () => 50n,
     prepare: async () => ({ expectedSignature: "unknown-sell", mint,
@@ -374,7 +379,7 @@ test("expired unknown retains budget; hung mint A permits confirmed B recovery",
 test("explicit SELL rejection allows immediate exit retry", async t => {
   const { engine, buy } = concurrentFixture(t);
   const trade = { ...buy(), side: "SELL" };
-  engine.state.setPosition({ mint: trade.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(), rawTokenAmount: "50" });
+  engine.state.setPosition({ mint: trade.mint, tokenProgram: TOKEN_PROGRAM_ID.toBase58(), rawTokenAmount: "50", inventoryBaselineRaw: "0" });
   engine.executor.submit = async () => { throw Error("simulation failed"); };
   assert.equal((await engine.onTrade(trade)).type, "LIVE_FAILED");
   assert.equal(engine.state.handledSignals.at(-1).status, "submit_rejected");
@@ -433,7 +438,8 @@ test("returns after live submission while confirmation settles in the background
     },
     submit: async () => "copy-signature",
     confirm: async () => confirmation,
-    tokenBalance: async () => 100n
+    tokenBalance: async () => 100n,
+    processedTokenDelta: async () => 100n
   };
 
   try {
@@ -538,6 +544,229 @@ test("submits an early SELL from the processed BUY balance before BUY confirmati
   }
 });
 
+test("foreign transfer during an unlanded BUY cannot create a provisional position or SELL", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-foreign-transfer-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let releaseBuy;
+  const buyConfirmed = new Promise(resolve => { releaseBuy = resolve; });
+  const submissions = [];
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    prepare: async (side) => ({
+      expectedSignature: side === "BUY" ? "foreign-buy" : "foreign-sell",
+      mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: side === "BUY" ? 50n : 160n, lastValidBlockHeight: 123
+    }),
+    submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
+    confirm: async signature => signature === "foreign-buy" ? buyConfirmed : "confirmed",
+    tokenBalance: async () => 160n,
+    transactionTokenDelta: async signature => signature === "foreign-buy" ? 100n : -100n
+  };
+  const buy = {
+    signature: "foreign-target-buy", side: "BUY", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  };
+  assert.equal((await engine.onTrade(buy)).type, "LIVE_SUBMITTED");
+  const sell = { ...buy, signature: "foreign-target-sell", side: "SELL" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_EXIT_PENDING");
+  assert.equal(engine.positions.size, 0);
+  assert.deepEqual(submissions, ["foreign-buy"]);
+
+  releaseBuy("confirmed");
+  const pending = engine.pendingExits.get(mint.toBase58());
+  await pending;
+  assert.deepEqual(submissions, ["foreign-buy", "foreign-sell"]);
+  assert.equal(engine.positions.size, 0);
+});
+
+test("a trusted early SELL remains accounted when BUY confirmation arrives after it", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-early-close-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let releaseBuy;
+  let releaseSell;
+  const buyConfirmed = new Promise(resolve => { releaseBuy = resolve; });
+  const sellConfirmed = new Promise(resolve => { releaseSell = resolve; });
+  const submissions = [];
+  let balanceReads = 0;
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    processedTokenDelta: async () => 100n,
+    prepare: async side => ({
+      expectedSignature: side === "BUY" ? "late-buy" : "early-sell",
+      mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: side === "BUY" ? 0n : 100n, lastValidBlockHeight: 123
+    }),
+    submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
+    confirm: async signature => signature === "late-buy" ? buyConfirmed : sellConfirmed,
+    tokenBalance: async () => [100n, 100n, 0n][balanceReads++] ?? 0n,
+    transactionTokenDelta: async signature => signature === "late-buy" ? 100n : -100n,
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "-5000000" })
+  };
+  const buy = { signature: "late-target-buy", side: "BUY", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs", fastProfile: true };
+  assert.equal((await engine.onTrade(buy)).type, "LIVE_SUBMITTED");
+  const sell = { ...buy, signature: "early-target-sell", side: "SELL" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  releaseSell("confirmed");
+  for (let attempt = 0; attempt < 40 && engine.state.handledSignals.at(-1).status !== "confirmed"; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  releaseBuy("confirmed");
+  for (let attempt = 0; attempt < 40 && engine.state.handledSignals.some(s => s.targetSignature === buy.signature && s.status !== "confirmed"); attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.deepEqual(submissions, ["late-buy", "early-sell"]);
+  assert.equal(engine.positions.size, 0);
+  const buySignal = engine.state.handledSignals.find(s => s.targetSignature === buy.signature);
+  assert.equal(buySignal.status, "confirmed");
+  assert.equal(buySignal.closedWhileConfirming, true);
+});
+
+test("restart recovery quarantines an old balance after the BUY inventory was withdrawn", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-inventory-recovery-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(liveConfig(directory), () => {});
+  const entry = { signature: "inventory-target-buy", side: "BUY", mint };
+  first.state.reserveSignal(entry, {
+    signature: "inventory-copy-buy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "50", beforeTokenBalanceKnown: true,
+    rawAmount: "5000000", lastValidBlockHeight: 123
+  }, 5_000_000n);
+  first.state.updateSignal(entry.signature, {
+    status: "processed",
+    pendingExit: { signature: "inventory-target-sell", side: "SELL", mint }
+  });
+
+  const restored = new LiveEngine(liveConfig(directory), () => {});
+  let submits = 0;
+  restored.executor = {
+    signatureStatus: async () => ({ confirmationStatus: "confirmed", err: null }),
+    transactionTokenDelta: async () => 100n,
+    tokenBalance: async () => 50n,
+    submit: async () => { submits += 1; return "must-not-submit"; }
+  };
+  await restored.reconcile();
+  const recovered = restored.state.handledSignals.find(s => s.targetSignature === entry.signature);
+  assert.equal(restored.positions.size, 0);
+  assert.equal(submits, 0);
+  assert.equal(recovered.status, "position_quarantined");
+  assert.equal(recovered.ownershipReason, "post_buy_inventory_ambiguous");
+  assert.ok(recovered.pendingExit);
+
+  const restarted = new LiveEngine(liveConfig(directory), () => {});
+  restarted.executor = { ...restored.executor, submit: async () => { submits += 1; return "must-not-submit"; } };
+  await restarted.reconcile();
+  assert.equal(restarted.positions.size, 0);
+  assert.equal(submits, 0);
+});
+
+test("pending SELL dispatches immediately after confirmed BUY without processed attribution", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-confirmed-exit-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let releaseBuy;
+  const buyConfirmed = new Promise(resolve => { releaseBuy = resolve; });
+  const submissions = [];
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async side => ({
+      expectedSignature: side === "BUY" ? "confirmed-buy" : "confirmed-sell",
+      mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: side === "BUY" ? 0n : 100n, lastValidBlockHeight: 123
+    }),
+    submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
+    confirm: async signature => signature === "confirmed-buy" ? buyConfirmed : "confirmed",
+    tokenBalance: async () => 100n,
+    transactionTokenDelta: async signature => signature === "confirmed-buy" ? 100n : -100n
+  };
+  const buy = { signature: "confirmed-target-buy", side: "BUY", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs" };
+  assert.equal((await engine.onTrade(buy)).type, "LIVE_SUBMITTED");
+  const sell = { ...buy, signature: "confirmed-target-sell", side: "SELL" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_EXIT_PENDING");
+  assert.deepEqual(submissions, ["confirmed-buy"]);
+
+  releaseBuy("confirmed");
+  await engine.pendingExits.get(mint.toBase58());
+  assert.deepEqual(submissions, ["confirmed-buy", "confirmed-sell"]);
+  assert.equal(engine.state.handledSignals.filter(s => s.side === "SELL").length, 1);
+});
+
+for (const [label, settledBalance] of [["external outflow", 80n], ["external inflow", 120n]]) {
+  test(`SELL settlement uses its transaction delta despite ${label}`, async t => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `copybot-live-sell-delta-${label.replaceAll(" ", "-")}-`));
+    t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+    const mint = Keypair.generate().publicKey;
+    const engine = new LiveEngine(liveConfig(directory), () => {});
+    let balanceReads = 0;
+    engine.state.setPosition({
+      mint: mint.toBase58(), rawTokenAmount: "100", inventoryBaselineRaw: "50",
+      tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+      entrySignature: "delta-buy", costLamports: "5000000"
+    });
+    engine.executor = {
+      prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+      prepare: async (_side, _mint, _raw, options) => ({
+        expectedSignature: "delta-sell", mint, tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "pump-curve", beforeTokenBalance: 150n,
+        lastValidBlockHeight: 123, balanceCommitment: options.balanceCommitment
+      }),
+      submit: async () => "delta-sell",
+      confirm: async () => "confirmed",
+      tokenBalance: async () => balanceReads++ === 0 ? 150n : settledBalance,
+      transactionTokenDelta: async () => -40n,
+      transactionWalletDelta: async () => ({ walletDeltaLamports: "4000000" })
+    };
+    const result = await engine.onTrade({ signature: `target-${label}`, side: "SELL",
+      mint: mint.toBase58(), observedAtMs: Date.now(), signalSource: "processed_logs" });
+    assert.equal(result.type, "LIVE_SUBMITTED");
+    for (let attempt = 0; attempt < 20 && engine.state.handledSignals.at(-1).status === "submitted"; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "60");
+    assert.equal(engine.state.handledSignals.at(-1).status, "confirmed");
+    await engine.reconcile();
+    const restarted = new LiveEngine(liveConfig(directory), () => {});
+    assert.equal(restarted.positions.get(mint.toBase58()).rawTokenAmount, "60");
+  });
+}
+
+test("SELL with unavailable transaction metadata remains unknown and is not duplicated", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-sell-no-metadata-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.setPosition({ mint: mint.toBase58(), rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(), entrySignature: "entry" });
+  let submits = 0;
+  let balanceReads = 0;
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async () => ({ expectedSignature: "no-metadata-sell", mint, tokenProgram: TOKEN_PROGRAM_ID,
+      venue: "pump-curve", beforeTokenBalance: 150n, lastValidBlockHeight: 123 }),
+    submit: async () => { submits += 1; return "no-metadata-sell"; },
+    confirm: async () => "confirmed", tokenBalance: async () => balanceReads++ === 0 ? 150n : 120n,
+    transactionTokenDelta: async () => null
+  };
+  const sell = { signature: "no-metadata-target", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let attempt = 0; attempt < 20 && engine.state.handledSignals.at(-1).status === "submitted"; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(engine.state.handledSignals.at(-1).status, "confirmation_unknown");
+  assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "100");
+  assert.equal(submits, 1);
+  assert.equal((await engine.onTrade({ ...sell, signature: "no-metadata-retry" })).reason, "exit_already_pending");
+});
+
 test("fast BUY with pre-existing tokens cannot create a provisional position or SELL them", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -599,7 +828,7 @@ test("fast BUY attributes only its proven 100-token delta over a pre-existing 50
     prepare: async (side) => ({
       expectedSignature: side === "BUY" ? "copy-buy" : "copy-sell",
       mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
-      beforeTokenBalance: side === "BUY" ? 0n : 100n, lastValidBlockHeight: 123
+      beforeTokenBalance: side === "BUY" ? 0n : 150n, lastValidBlockHeight: 123
     }),
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
     confirm: async () => confirmation
@@ -665,6 +894,7 @@ test("manual BUY pause never blocks an emergency SELL", async () => {
   engine.state.setPosition({
     mint: mint.toBase58(),
     rawTokenAmount: "100",
+    inventoryBaselineRaw: "0",
     tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
     openedAt: new Date().toISOString(),
     entrySignature: "entry",

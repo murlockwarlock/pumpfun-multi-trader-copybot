@@ -50,3 +50,14 @@ test("generic LIVE_UNKNOWN result is actionable and deduplicated", async () => {
   assert.match(messages[0].text, /Результат live-транзакции не определён/);
   assert.match(messages[0].text, /token attribution unavailable/);
 });
+
+test("quarantined inventory is actionable and deduplicated", async () => {
+  const { notifier, messages } = captureNotifier();
+  const details = { mint: "mint-ambiguous", entrySignature: "sig-buy",
+    reason: "post_buy_inventory_ambiguous" };
+  await notifier.handle("live_position_quarantined", details);
+  await notifier.handle("live_position_quarantined", details);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /принадлежность токенов не доказана/);
+  assert.match(messages[0].text, /Автоматическая продажа заблокирована/);
+});

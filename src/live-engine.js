@@ -282,6 +282,54 @@ export class LiveEngine {
     this.log("live_exit_retry", { mint, attempt: attempts, reason, retryInMs: delayMs });
   }
 
+  #quarantinePosition(position, reason, details = {}) {
+    const updated = {
+      ...position,
+      ownershipStatus: "quarantined",
+      ownershipReason: reason,
+      ownershipEvidence: details,
+      ownershipBlockedAt: new Date().toISOString()
+    };
+    this.state.setPosition(updated);
+    this.log("live_position_quarantined", {
+      mint: position.mint,
+      entrySignature: position.entrySignature ?? null,
+      reason,
+      ...details
+    });
+    return updated;
+  }
+
+  #quarantineBuy(signal, reason, details = {}) {
+    this.state.updateSignal(signal.targetSignature, {
+      status: "position_quarantined",
+      ownershipStatus: "quarantined",
+      ownershipReason: reason,
+      ownershipEvidence: details
+    });
+    this.log("live_position_quarantined", {
+      mint: signal.mint,
+      targetSignature: signal.targetSignature,
+      signature: signal.signature ?? null,
+      reason,
+      ...details
+    });
+  }
+
+  #inventoryBaseline(position) {
+    if (/^\d+$/.test(position.inventoryBaselineRaw ?? "")) {
+      return BigInt(position.inventoryBaselineRaw);
+    }
+    const entry = this.state.handledSignals.find(signal =>
+      signal.targetSignature === position.targetEntrySignature ||
+      signal.signature === position.entrySignature
+    );
+    if (entry?.beforeTokenBalanceKnown === true && /^\d+$/.test(entry.beforeTokenBalance ?? "")) {
+      return BigInt(entry.beforeTokenBalance);
+    }
+    return null;
+  }
+
   #hasActiveSell(mint) {
     return this.state.handledSignals.some(
       (signal) => signal.mint === mint && signal.side === "SELL" &&
@@ -388,13 +436,38 @@ export class LiveEngine {
       }
       executedDelta = toBigIntOrNull(executedDelta);
       if (executedDelta === null || executedDelta <= 0n) return;
-      const balance = await this.executor.tokenBalance(new PublicKey(address), new PublicKey(orphan.tokenProgram), "processed");
-      const bought = bigintMin(executedDelta, balance);
+      const balanceCommitment = buyStatus.confirmationStatus === "processed"
+        ? "processed" : "confirmed";
+      const balance = await this.executor.tokenBalance(
+        new PublicKey(address), new PublicKey(orphan.tokenProgram), balanceCommitment
+      );
+      const before = orphan.beforeTokenBalanceKnown === true && /^\d+$/.test(orphan.beforeTokenBalance ?? "")
+        ? BigInt(orphan.beforeTokenBalance) : null;
+      if (before !== null && balance < before + executedDelta) {
+        this.#quarantineBuy(orphan, "post_buy_inventory_ambiguous", {
+          beforeTokenBalance: before.toString(),
+          transactionTokenDelta: executedDelta.toString(),
+          observedTokenBalance: balance.toString(),
+          evidence: "confirmed_buy_delta_but_inventory_below_expected"
+        });
+        return;
+      }
+      if (before === null && balance < executedDelta) {
+        this.#quarantineBuy(orphan, "buy_delta_exceeds_observed_inventory", {
+          transactionTokenDelta: executedDelta.toString(),
+          observedTokenBalance: balance.toString(),
+          evidence: "confirmed_buy_delta_exceeds_current_balance"
+        });
+        return;
+      }
+      const bought = executedDelta;
       if (bought > 0n && !this.positions.has(address)) {
+        const inventoryBaseline = before ?? (balance - bought);
         this.state.setPosition({
           mint: address, rawTokenAmount: bought.toString(), tokenProgram: orphan.tokenProgram,
           venue: orphan.venue, openedAt: orphan.at, entrySignature: orphan.signature,
           targetEntrySignature: orphan.targetSignature, costLamports: orphan.rawAmount,
+          inventoryBaselineRaw: inventoryBaseline.toString(),
           provisional: buyStatus.confirmationStatus === "processed",
           sourceWallet: orphan.sourceWallet, sourceName: orphan.sourceName
         });
@@ -497,10 +570,11 @@ export class LiveEngine {
       let changed = signal.side === "BUY"
         ? executedTokenDelta !== null
           ? executedTokenDelta > 0n
-          : signal.beforeTokenBalanceKnown === true && after > before
+          : typeof this.executor.transactionTokenDelta !== "function" &&
+            signal.beforeTokenBalanceKnown === true && after > before
         : executedTokenDelta !== null
           ? executedTokenDelta < 0n
-          : after < before;
+          : typeof this.executor.transactionTokenDelta !== "function" && after < before;
       if (!changed) {
         // A confirmed BUY can already have been fully exited on processed.
         const exited = signal.side === "BUY" && this.state.handledSignals.some(s =>
@@ -516,6 +590,20 @@ export class LiveEngine {
       if (signal.side === "BUY") {
         const bought = executedTokenDelta !== null && executedTokenDelta > 0n
           ? executedTokenDelta : after - before;
+        const exitedWhileConfirming = this.state.handledSignals.some(candidate =>
+          candidate.side === "SELL" && candidate.entrySignature === signal.signature &&
+          ["confirmed", "reconciled_confirmed", "confirmed_pending_close"].includes(candidate.status)
+        );
+        if (executedTokenDelta !== null && signal.beforeTokenBalanceKnown === true &&
+            after < before + executedTokenDelta && !exitedWhileConfirming) {
+          this.#quarantineBuy(signal, "post_buy_inventory_ambiguous", {
+            beforeTokenBalance: before.toString(),
+            transactionTokenDelta: executedTokenDelta.toString(),
+            observedTokenBalance: after.toString(),
+            evidence: "confirmed_buy_delta_but_inventory_below_expected"
+          });
+          continue;
+        }
         const entryDelta = await this.#transactionDelta(
           signal.signature,
           -BigInt(signal.rawAmount)
@@ -534,6 +622,8 @@ export class LiveEngine {
             tokenProgram: signal.tokenProgram, venue: signal.venue, openedAt: signal.at,
             entrySignature: signal.signature, targetEntrySignature: signal.targetSignature,
             costLamports: signal.rawAmount, entryWalletDeltaLamports: entryDelta.toString(),
+            inventoryBaselineRaw: signal.beforeTokenBalanceKnown === true
+              ? before.toString() : (after - bought).toString(),
             provisional: false,
             sourceWallet: signal.sourceWallet ?? null, sourceName: signal.sourceName ?? null
           });
@@ -541,6 +631,9 @@ export class LiveEngine {
           this.state.setPosition({
             ...existing,
             rawTokenAmount: existing.exitRequest ? existing.rawTokenAmount : bought.toString(),
+            inventoryBaselineRaw: existing.inventoryBaselineRaw ?? (
+              signal.beforeTokenBalanceKnown === true ? before.toString() : (after - bought).toString()
+            ),
             entryWalletDeltaLamports: entryDelta.toString(),
             provisional: false
           });
@@ -548,6 +641,14 @@ export class LiveEngine {
       } else {
         const position = this.state.positions.get(signal.mint);
         if (position) {
+          if (typeof this.executor.transactionTokenDelta === "function" &&
+              (executedTokenDelta === null || executedTokenDelta >= 0n)) {
+            this.state.updateSignal(signal.targetSignature, {
+              status: "confirmation_unknown",
+              recoveryEvidence: "confirmed_sell_token_delta_unavailable"
+            });
+            continue;
+          }
           const sold = executedTokenDelta !== null && executedTokenDelta < 0n
             ? -executedTokenDelta : before - after;
           const remaining = BigInt(position.rawTokenAmount) > sold
@@ -649,56 +750,56 @@ export class LiveEngine {
   }
 
   async #primeProcessedBuy(trade, rawAmount, prepared, signature, readiness) {
-    const timeoutMs = this.config.liveProcessedBalanceTimeoutMs ?? 3_000;
-    const pollMs = this.config.liveProcessedBalancePollMs ?? 100;
     try {
-      let afterTokenBalance;
-      let bought;
-      if (prepared.beforeTokenBalanceKnown === false) {
-        // Standard Solana history RPC cannot prove a processed token delta.
-        // Only an explicitly supplied streaming attribution source may unlock
-        // an early SELL; otherwise settlement waits for confirmed metadata.
-        if (typeof this.executor.processedTokenDelta !== "function") {
-          readiness.error = "processed_token_attribution_unavailable";
-          this.log("live_buy_processed_deferred", {
-            mint: trade.mint, signature, targetSignature: trade.signature,
-            reason: readiness.error,
-            fallback: "wait_for_confirmed_transaction_metadata"
-          });
-          return { ready: false, deferred: true, error: readiness.error };
-        }
-        const delta = toBigIntOrNull(await this.executor.processedTokenDelta(
-          signature, prepared.mint, this.wallet?.publicKey, prepared.tokenProgram
-        ));
-        if (delta === null || delta <= 0n) {
-          readiness.error = "processed_transaction_has_no_token_delta";
-          return { ready: false, error: readiness.error };
-        }
-        afterTokenBalance = await this.executor.tokenBalance(
-          prepared.mint, prepared.tokenProgram, "processed"
-        );
-        bought = bigintMin(delta, afterTokenBalance);
-        if (bought <= 0n) {
-          readiness.error = "processed_token_balance_unavailable";
-          return { ready: false, error: readiness.error };
-        }
-        readiness.processedEvidence = "processed_transaction_delta";
-      } else {
-        afterTokenBalance = typeof this.executor.waitForTokenBalanceChange === "function"
-          ? await this.executor.waitForTokenBalanceChange(
-              prepared.mint,
-              prepared.tokenProgram,
-              prepared.beforeTokenBalance,
-              "BUY",
-              { commitment: "processed", timeoutMs, pollMs }
-            )
-          : await this.executor.tokenBalance(
-              prepared.mint,
-              prepared.tokenProgram,
-              "processed"
-            );
-        bought = afterTokenBalance - prepared.beforeTokenBalance;
+      // A balance increase is not transaction provenance. Only an explicitly
+      // supplied processed attribution source may unlock an early SELL.
+      if (typeof this.executor.processedTokenDelta !== "function") {
+        readiness.error = "processed_token_attribution_unavailable";
+        this.log("live_buy_processed_deferred", {
+          mint: trade.mint, signature, targetSignature: trade.signature,
+          reason: readiness.error,
+          fallback: "wait_for_confirmed_transaction_metadata"
+        });
+        return { ready: false, deferred: true, error: readiness.error };
       }
+      const delta = toBigIntOrNull(await this.executor.processedTokenDelta(
+        signature, prepared.mint, this.wallet?.publicKey, prepared.tokenProgram
+      ));
+      if (delta === null || delta <= 0n) {
+        readiness.error = "processed_transaction_has_no_token_delta";
+        return { ready: false, error: readiness.error };
+      }
+      const afterTokenBalance = await this.executor.tokenBalance(
+        prepared.mint, prepared.tokenProgram, "processed"
+      );
+      const before = prepared.beforeTokenBalanceKnown === true
+        ? prepared.beforeTokenBalance : 0n;
+      if (prepared.beforeTokenBalanceKnown === true && afterTokenBalance < before + delta) {
+        readiness.error = "processed_inventory_ambiguous";
+        this.state.updateSignal(trade.signature, {
+          ownershipStatus: "quarantined",
+          ownershipReason: readiness.error,
+          ownershipEvidence: {
+            beforeTokenBalance: before.toString(),
+            processedTokenDelta: delta.toString(),
+            observedTokenBalance: afterTokenBalance.toString()
+          }
+        });
+        this.log("live_position_quarantined", {
+          mint: trade.mint, signature, targetSignature: trade.signature,
+          reason: readiness.error,
+          beforeTokenBalance: before.toString(),
+          processedTokenDelta: delta.toString(),
+          observedTokenBalance: afterTokenBalance.toString()
+        });
+        return { ready: false, deferred: true, error: readiness.error };
+      }
+      if (prepared.beforeTokenBalanceKnown !== true && afterTokenBalance < delta) {
+        readiness.error = "processed_token_balance_unavailable";
+        return { ready: false, error: readiness.error };
+      }
+      const bought = delta;
+      readiness.processedEvidence = "processed_transaction_delta";
       const buySignal = this.state.handledSignals.find(s => s.targetSignature === trade.signature);
       if (!buySignal || !ACTIVE_SIGNAL_STATUSES.has(buySignal.status)) {
         return { ready: this.positions.get(trade.mint)?.entrySignature === signature };
@@ -711,6 +812,8 @@ export class LiveEngine {
       const existing = this.state.positions.get(trade.mint);
       if (!existing) {
         readiness.created = true;
+        const inventoryBaseline = prepared.beforeTokenBalanceKnown === true
+          ? before : afterTokenBalance - bought;
         this.state.setPosition({
           mint: trade.mint,
           rawTokenAmount: bought.toString(),
@@ -720,6 +823,7 @@ export class LiveEngine {
           entrySignature: signature,
           targetEntrySignature: trade.signature,
           costLamports: rawAmount.toString(),
+          inventoryBaselineRaw: inventoryBaseline.toString(),
           provisional: true,
           sourceWallet: trade.sourceWallet ?? null,
           sourceName: trade.sourceName ?? null
@@ -786,38 +890,81 @@ export class LiveEngine {
     }
 
     if (trade.side === "BUY") {
-      let bought = afterTokenBalance - prepared.beforeTokenBalance;
-      let attribution = prepared.beforeTokenBalanceKnown === false
-        ? null : "balance_baseline";
-      if (prepared.beforeTokenBalanceKnown === false) {
-        const executedTokenDelta = typeof this.executor.transactionTokenDelta === "function"
-          ? toBigIntOrNull(await this.executor.transactionTokenDelta(
-              signature, trade.mint, this.wallet?.publicKey, "confirmed"
-            ).catch(() => null))
-          : null;
-        if (executedTokenDelta !== null && executedTokenDelta > 0n) {
-          bought = executedTokenDelta;
-          attribution = "confirmed_transaction_delta";
-        } else if (readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
-          bought = readiness.rawTokenAmount;
-          attribution = readiness.processedEvidence;
-        } else {
+      let bought = null;
+      let attribution = null;
+      const executedTokenDelta = typeof this.executor.transactionTokenDelta === "function"
+        ? toBigIntOrNull(await this.executor.transactionTokenDelta(
+            signature, trade.mint, this.wallet?.publicKey, "confirmed"
+          ).catch(() => null))
+        : null;
+      if (executedTokenDelta !== null && executedTokenDelta > 0n) {
+        const exitedWhileConfirming = this.state.handledSignals.some(candidate =>
+          candidate.side === "SELL" && candidate.entrySignature === signature &&
+          ["confirmed", "reconciled_confirmed", "confirmed_pending_close"].includes(candidate.status)
+        );
+        if (prepared.beforeTokenBalanceKnown === true &&
+            afterTokenBalance < prepared.beforeTokenBalance + executedTokenDelta &&
+            !exitedWhileConfirming) {
           this.state.updateSignal(trade.signature, {
-            status: "confirmation_unknown", signature,
-            recoveryEvidence: "confirmed_buy_token_delta_unavailable"
+            status: "position_quarantined", signature,
+            ownershipStatus: "quarantined",
+            ownershipReason: "post_buy_inventory_ambiguous",
+            ownershipEvidence: {
+              beforeTokenBalance: prepared.beforeTokenBalance.toString(),
+              transactionTokenDelta: executedTokenDelta.toString(),
+              observedTokenBalance: afterTokenBalance.toString()
+            }
           });
-          const unknown = {
+          this.log("live_position_quarantined", {
+            mint: trade.mint, targetSignature: trade.signature, signature,
+            reason: "post_buy_inventory_ambiguous",
+            beforeTokenBalance: prepared.beforeTokenBalance.toString(),
+            transactionTokenDelta: executedTokenDelta.toString(),
+            observedTokenBalance: afterTokenBalance.toString()
+          });
+          return {
             type: "LIVE_UNKNOWN", at: new Date().toISOString(),
             targetSignature: trade.signature, signature, mint: trade.mint,
-            side: trade.side, error: "confirmed BUY token attribution unavailable",
+            side: trade.side, error: "confirmed BUY inventory attribution ambiguous",
             sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
           };
-          this.#write(unknown);
-          return unknown;
         }
-      } else if (bought <= 0n && readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
+        if (prepared.beforeTokenBalanceKnown !== true && afterTokenBalance < executedTokenDelta &&
+            !exitedWhileConfirming) {
+          this.state.updateSignal(trade.signature, {
+            status: "confirmation_unknown", signature,
+            recoveryEvidence: "confirmed_buy_token_delta_exceeds_balance"
+          });
+          return {
+            type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+            targetSignature: trade.signature, signature, mint: trade.mint,
+            side: trade.side, error: "confirmed BUY token delta exceeds balance"
+          };
+        }
+        bought = executedTokenDelta;
+        attribution = "confirmed_transaction_delta";
+      } else if (readiness?.processedEvidence && readiness.rawTokenAmount > 0n) {
         bought = readiness.rawTokenAmount;
         attribution = readiness.processedEvidence;
+      } else if (typeof this.executor.transactionTokenDelta !== "function" &&
+          prepared.beforeTokenBalanceKnown === true && afterTokenBalance > prepared.beforeTokenBalance) {
+        // Compatibility for lightweight adapters without transaction metadata.
+        // The production PumpExecutor always exposes transactionTokenDelta.
+        bought = afterTokenBalance - prepared.beforeTokenBalance;
+        attribution = "balance_baseline_legacy_adapter";
+      } else {
+        this.state.updateSignal(trade.signature, {
+          status: "confirmation_unknown", signature,
+          recoveryEvidence: "confirmed_buy_token_delta_unavailable"
+        });
+        const unknown = {
+          type: "LIVE_UNKNOWN", at: new Date().toISOString(),
+          targetSignature: trade.signature, signature, mint: trade.mint,
+          side: trade.side, error: "confirmed BUY token attribution unavailable",
+          sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
+        };
+        this.#write(unknown);
+        return unknown;
       }
       if (bought <= 0n) {
         this.state.updateSignal(trade.signature, { status: "confirmed_no_tokens", signature });
@@ -832,6 +979,11 @@ export class LiveEngine {
         openedAt: existing?.openedAt ?? new Date().toISOString(), entrySignature: signature,
         targetEntrySignature: trade.signature, costLamports: rawAmount.toString(),
         entryWalletDeltaLamports: entryDelta.toString(),
+        inventoryBaselineRaw: existing?.inventoryBaselineRaw ?? (
+          prepared.beforeTokenBalanceKnown === true
+            ? prepared.beforeTokenBalance.toString()
+            : (afterTokenBalance - bought).toString()
+        ),
         provisional: false,
         sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
       };
@@ -864,14 +1016,16 @@ export class LiveEngine {
       });
       return this.#skip(trade, "position_missing_during_sell_settlement");
     }
-    let sold = prepared.beforeTokenBalance - afterTokenBalance;
-    if (sold <= 0n && typeof this.executor.transactionTokenDelta === "function") {
-      const executedTokenDelta = await this.executor.transactionTokenDelta(
+    let executedTokenDelta = null;
+    if (typeof this.executor.transactionTokenDelta === "function") {
+      executedTokenDelta = toBigIntOrNull(await this.executor.transactionTokenDelta(
         signature, trade.mint, this.wallet?.publicKey,
-        confirmation === "processed" ? "processed" : "confirmed"
-      ).catch(() => null);
-      if (executedTokenDelta !== null && executedTokenDelta < 0n) sold = -executedTokenDelta;
+        confirmation === "finalized" ? "finalized" : "confirmed"
+      ).catch(() => null));
     }
+    let sold = executedTokenDelta !== null && executedTokenDelta < 0n
+      ? -executedTokenDelta : typeof this.executor.transactionTokenDelta !== "function"
+        ? prepared.beforeTokenBalance - afterTokenBalance : 0n;
     if (sold <= 0n) {
       this.state.updateSignal(trade.signature, {
         status: "confirmation_unknown", signature,
@@ -1099,10 +1253,12 @@ export class LiveEngine {
   async #dispatchPendingExit(trade, pending) {
     const readiness = await Promise.race([pending.readyPromise, pending.promise]);
     if (!readiness?.ready && !this.positions.has(trade.mint)) {
-      await pending.promise;
-      return;
+      const settled = await pending.promise;
+      if (!this.positions.has(trade.mint) || !["LIVE_BUY"].includes(settled?.type)) return;
     }
-    if (this.positions.has(trade.mint)) await this.lanes.run(trade.mint, () => this.#execute(trade, {}, true));
+    if (this.positions.has(trade.mint)) {
+      await this.lanes.run(trade.mint, () => this.#execute(trade, {}, true));
+    }
   }
 
   onTrade(trade) {
@@ -1134,6 +1290,9 @@ export class LiveEngine {
     }
     if (trade.side === "SELL") {
       const ownedPosition = this.state.positions.get(trade.mint);
+      if (ownedPosition?.ownershipStatus === "quarantined") {
+        return this.#skip(trade, "position_ownership_quarantined");
+      }
       if (ownedPosition && !this.#samePositionSource(ownedPosition, trade)) {
         return this.#skip(trade, "position_owned_by_other_trader");
       }
@@ -1236,6 +1395,26 @@ export class LiveEngine {
         this.state.deletePosition(trade.mint);
         return this.#skip(trade, "position_balance_already_zero");
       }
+      const inventoryBaseline = this.#inventoryBaseline(position);
+      if (inventoryBaseline === null) {
+        this.#quarantinePosition(position, "inventory_provenance_missing", {
+          ownedTokenAmount: position.rawTokenAmount,
+          observedTokenBalance: current.toString(),
+          evidence: "position_has_no_durable_inventory_baseline"
+        });
+        return this.#skip(trade, "position_ownership_quarantined");
+      }
+      const requiredInventory = inventoryBaseline + BigInt(position.rawTokenAmount);
+      if (current < requiredInventory) {
+        this.#quarantinePosition(position, "sell_inventory_below_owned_amount", {
+          ownedTokenAmount: position.rawTokenAmount,
+          inventoryBaselineRaw: inventoryBaseline.toString(),
+          requiredInventory: requiredInventory.toString(),
+          observedTokenBalance: current.toString(),
+          evidence: "post_buy_inventory_flow_unproven"
+        });
+        return this.#skip(trade, "position_ownership_quarantined");
+      }
       rawAmount = bigintMin(BigInt(position.rawTokenAmount), current);
     }
 
@@ -1281,11 +1460,33 @@ export class LiveEngine {
 
     if (trade.side === "SELL") {
       const position = this.state.positions.get(trade.mint);
+      if (position?.ownershipStatus === "quarantined") {
+        return this.#skip(trade, "position_ownership_quarantined");
+      }
       const sellable = bigintMin(BigInt(position.rawTokenAmount), prepared.beforeTokenBalance);
       if (sellable === 0n) {
         if (position.provisional) return this.#skip(trade, "awaiting_processed_balance");
         this.state.deletePosition(trade.mint);
         return this.#skip(trade, "position_balance_already_zero");
+      }
+      const inventoryBaseline = this.#inventoryBaseline(position);
+      if (inventoryBaseline === null) {
+        this.#quarantinePosition(position, "inventory_provenance_missing", {
+          ownedTokenAmount: position.rawTokenAmount,
+          observedTokenBalance: prepared.beforeTokenBalance.toString(),
+          evidence: "position_has_no_durable_inventory_baseline"
+        });
+        return this.#skip(trade, "position_ownership_quarantined");
+      }
+      if (prepared.beforeTokenBalance < inventoryBaseline + BigInt(position.rawTokenAmount)) {
+        this.#quarantinePosition(position, "sell_inventory_below_owned_amount", {
+          ownedTokenAmount: position.rawTokenAmount,
+          inventoryBaselineRaw: inventoryBaseline.toString(),
+          requiredInventory: (inventoryBaseline + BigInt(position.rawTokenAmount)).toString(),
+          observedTokenBalance: prepared.beforeTokenBalance.toString(),
+          evidence: "post_prepare_inventory_flow_unproven"
+        });
+        return this.#skip(trade, "position_ownership_quarantined");
       }
       if (sellable !== rawAmount) {
         try {

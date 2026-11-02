@@ -159,10 +159,18 @@ For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
 cannot then consume the separate slippage allowance and land beyond that target-
 relative ceiling. A matching SELL can be built at `processed` only when the
-executor has a measured pre-BUY baseline or a trusted processed token-delta
-source. Standard Solana transaction metadata is confirmed-only, so the default
-executor logs the deferral and waits for confirmed attribution rather than
-selling a pre-existing balance.
+executor has a trusted, signature-specific processed token-delta source. A
+balance increase by itself is never treated as BUY provenance. Standard Solana
+transaction metadata is confirmed-only, so the default executor logs the
+deferral and waits for confirmed attribution rather than selling a pre-existing
+or externally transferred balance.
+
+Confirmed BUY recovery records the pre-BUY inventory floor. If current
+inventory is below that floor plus the transaction-specific BUY delta, the
+position is quarantined as ownership-ambiguous and remains non-sellable across
+restart. Confirmed SELL settlement uses its own transaction token delta as the
+source of sold quantity; missing metadata is surfaced as unknown instead of
+using an arbitrary balance snapshot or rebroadcasting blindly.
 
 ## Live mode
 
@@ -213,6 +221,8 @@ touch data/STOP_LIVE
 | Signal-age limit | Avoid copying stale transactions after reconnects |
 | Entry-drift min-out | Reject a bad quote and enforce the target-relative ceiling inside the transaction |
 | Processed BUY readiness | Permit an immediate SELL while final BUY accounting continues in background |
+| Token provenance quarantine | Block sales when external transfers make remaining inventory ambiguous |
+| Transaction-specific settlement | Attribute BUY/SELL quantities to their signed transaction, not a raw balance change |
 | Dual WSS and execution RPC | Deduplicate two staggered feeds and retry transport/rate-limit failures through the fallback |
 | Daily spend/loss caps | Bound aggregate exposure across every followed trader |
 | SOL reserve | Keep enough balance for exits and transaction fees |

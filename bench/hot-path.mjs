@@ -50,11 +50,12 @@ async function measure(source) {
   await shadowDone;
   return submissions;
 }
-const [before, previousPR, previousHead, after] = await Promise.all([
+const [before, previousPR, previousHead, reviewHead, after] = await Promise.all([
   measure(execFileSync("git", ["show", "08b9df6:src/index.js"], { encoding: "utf8" })),
   measure(execFileSync("git", ["show", "49b0a58:src/index.js"], { encoding: "utf8" })),
   measure(execFileSync("git", ["show", "1b784bf:src/index.js"], { encoding: "utf8" })),
+  measure(execFileSync("git", ["show", "ae07a26:src/index.js"], { encoding: "utf8" })),
   measure(fs.readFileSync(new URL("../src/index.js", import.meta.url), "utf8"))
 ]);
-console.log({ before, previousPR, previousHead, after, unit: "ms since notification" });
+console.log({ before, previousPR, previousHead, reviewHead, after, unit: "ms since notification" });
 assert.ok(before[0] >= 5000 && after[1] < 1000);
