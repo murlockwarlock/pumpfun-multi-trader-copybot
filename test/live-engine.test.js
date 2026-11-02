@@ -1199,6 +1199,193 @@ test("failed token-account close is retried from the durable SELL settlement", a
   assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
 });
 
+test("closed token account waits for its SOL delta instead of recording zero", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-delta-recovery-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const engine = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "delta-close-entry", targetEntrySignature: "delta-close-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  engine.state.setPosition(position);
+  engine.state.reserveSignal({ signature: "delta-close-target", side: "SELL", mint }, {
+    signature: "delta-close-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  engine.state.updateSignal("delta-close-target", {
+    status: "submitted", signature: "delta-close-copy"
+  });
+  engine.state.applySellSettlement({
+    mint, targetSignature: "delta-close-target", signature: "delta-close-copy",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  let closeCalls = 0;
+  let deltaReads = 0;
+  engine.executor = {
+    closeEmptyTokenAccount: async () => {
+      closeCalls += 1;
+      return { status: "closed", signature: "delta-close-tx" };
+    },
+    transactionWalletDelta: async signature => {
+      deltaReads += 1;
+      if (signature === "delta-close-tx" && deltaReads < 2) {
+        throw new Error("confirmed close metadata not available yet");
+      }
+      return { walletDeltaLamports: "123" };
+    }
+  };
+
+  await engine.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("delta-close-target").closeStatus, "delta_pending");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 0n);
+  await engine.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("delta-close-target").closeStatus, "delta_pending");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 0n);
+  await engine.reconcile();
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("delta-close-target").closeStatus, "closed");
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_123n);
+});
+
+test("live SELL settlement and reconciliation serialize token-account close", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-race-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "race-entry", costLamports: "5000000", entryWalletDeltaLamports: "-5000000"
+  });
+  let balanceReads = 0;
+  let closeCalls = 0;
+  let releaseClose;
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    tokenBalance: async () => balanceReads++ === 0 ? 100n : 0n,
+    prepare: async () => ({ expectedSignature: "race-sell", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve", beforeTokenBalance: 100n,
+      lastValidBlockHeight: 123 }),
+    submit: async () => "race-sell",
+    confirm: async () => "confirmed",
+    transactionTokenDelta: async () => -100n,
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "6000000" }),
+    closeEmptyTokenAccount: async () => {
+      closeCalls += 1;
+      if (closeCalls === 1) {
+        return new Promise(resolve => { releaseClose = resolve; });
+      }
+      return { status: "closed", signature: "race-close", walletDeltaLamports: "123" };
+    }
+  };
+  const sell = { signature: "race-target", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs" };
+  assert.equal((await engine.onTrade(sell)).type, "LIVE_SUBMITTED");
+  for (let attempt = 0; attempt < 40 && closeCalls === 0; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(closeCalls, 1);
+  const recovery = engine.reconcile();
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(closeCalls, 1);
+  releaseClose({ status: "closed", signature: "race-close", walletDeltaLamports: "123" });
+  await recovery;
+  for (let attempt = 0; attempt < 40 && !engine.state.getSellSettlement("race-target")?.pnlRecorded; attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.equal(closeCalls, 1);
+  assert.equal(engine.state.getSellSettlement("race-target").pnlRecorded, true);
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_123n);
+});
+
+test("unfinished SELL settlement and signal survive history rollover", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-settlement-retention-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "retention-entry", targetEntrySignature: "retention-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "retention-target", side: "SELL", mint }, {
+    signature: "retention-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("retention-target", { status: "submitted", signature: "retention-copy" });
+  first.state.applySellSettlement({
+    mint, targetSignature: "retention-target", signature: "retention-copy",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaKnown: false, closeRequired: false
+  });
+  for (let index = 0; index < 2_100; index += 1) {
+    first.state.handledSignals.push({
+      targetSignature: `history-${index}`, side: "BUY", mint: `history-mint-${index}`,
+      status: "confirmed", at: new Date().toISOString()
+    });
+  }
+  first.state.recordRealizedPnl(0n);
+
+  const restarted = new LiveEngine(config, () => {});
+  assert.ok(restarted.state.getSellSettlement("retention-target"));
+  assert.ok(restarted.state.handledSignals.some(signal => signal.targetSignature === "retention-target"));
+  restarted.executor = {
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "6000000" })
+  };
+  await restarted.reconcile();
+  assert.equal(restarted.state.getSellSettlement("retention-target").pnlRecorded, true);
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_000n);
+});
+
+test("completed partial SELL is not scheduled for reconciliation again", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-partial-settlement-terminal-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const mint = Keypair.generate().publicKey.toBase58();
+  engine.state.setPosition({
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "partial-terminal-entry", entryWalletDeltaLamports: "-5000000",
+    costLamports: "5000000"
+  });
+  engine.state.reserveSignal({ signature: "partial-terminal-target", side: "SELL", mint }, {
+    signature: "partial-terminal-copy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "150", rawAmount: "40", lastValidBlockHeight: 123,
+    entrySignature: "partial-terminal-entry"
+  });
+  engine.state.updateSignal("partial-terminal-target", {
+    status: "submitted", signature: "partial-terminal-copy"
+  });
+  engine.state.applySellSettlement({
+    mint, targetSignature: "partial-terminal-target", signature: "partial-terminal-copy",
+    entrySignature: "partial-terminal-entry", rawSoldAmount: "40",
+    sellWalletDeltaLamports: "2000000", sellWalletDeltaKnown: true
+  });
+  engine.state.completeSellSettlement("partial-terminal-target", {
+    status: "reconciled_confirmed"
+  });
+  let settlementReads = 0;
+  const getSettlement = engine.state.getSellSettlement.bind(engine.state);
+  engine.state.getSellSettlement = (...args) => {
+    settlementReads += 1;
+    return getSettlement(...args);
+  };
+  await engine.reconcile();
+  assert.equal(settlementReads, 0);
+});
+
 test("FAST BUY without inventory provenance is rejected before submit", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
