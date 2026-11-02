@@ -393,6 +393,83 @@ test("quarantined BUY still reconciles a confirmed failure and refunds once acro
   assert.equal(restored.state.isQuarantined(mint), true);
   assert.equal(restored.positions.has(mint), false);
   assert.equal(feeReads, 1);
+
+  assert.throws(() => restored.state.clearQuarantine(mint, {
+    resolution: "not a failed-buy release", evidence: { source: "test" },
+    position: { mint, rawTokenAmount: "1", inventoryBaselineRaw: "0",
+      tokenProgram: TOKEN_PROGRAM_ID.toBase58(), entrySignature: "wrong",
+      targetEntrySignature: "wrong" }
+  }), /coherent evidence-backed position/);
+  assert.equal(restored.releaseFailedBuyQuarantine(mint, {
+    resolution: "confirmed BUY failure released with no inventory",
+    evidence: { confirmationStatus: "finalized", error: "InstructionError" },
+    signature: "quarantined-copy-buy", failedFeeLamports: "7000"
+  }), true);
+  assert.equal(restored.state.isQuarantined(mint), false);
+  let retrySubmits = 0;
+  restored.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async (_side, address) => ({ expectedSignature: "retry-copy-buy",
+      mint: new PublicKey(address), tokenProgram: TOKEN_PROGRAM_ID,
+      venue: "pump-curve", beforeTokenBalance: 0n, beforeTokenBalanceKnown: true,
+      lastValidBlockHeight: 123 }),
+    submit: async () => { retrySubmits += 1; return "retry-copy-buy"; },
+    confirm: async () => new Promise(() => {})
+  };
+  assert.equal((await restored.onTrade({ signature: "retry-target-buy", side: "BUY", mint,
+    observedAtMs: Date.now(), signalSource: "processed_logs" })).type, "LIVE_SUBMITTED");
+  assert.equal(retrySubmits, 1);
+  assert.equal(restored.state.dailySpendLamports, 5_007_000n);
+  const released = new LiveEngine(config, () => {});
+  assert.equal(released.state.isQuarantined(mint), false);
+  assert.equal(released.state.quarantineAudit.at(-1).disposition, "failed_buy_no_inventory");
+});
+
+for (const sold of [40n, 100n]) test(`SELL confirmed after quarantine settles ${sold} proven tokens`, async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), `copybot-live-quarantine-sell-${sold}-`));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "entry-before-quarantine", targetEntrySignature: "target-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  const sell = { signature: `target-sell-${sold}`, side: "SELL", mint };
+  first.state.reserveSignal(sell, {
+    signature: `copy-sell-${sold}`, tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "150", beforeTokenBalanceKnown: true, rawAmount: "100",
+    lastValidBlockHeight: 123, entrySignature: position.entrySignature
+  });
+  first.state.updateSignal(sell.signature, { status: "submitted", signature: `copy-sell-${sold}` });
+  first.state.quarantineMint(mint, {
+    kind: "position", reason: "inventory_baseline_unproven",
+    signature: position.entrySignature, targetSignature: position.targetEntrySignature
+  });
+  first.state.setPosition(position);
+
+  const restarted = new LiveEngine(config, () => {});
+  restarted.executor = {
+    signatureStatus: async () => ({ confirmationStatus: "confirmed", err: null }),
+    tokenBalance: async () => 50n + (100n - sold),
+    transactionTokenDelta: async () => -sold
+  };
+  await restarted.reconcile();
+  const expectedRemaining = 100n - sold;
+  assert.equal(restarted.positions.get(mint)?.rawTokenAmount ?? null,
+    expectedRemaining === 0n ? null : expectedRemaining.toString());
+  assert.equal(restarted.state.handledSignals.find(s => s.targetSignature === sell.signature).status,
+    "reconciled_confirmed");
+  const realized = restarted.state.dailyRealizedPnlLamports;
+  await restarted.reconcile();
+  const reloaded = new LiveEngine(config, () => {});
+  assert.equal(reloaded.state.dailyRealizedPnlLamports, realized);
+  assert.equal(reloaded.positions.get(mint)?.rawTokenAmount ?? null,
+    expectedRemaining === 0n ? null : expectedRemaining.toString());
+  assert.equal(reloaded.state.isQuarantined(mint), true);
 });
 
 test("audited quarantine resolution restores an orphan position before SELL after restart", async t => {

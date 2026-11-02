@@ -133,6 +133,10 @@ export class LiveEngine {
     return this.#skip(trade, reason);
   }
 
+  releaseFailedBuyQuarantine(mint, options) {
+    return this.state.releaseFailedBuyQuarantine(mint, options);
+  }
+
   #liveTraderEnabled(trade) {
     if (!trade.sourceWallet) return true;
     const enabled = this.config.liveTraderWallets;
@@ -388,6 +392,15 @@ export class LiveEngine {
       signal.mint === mint && signal.side === "SELL" &&
       (RECOVERABLE_EXIT_STATUSES.has(signal.status) || signal.status === "confirmation_unknown")
     );
+  }
+
+  #sellWasSubmittedBeforeQuarantine(signal, position) {
+    const quarantine = this.state.getQuarantine(signal.mint);
+    const signalAt = Date.parse(signal.at ?? "");
+    const quarantineAt = Date.parse(quarantine?.firstSeenAt ?? "");
+    return signal.side === "SELL" && position?.ownershipStatus === "quarantined" &&
+      signal.entrySignature && position.entrySignature === signal.entrySignature &&
+      Number.isFinite(signalAt) && Number.isFinite(quarantineAt) && signalAt <= quarantineAt;
   }
 
   #isAmbiguousSubmitError(error) {
@@ -715,8 +728,20 @@ export class LiveEngine {
             ? -executedTokenDelta : before - after;
           const remaining = BigInt(position.rawTokenAmount) > sold
             ? BigInt(position.rawTokenAmount) - sold : 0n;
+          const quarantinedSell = this.#sellWasSubmittedBeforeQuarantine(signal, position);
           if (remaining === 0n) {
-            this.state.deletePosition(signal.mint);
+            const settled = quarantinedSell
+              ? this.state.settleProvenSell(signal.mint, sold, signal.entrySignature)
+              : this.state.deletePosition(signal.mint);
+            if (!settled) {
+              this.state.updateSignal(signal.targetSignature, {
+                status: "confirmation_unknown",
+                recoveryEvidence: quarantinedSell
+                  ? "confirmed_sell_does_not_match_quarantined_position"
+                  : "confirmed_sell_position_close_failed"
+              });
+              continue;
+            }
             let tokenAccountClose = null;
             if (after === 0n) {
               this.state.updateSignal(signal.targetSignature, {
@@ -729,10 +754,21 @@ export class LiveEngine {
             }
             pnl = await this.#realizePosition(position, signal.signature, tokenAccountClose);
           } else {
-            this.state.setPosition({
-              ...position, rawTokenAmount: remaining.toString(),
-              exitRequest: { ...position.exitRequest, nextAttemptAt: new Date().toISOString() }
-            });
+            if (quarantinedSell) {
+              const settled = this.state.settleProvenSell(signal.mint, sold, signal.entrySignature);
+              if (!settled) {
+                this.state.updateSignal(signal.targetSignature, {
+                  status: "confirmation_unknown",
+                  recoveryEvidence: "confirmed_sell_does_not_match_quarantined_position"
+                });
+                continue;
+              }
+            } else {
+              this.state.setPosition({
+                ...position, rawTokenAmount: remaining.toString(),
+                exitRequest: { ...position.exitRequest, nextAttemptAt: new Date().toISOString() }
+              });
+            }
           }
         }
       }

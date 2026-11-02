@@ -202,6 +202,13 @@ RPC does not guarantee a complete historical sequence of every fungible-token
 movement between two observations; when that sequence cannot be proven, the
 implementation fails closed and requires an explicit audited resolution.
 
+A quarantined BUY that is later proven failed on-chain is a separate terminal
+case: after verified fee evidence and zero owned inventory are persisted, an
+operator may call `releaseFailedBuyQuarantine` with the matching transaction
+signature, fee, and non-empty audit evidence. This removes only that failed-BUY
+quarantine and permits a new BUY; ambiguous or successful BUY quarantines still
+require a restored position through `clearQuarantine`.
+
 ## Live mode
 
 Live execution is fail-closed. It requires all of the following:

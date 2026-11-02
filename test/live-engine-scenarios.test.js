@@ -119,7 +119,7 @@ function reserveQuarantinedBuy(engine, mint, suffix) {
   return { trade, signature };
 }
 
-test("32 fixed seeds drive production LiveEngine transitions across restart", async t => {
+test("32 deterministic production runs cover five LiveEngine scenario families across restart", async t => {
   const coverage = new Set();
   for (const seed of SEEDS) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-production-seed-"));
@@ -195,6 +195,18 @@ test("32 fixed seeds drive production LiveEngine transitions across restart", as
       assert.equal(restored.state.dailySpendLamports, 5000n);
       assert.equal(restored.state.isQuarantined(mint), true);
       assert.equal(feeReads, 1);
+      assert.equal(restored.releaseFailedBuyQuarantine(mint, {
+        resolution: "confirmed BUY failure released with no inventory",
+        evidence: { source: "controlled-confirmed-failure", seed },
+        signature: `copy-quarantined-${seed}`, failedFeeLamports: "5000"
+      }), true);
+      const retry = controlledExecutor(mint, { baseline: 0n, afterBuy: 100n });
+      restored.executor = retry.executor;
+      assert.equal((await restored.onTrade({ signature: `target-retry-${seed}`, side: "BUY", mint,
+        observedAtMs: Date.now(), signalSource: "processed_logs" })).type, "LIVE_SUBMITTED");
+      await eventually(() => restored.positions.has(mint), `released BUY did not settle for seed ${seed}`);
+      assert.deepEqual(retry.submissions, [retry.buySignature]);
+      assert.equal(restored.state.isQuarantined(mint), false);
     } else {
       coverage.add("audited_resolution_sell_restart");
       const first = new LiveEngine(liveConfig, () => {});

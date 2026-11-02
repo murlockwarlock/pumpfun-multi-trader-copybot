@@ -213,6 +213,20 @@ export class LiveState {
     return true;
   }
 
+  settleProvenSell(mint, rawSoldAmount, entrySignature) {
+    const position = this.positions.get(mint);
+    if (!position || (entrySignature && position.entrySignature !== entrySignature)) return null;
+    let sold;
+    try { sold = BigInt(rawSoldAmount); } catch { return null; }
+    const owned = BigInt(position.rawTokenAmount);
+    if (sold <= 0n || sold > owned) return null;
+    const remaining = owned - sold;
+    if (remaining === 0n) this.positions.delete(mint);
+    else this.positions.set(mint, { ...position, rawTokenAmount: remaining.toString() });
+    this.#save();
+    return { sold, remaining };
+  }
+
   quarantineMint(mint, details = {}) {
     const now = new Date().toISOString();
     const existing = this.quarantines.get(mint);
@@ -260,7 +274,9 @@ export class LiveState {
         BigInt(suppliedPosition.rawTokenAmount) <= 0n ||
         !/^\d+$/.test(suppliedPosition.inventoryBaselineRaw ?? "") ||
         !suppliedPosition.tokenProgram || !suppliedPosition.entrySignature ||
-        !suppliedPosition.targetEntrySignature) {
+        !suppliedPosition.targetEntrySignature ||
+        (existing.signature && suppliedPosition.entrySignature !== existing.signature &&
+          suppliedPosition.targetEntrySignature !== existing.targetSignature)) {
       throw new Error(
         "Quarantine resolution must restore a coherent evidence-backed position"
       );
@@ -298,6 +314,51 @@ export class LiveState {
       signal.ownershipResolution = options.resolution.trim();
       signal.updatedAt = new Date().toISOString();
     }
+    this.quarantines.delete(mint);
+    this.#save();
+    return true;
+  }
+
+  releaseFailedBuyQuarantine(mint, options) {
+    if (!options || typeof options !== "object" ||
+        typeof options.resolution !== "string" || !options.resolution.trim() ||
+        !options.evidence || typeof options.evidence !== "object" ||
+        Array.isArray(options.evidence) || Object.keys(options.evidence).length === 0 ||
+        typeof options.signature !== "string" || !/^\d+$/.test(options.failedFeeLamports ?? "")) {
+      throw new Error(
+        "Failed BUY quarantine release must include signature, fee, and audit evidence"
+      );
+    }
+    const existing = this.quarantines.get(mint);
+    if (!existing) return false;
+    if (this.positions.has(mint)) {
+      throw new Error("Failed BUY quarantine release cannot discard an existing position");
+    }
+    const signal = this.handledSignals.find(candidate =>
+      candidate.mint === mint && candidate.side === "BUY" &&
+      candidate.status === "failed_onchain" && candidate.signature === options.signature &&
+      String(candidate.failedFeeLamports ?? "") === String(options.failedFeeLamports)
+    );
+    if (!signal || (existing.signature && existing.signature !== options.signature)) {
+      throw new Error(
+        "Failed BUY quarantine release requires matching confirmed failure evidence"
+      );
+    }
+    this.quarantineAudit.push({
+      mint, resolution: options.resolution.trim(), at: new Date().toISOString(),
+      reason: existing.reason,
+      signature: options.signature,
+      targetSignature: signal.targetSignature,
+      disposition: "failed_buy_no_inventory",
+      failedFeeLamports: String(options.failedFeeLamports),
+      evidence: options.evidence
+    });
+    signal.quarantineResolution = options.resolution.trim();
+    signal.quarantineDisposition = "failed_buy_no_inventory";
+    signal.ownershipStatus = "resolved";
+    signal.ownershipReason = "failed_buy_no_inventory";
+    signal.ownershipEvidence = options.evidence;
+    signal.updatedAt = new Date().toISOString();
     this.quarantines.delete(mint);
     this.#save();
     return true;
