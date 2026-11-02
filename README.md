@@ -209,6 +209,12 @@ signature, fee, and non-empty audit evidence. This removes only that failed-BUY
 quarantine and permits a new BUY; ambiguous or successful BUY quarantines still
 require a restored position through `clearQuarantine`.
 
+A fully proven SELL that consumes the last strategy tokens is also resolved by
+an explicit `releaseClosedSellQuarantine` procedure. It requires the completed
+transaction-specific SELL settlement, zero remaining position, no unresolved
+mint transactions, and audit evidence; partial or ambiguous SELLs remain
+quarantined.
+
 ## Live mode
 
 Live execution is fail-closed. It requires all of the following:

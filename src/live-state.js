@@ -19,6 +19,9 @@ export class LiveState {
     // pruning and every restart until an explicit audited resolution.
     this.quarantines = new Map();
     this.quarantineAudit = [];
+    // A transaction-specific SELL settlement is persisted independently of
+    // the signal status so a restart cannot apply the same token delta twice.
+    this.sellSettlements = new Map();
     this.handledSignals = [];
     fs.mkdirSync(path.dirname(file), { recursive: true });
     this.#load();
@@ -48,6 +51,11 @@ export class LiveState {
       this.quarantines.set(quarantine.mint, quarantine);
     }
     this.quarantineAudit = Array.isArray(state.quarantineAudit) ? state.quarantineAudit : [];
+    const sellSettlements = Array.isArray(state.sellSettlements) ? state.sellSettlements : [];
+    for (const settlement of sellSettlements) {
+      if (!settlement?.targetSignature || !settlement.signature || !settlement.mint) continue;
+      this.sellSettlements.set(settlement.targetSignature, settlement);
+    }
     this.handledSignals = state.handledSignals.filter(
       (signal) => typeof signal?.targetSignature === "string"
     );
@@ -99,6 +107,7 @@ export class LiveState {
       positions: [...this.positions.values()],
       quarantines: [...this.quarantines.values()],
       quarantineAudit: this.quarantineAudit.slice(-200),
+      sellSettlements: [...this.sellSettlements.values()].slice(-this.handledLimit),
       handledSignals: this.handledSignals.slice(-this.handledLimit)
     };
     const temporary = `${this.file}.tmp`;
@@ -213,18 +222,88 @@ export class LiveState {
     return true;
   }
 
-  settleProvenSell(mint, rawSoldAmount, entrySignature) {
+  getSellSettlement(targetSignature) {
+    return this.sellSettlements.get(targetSignature) ?? null;
+  }
+
+  applySellSettlement({
+    mint, targetSignature, signature, entrySignature, rawSoldAmount,
+    sellWalletDeltaLamports = "0", allowQuarantined = false
+  }) {
+    const existing = this.sellSettlements.get(targetSignature);
+    if (existing) return existing.signature === signature ? { ...existing, alreadyApplied: true } : null;
     const position = this.positions.get(mint);
     if (!position || (entrySignature && position.entrySignature !== entrySignature)) return null;
+    if (this.quarantines.has(mint) && !allowQuarantined) return null;
     let sold;
-    try { sold = BigInt(rawSoldAmount); } catch { return null; }
+    let sellWalletDelta;
+    try {
+      sold = BigInt(rawSoldAmount);
+      sellWalletDelta = BigInt(sellWalletDeltaLamports);
+    } catch { return null; }
     const owned = BigInt(position.rawTokenAmount);
     if (sold <= 0n || sold > owned) return null;
+    const priorCumulative = BigInt(position.cumulativeSellWalletDeltaLamports ?? "0");
+    const cumulative = priorCumulative + sellWalletDelta;
     const remaining = owned - sold;
+    const record = {
+      targetSignature, signature, mint,
+      entrySignature: position.entrySignature ?? entrySignature ?? null,
+      rawSoldAmount: sold.toString(), remainingRaw: remaining.toString(),
+      sellWalletDeltaLamports: sellWalletDelta.toString(),
+      cumulativeSellWalletDeltaLamports: cumulative.toString(),
+      positionSnapshot: { ...position },
+      appliedAt: new Date().toISOString(),
+      completed: false, pnlRecorded: false
+    };
     if (remaining === 0n) this.positions.delete(mint);
-    else this.positions.set(mint, { ...position, rawTokenAmount: remaining.toString() });
+    else this.positions.set(mint, {
+      ...position,
+      rawTokenAmount: remaining.toString(),
+      cumulativeSellWalletDeltaLamports: cumulative.toString(),
+      exitRequest: { ...position.exitRequest, nextAttemptAt: new Date().toISOString() }
+    });
+    this.sellSettlements.set(targetSignature, record);
     this.#save();
-    return { sold, remaining };
+    return record;
+  }
+
+  completeSellSettlement(targetSignature, {
+    status = "reconciled_confirmed", confirmationStatus = null,
+    realizedPnlLamports = null, closeWalletDeltaLamports = "0"
+  } = {}) {
+    const settlement = this.sellSettlements.get(targetSignature);
+    if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    if (realizedPnlLamports != null && !settlement.pnlRecorded) {
+      const value = BigInt(realizedPnlLamports);
+      this.dailyRealizedPnlLamports += value;
+      if (value < 0n) this.consecutiveLosses += 1;
+      else if (value > 0n) this.consecutiveLosses = 0;
+      settlement.realizedPnlLamports = value.toString();
+      settlement.closeWalletDeltaLamports = String(closeWalletDeltaLamports);
+      settlement.pnlRecorded = true;
+    }
+    settlement.completed = true;
+    settlement.completedAt = settlement.completedAt ?? new Date().toISOString();
+    const signal = this.handledSignals.find(candidate =>
+      candidate.targetSignature === targetSignature
+    );
+    if (signal && status) {
+      Object.assign(signal, {
+        status,
+        ...(confirmationStatus ? { confirmationStatus } : {}),
+        settlementApplied: true,
+        updatedAt: new Date().toISOString()
+      });
+    }
+    this.#save();
+    return {
+      dailyRealizedPnlLamports: this.dailyRealizedPnlLamports,
+      consecutiveLosses: this.consecutiveLosses,
+      realizedPnlLamports: settlement.realizedPnlLamports ?? null,
+      pnlRecorded: settlement.pnlRecorded,
+      settlement
+    };
   }
 
   quarantineMint(mint, details = {}) {
@@ -359,6 +438,69 @@ export class LiveState {
     signal.ownershipReason = "failed_buy_no_inventory";
     signal.ownershipEvidence = options.evidence;
     signal.updatedAt = new Date().toISOString();
+    this.quarantines.delete(mint);
+    this.#save();
+    return true;
+  }
+
+  releaseClosedSellQuarantine(mint, options) {
+    if (!options || typeof options !== "object" ||
+        typeof options.resolution !== "string" || !options.resolution.trim() ||
+        !options.evidence || typeof options.evidence !== "object" ||
+        Array.isArray(options.evidence) || Object.keys(options.evidence).length === 0 ||
+        typeof options.signature !== "string" ||
+        typeof options.targetSignature !== "string" ||
+        !/^\d+$/.test(options.rawSoldAmount ?? "")) {
+      throw new Error(
+        "Closed SELL quarantine release must include signature, delta, and audit evidence"
+      );
+    }
+    const existing = this.quarantines.get(mint);
+    if (!existing) return false;
+    if (this.positions.has(mint)) {
+      throw new Error("Closed SELL quarantine release requires zero remaining position");
+    }
+    const settlement = this.sellSettlements.get(options.targetSignature);
+    if (!settlement || settlement.mint !== mint || settlement.signature !== options.signature ||
+        settlement.rawSoldAmount !== String(options.rawSoldAmount) ||
+        settlement.remainingRaw !== "0" || !settlement.completed || !settlement.pnlRecorded) {
+      throw new Error(
+        "Closed SELL quarantine release requires a completed full SELL settlement"
+      );
+    }
+    const unresolvedStatuses = new Set([
+      "reserved", "submitted", "processed", "confirmation_unknown", "submit_failed",
+      "position_quarantined", "retry_safe", "legacy_exit_unknown"
+    ]);
+    const unresolved = this.handledSignals.some(signal =>
+      signal.mint === mint && signal.targetSignature !== options.targetSignature &&
+      unresolvedStatuses.has(signal.status) &&
+      !(signal.status === "position_quarantined" &&
+        signal.signature === settlement.entrySignature)
+    );
+    if (unresolved) {
+      throw new Error("Closed SELL quarantine release requires no unresolved mint transactions");
+    }
+    this.quarantineAudit.push({
+      mint, resolution: options.resolution.trim(), at: new Date().toISOString(),
+      reason: existing.reason,
+      signature: options.signature,
+      targetSignature: options.targetSignature,
+      disposition: "full_sell_no_remaining_inventory",
+      rawSoldAmount: String(options.rawSoldAmount),
+      evidence: options.evidence
+    });
+    for (const signal of this.handledSignals.filter(candidate =>
+      candidate.mint === mint &&
+      (candidate.status === "position_quarantined" || candidate.ownershipStatus === "quarantined")
+    )) {
+      signal.status = signal.side === "BUY" && signal.status === "position_quarantined"
+        ? "quarantine_resolved" : signal.status;
+      signal.ownershipStatus = "resolved";
+      signal.ownershipResolution = options.resolution.trim();
+      signal.quarantineDisposition = "full_sell_no_remaining_inventory";
+      signal.updatedAt = new Date().toISOString();
+    }
     this.quarantines.delete(mint);
     this.#save();
     return true;

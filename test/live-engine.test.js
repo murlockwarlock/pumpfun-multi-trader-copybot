@@ -470,6 +470,90 @@ for (const sold of [40n, 100n]) test(`SELL confirmed after quarantine settles ${
   assert.equal(reloaded.positions.get(mint)?.rawTokenAmount ?? null,
     expectedRemaining === 0n ? null : expectedRemaining.toString());
   assert.equal(reloaded.state.isQuarantined(mint), true);
+  if (sold === 100n) {
+    assert.equal(reloaded.releaseClosedSellQuarantine(mint, {
+      resolution: "confirmed full SELL left zero strategy inventory",
+      evidence: { source: "transaction_token_delta", observedDelta: "-100" },
+      signature: `copy-sell-${sold}`, targetSignature: sell.signature,
+      rawSoldAmount: "100"
+    }), true);
+    assert.equal(reloaded.state.isQuarantined(mint), false);
+    let submits = 0;
+    reloaded.executor = {
+      prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+      prepare: async (_side, address) => ({ expectedSignature: "post-close-buy",
+        mint: new PublicKey(address), tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "pump-curve", beforeTokenBalance: 0n, beforeTokenBalanceKnown: true,
+        lastValidBlockHeight: 123 }),
+      submit: async () => { submits += 1; return "post-close-buy"; },
+      confirm: async () => new Promise(() => {})
+    };
+    assert.equal((await reloaded.onTrade({ signature: "post-close-target-buy", side: "BUY", mint,
+      observedAtMs: Date.now(), signalSource: "processed_logs" })).type, "LIVE_SUBMITTED");
+    assert.equal(submits, 1);
+  } else {
+    assert.throws(() => reloaded.releaseClosedSellQuarantine(mint, {
+      resolution: "partial SELL is not terminal", evidence: { source: "test" },
+      signature: `copy-sell-${sold}`, targetSignature: sell.signature,
+      rawSoldAmount: sold.toString()
+    }), /zero remaining position/);
+  }
+});
+
+for (const sold of [40n, 100n]) test(`SELL settlement survives crash boundary for ${sold} tokens`, async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), `copybot-live-sell-crash-${sold}-`));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const targetSignature = `crash-target-sell-${sold}`;
+  const transactionSignature = `crash-copy-sell-${sold}`;
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "50",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "crash-entry", targetEntrySignature: "crash-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.quarantineMint(mint, {
+    kind: "position", reason: "inventory_baseline_unproven",
+    signature: position.entrySignature, targetSignature: position.targetEntrySignature
+  });
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: targetSignature, side: "SELL", mint }, {
+    signature: transactionSignature, tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "150", beforeTokenBalanceKnown: true, rawAmount: "100",
+    lastValidBlockHeight: 123, entrySignature: position.entrySignature
+  });
+  first.state.updateSignal(targetSignature, { status: "submitted", signature: transactionSignature });
+  const applied = first.state.applySellSettlement({
+    mint, targetSignature, signature: transactionSignature,
+    entrySignature: position.entrySignature, rawSoldAmount: sold,
+    sellWalletDeltaLamports: sold === 40n ? "2000000" : "4000000",
+    allowQuarantined: true
+  });
+  assert.equal(applied.remainingRaw, (100n - sold).toString());
+
+  const restarted = new LiveEngine(config, () => {});
+  restarted.executor = {
+    signatureStatus: async () => ({ confirmationStatus: "confirmed", err: null }),
+    tokenBalance: async () => { throw new Error("must not reread balance after atomic settlement"); },
+    transactionTokenDelta: async () => { throw new Error("must not reread SELL delta after atomic settlement"); },
+    transactionWalletDelta: async () => { throw new Error("must not reread SELL proceeds after atomic settlement"); }
+  };
+  await restarted.reconcile();
+  const expectedRemaining = 100n - sold;
+  assert.equal(restarted.positions.get(mint)?.rawTokenAmount ?? null,
+    expectedRemaining === 0n ? null : expectedRemaining.toString());
+  assert.equal(restarted.state.handledSignals.find(s => s.targetSignature === targetSignature).status,
+    "reconciled_confirmed");
+  const persisted = restarted.state.getSellSettlement(targetSignature);
+  assert.equal(persisted.pnlRecorded, sold === 100n);
+  if (sold === 100n) assert.equal(restarted.state.dailyRealizedPnlLamports, -1_000_000n);
+  const beforeRetry = restarted.state.dailyRealizedPnlLamports;
+  await restarted.reconcile();
+  const reloaded = new LiveEngine(config, () => {});
+  assert.equal(reloaded.state.dailyRealizedPnlLamports, beforeRetry);
 });
 
 test("audited quarantine resolution restores an orphan position before SELL after restart", async t => {
@@ -895,7 +979,7 @@ for (const [label, settledBalance] of [["external outflow", 80n], ["external inf
       await new Promise(resolve => setTimeout(resolve, 5));
     }
     assert.equal(engine.positions.get(mint.toBase58()).rawTokenAmount, "60");
-    assert.equal(engine.state.handledSignals.at(-1).status, "confirmed");
+    assert.equal(engine.state.handledSignals.at(-1).status, "reconciled_confirmed");
     await engine.reconcile();
     const restarted = new LiveEngine(liveConfig(directory), () => {});
     assert.equal(restarted.positions.get(mint.toBase58()).rawTokenAmount, "60");
@@ -1508,7 +1592,10 @@ test("partial SELL and the subsequent SELL account each transaction delta once",
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
     confirm: async () => "confirmed",
     transactionTokenDelta: async signature => signature === "sell-1" ? -40n : -60n,
-    transactionWalletDelta: async signature => ({ walletDeltaLamports: signature === "entry" ? "-5000000" : "2000000" })
+    transactionWalletDelta: async signature => ({
+      walletDeltaLamports: signature === "entry" ? "-5000000" :
+        signature === "sell-1" ? "2000000" : "4000000"
+    })
   };
   const first = await engine.onTrade({ signature: "target-sell-1", side: "SELL", mint: mint.toBase58(),
     observedAtMs: Date.now(), signalSource: "processed_logs" });
@@ -1526,5 +1613,6 @@ test("partial SELL and the subsequent SELL account each transaction delta once",
   assert.equal(engine.positions.has(mint.toBase58()), false);
   assert.deepEqual(submissions, ["sell-1", "sell-2"]);
   assert.deepEqual(engine.state.handledSignals.filter(s => s.side === "SELL").map(s => s.status),
-    ["confirmed", "confirmed"]);
+    ["reconciled_confirmed", "confirmed"]);
+  assert.equal(engine.state.dailyRealizedPnlLamports, 1_000_000n);
 });
