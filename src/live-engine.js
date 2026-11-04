@@ -24,6 +24,14 @@ const toBigIntOrNull = (value) => {
   try { return BigInt(value); } catch { return null; }
 };
 const errorMessage = (error) => error?.message ?? String(error);
+const hasRootedBaselineEvidence = (prepared) => {
+  const observations = prepared?.beforeTokenBalanceEvidence?.observations;
+  return prepared?.beforeTokenBalanceEvidence?.rooted === true &&
+    Array.isArray(observations) && observations.some(observation =>
+      observation?.commitment === "finalized" &&
+      Number.isSafeInteger(Number(observation.slot)) && Number(observation.slot) > 0
+    );
+};
 
 export class LiveEngine {
   constructor(config, log, lanes = new ExecutionLanes()) {
@@ -1774,6 +1782,7 @@ export class LiveEngine {
         const baseline = toBigIntOrNull(prepared.beforeTokenBalance);
         const baselineValid = baseline !== null && baseline >= 0n;
         const inferredKnown = prepared.beforeTokenBalanceKnown === undefined &&
+          !trade.fastProfile &&
           !(trade.side === "BUY" && prepareOptions.skipBeforeTokenBalance &&
             prepareOptions.executionRoute !== "jupiter");
         return {
@@ -1972,9 +1981,9 @@ export class LiveEngine {
     }).catch(() => null);
     let prewarm;
     let rawAmount;
-    // FAST BUY needs a durable inventory floor, but not a confirmed bank.
-    // PumpExecutor collects this processed snapshot in parallel with quote
-    // and transaction preparation, so it adds no serialized hot-path wait.
+    // FAST BUY requests the processed execution bank, while PumpExecutor also
+    // samples confirmed/finalized context in parallel and uses the conservative
+    // maximum as the durable inventory floor.
     let balanceCommitment = trade.side === "BUY" && trade.fastProfile
       ? "processed" : "confirmed";
 
@@ -2083,6 +2092,7 @@ export class LiveEngine {
         // Every FAST BUY carries a pre-BUY baseline. The executor obtains it
         // concurrently with preparation; unknown baselines remain fail-closed.
         skipBeforeTokenBalance: false,
+        requireBaselineContext: Boolean(trade.fastProfile && trade.side === "BUY"),
         balanceCommitment,
         targetAveragePriceSol: trade.side === "BUY" ? trade.averagePriceSol ?? null : null,
         maxEntryDriftBps
@@ -2096,13 +2106,13 @@ export class LiveEngine {
       return record;
     }
 
-    // Refuse the order before broadcast when the executor did not provide an
-    // explicit baseline/isolated-inventory proof. PumpExecutor captures a
-    // processed baseline in parallel with preparation; a custom executor may
-    // provide an equivalent audited proof. No confirmation wait is added.
+    // Refuse the order before broadcast unless the executor provided both an
+    // explicit baseline flag and rooted/context-correlated evidence. A single
+    // processed amount (or an omitted flag) is never enough to prove ownership.
     if (trade.side === "BUY" && trade.fastProfile &&
-        this.config.fastRequireInventoryBaseline !== false &&
-        prepared.beforeTokenBalanceKnown !== true) {
+        !(prepared.beforeTokenBalanceKnown === true &&
+          (hasRootedBaselineEvidence(prepared) ||
+            prepared.inventoryIsolationProof?.verified === true))) {
       const record = this.#skip(trade, "fast_buy_inventory_baseline_unavailable");
       this.log("live_fast_buy_blocked", {
         mint: trade.mint,
@@ -2180,6 +2190,7 @@ export class LiveEngine {
       tokenProgram: prepared.tokenProgram.toBase58(),
       beforeTokenBalance: prepared.beforeTokenBalance.toString(),
       beforeTokenBalanceKnown: prepared.beforeTokenBalanceKnown === true,
+      beforeTokenBalanceEvidence: prepared.beforeTokenBalanceEvidence ?? null,
       rawAmount: rawAmount.toString(), lastValidBlockHeight: prepared.lastValidBlockHeight,
       hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,
       rpcSource: prepared.rpcSource ?? "primary",

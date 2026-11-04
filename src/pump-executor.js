@@ -214,6 +214,54 @@ export class PumpExecutor {
     return BigInt(unpackAccount(account, info, tokenProgram).amount.toString());
   }
 
+  // A single processed account read is not a provenance proof: that bank can
+  // be rolled back.  FAST BUY captures the same ATA at processed, confirmed,
+  // and finalized commitments in parallel, keeps the highest observed amount
+  // (the conservative floor), and records the RPC context slots.  A rooted
+  // finalized observation is required before the result can unlock FAST BUY.
+  async tokenBalanceEvidence(mint, tokenProgram) {
+    const account = getAssociatedTokenAddressSync(
+      mint,
+      this.wallet.publicKey,
+      true,
+      tokenProgram
+    );
+    const commitments = ["processed", "confirmed", "finalized"];
+    try {
+      if (typeof this.connection.getAccountInfoAndContext !== "function") {
+        throw new Error("token balance RPC does not provide context slots");
+      }
+      const observations = await Promise.all(commitments.map(async commitment => {
+        const result = await this.connection.getAccountInfoAndContext(account, commitment);
+        const slot = Number(result?.context?.slot);
+        if (!Number.isSafeInteger(slot) || slot <= 0) {
+          throw new Error(`token balance RPC returned no valid ${commitment} context slot`);
+        }
+        const amount = result.value
+          ? BigInt(unpackAccount(account, result.value, tokenProgram).amount.toString())
+          : 0n;
+        return { commitment, slot, amount: amount.toString() };
+      }));
+      const amount = observations.reduce(
+        (highest, observation) => BigInt(observation.amount) > highest
+          ? BigInt(observation.amount) : highest,
+        0n
+      );
+      return {
+        amount,
+        proof: {
+          kind: "multi_commitment_account_context",
+          rooted: true,
+          observations,
+          rpcSource: this.rpcSource
+        }
+      };
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.tokenBalanceEvidence(mint, tokenProgram);
+    }
+  }
+
   async waitForTokenBalanceChange(
     mint,
     tokenProgram,
@@ -297,7 +345,8 @@ export class PumpExecutor {
     rawAmount,
     market,
     balanceCommitment = "confirmed",
-    hardMinimumTokenOut = null
+    hardMinimumTokenOut = null,
+    requireBaselineContext = false
   ) {
     const inputMint = side === "BUY" ? JUPITER_SOL_MINT : mint.toBase58();
     const outputMint = side === "BUY" ? mint.toBase58() : JUPITER_SOL_MINT;
@@ -311,12 +360,16 @@ export class PumpExecutor {
         ? 0
         : this.config.liveSlippageBps)
     });
-    const [response, beforeTokenBalance] = await Promise.all([
+    const baselinePromise = requireBaselineContext
+      ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+      : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
+        .then(amount => ({ amount, proof: null }));
+    const [response, baseline] = await Promise.all([
       fetch(url, {
         headers: this.#jupiterHeaders(),
         signal: AbortSignal.timeout(this.config.jupiterTimeoutMs)
       }),
-      this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
+      baselinePromise
     ]);
     if (!response.ok) {
       throw new Error(`Jupiter order HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
@@ -365,14 +418,15 @@ export class PumpExecutor {
       mint,
       tokenProgram: market.tokenProgram,
       venue: "jupiter-multi-hop",
-      beforeTokenBalance,
+      beforeTokenBalance: baseline.amount,
+      beforeTokenBalanceEvidence: baseline.proof,
       lastValidBlockHeight,
       jupiterRequestId: order.requestId,
       jupiterRouter: order.router ?? "unknown",
       jupiterExpectedOut: order.outAmount ?? null,
       expectedTokenOutRaw: side === "BUY" ? order.outAmount ?? null : null,
       hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null,
-      beforeTokenBalanceKnown: true,
+      beforeTokenBalanceKnown: !requireBaselineContext || baseline.proof?.rooted === true,
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };
@@ -548,7 +602,8 @@ export class PumpExecutor {
     skipBeforeTokenBalance = false,
     balanceCommitment = "confirmed",
     targetAveragePriceSol = null,
-    maxEntryDriftBps = null
+    maxEntryDriftBps = null,
+    requireBaselineContext = false
   } = {}) {
     const mint = new PublicKey(mintAddress);
     const market = await this.#market(mint, venueHint);
@@ -567,10 +622,17 @@ export class PumpExecutor {
         BigInt(rawAmount),
         market,
         balanceCommitment,
-        hardMinimumTokenOut
+        hardMinimumTokenOut,
+        requireBaselineContext
       );
     }
-    const [trade, beforeTokenBalance, tip, latest] = await Promise.all([
+    const baselinePromise = skipBeforeTokenBalance
+      ? Promise.resolve({ amount: 0n, proof: null })
+      : requireBaselineContext
+        ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+        : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
+          .then(amount => ({ amount, proof: null }));
+    const [trade, baseline, tip, latest] = await Promise.all([
       this.#tradeInstructions(
         side,
         mint,
@@ -578,9 +640,7 @@ export class PumpExecutor {
         market,
         hardMinimumTokenOut
       ),
-      skipBeforeTokenBalance
-        ? Promise.resolve(0n)
-        : this.tokenBalance(mint, market.tokenProgram, balanceCommitment),
+      baselinePromise,
       this.sender.tipInstruction(this.wallet.publicKey),
       this._recentBlockhash()
     ]);
@@ -624,12 +684,14 @@ export class PumpExecutor {
       mint,
       tokenProgram: trade.tokenProgram,
       venue: trade.venue,
-      beforeTokenBalance,
+      beforeTokenBalance: baseline.amount,
+      beforeTokenBalanceEvidence: baseline.proof,
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,
       hardMinimumTokenOutRaw: trade.hardMinimumTokenOutRaw ?? null,
-      beforeTokenBalanceKnown: !skipBeforeTokenBalance,
+      beforeTokenBalanceKnown: !skipBeforeTokenBalance &&
+        (!requireBaselineContext || baseline.proof?.rooted === true),
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };

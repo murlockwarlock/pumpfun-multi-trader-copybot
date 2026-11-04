@@ -6,6 +6,7 @@ import {
   PublicKey
 } from "@solana/web3.js";
 import {
+  AccountLayout,
   getAssociatedTokenAddressSync,
   TOKEN_PROGRAM_ID
 } from "@solana/spl-token";
@@ -62,6 +63,45 @@ test("uses the execution fallback RPC after a primary rate-limit error", async (
   };
 
   assert.equal(await executor.balanceLamports(), 123_456_789);
+});
+
+test("FAST baseline evidence takes the conservative maximum across RPC commitments", async () => {
+  const wallet = Keypair.generate();
+  const mint = Keypair.generate().publicKey;
+  const executor = Object.create(PumpExecutor.prototype);
+  executor.wallet = wallet;
+  executor.rpcSource = "primary";
+  executor.connection = {
+    getAccountInfoAndContext: async (_account, commitment) => {
+      const amount = commitment === "processed" ? 0n : 200n;
+      const data = Buffer.alloc(AccountLayout.span);
+      AccountLayout.encode({
+        mint,
+        owner: wallet.publicKey,
+        amount,
+        delegateOption: 0,
+        delegate: PublicKey.default,
+        state: 1,
+        isNativeOption: 0,
+        isNative: 0n,
+        delegatedAmount: 0n,
+        closeAuthorityOption: 0,
+        closeAuthority: PublicKey.default
+      }, data);
+      return {
+        context: { slot: commitment === "processed" ? 300 : commitment === "confirmed" ? 200 : 100 },
+        value: { owner: TOKEN_PROGRAM_ID, data, executable: false, lamports: 1 }
+      };
+    }
+  };
+
+  const evidence = await executor.tokenBalanceEvidence(mint, TOKEN_PROGRAM_ID);
+  assert.equal(evidence.amount, 200n);
+  assert.equal(evidence.proof.rooted, true);
+  assert.deepEqual(
+    evidence.proof.observations.map(observation => observation.commitment),
+    ["processed", "confirmed", "finalized"]
+  );
 });
 
 function closeExecutor({ rawBalance = 0n, accountInfo = { lamports: 2_039_280 } } = {}) {

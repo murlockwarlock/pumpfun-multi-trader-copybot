@@ -26,7 +26,6 @@ function liveConfig(directory, overrides = {}) {
     fastMaxSignalAgeMs: 1_500,
     fastMaxEntryDriftBps: 2_500,
     fastSkipSimulation: true,
-    fastRequireInventoryBaseline: true,
     ...overrides
   };
 }
@@ -1832,11 +1831,13 @@ test("unfinished full SELL keeps its mint occupied across restart until CLOSE se
   assert.equal(restarted.state.hasHandled("new-buy-after-sell"), false);
 });
 
-test("FAST BUY without inventory provenance is rejected before submit", async t => {
+test("FAST BUY cannot bypass the safety gate with config false or an omitted evidence flag", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-preexisting-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
-  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const engine = new LiveEngine(
+    liveConfig(directory, { fastRequireInventoryBaseline: false }), () => {}
+  );
   let balanceReads = 0;
   const submissions = [];
   engine.executor = {
@@ -1847,7 +1848,6 @@ test("FAST BUY without inventory provenance is rejected before submit", async t 
       expectedSignature: side === "BUY" ? "copy-buy" : "copy-sell",
       mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
       beforeTokenBalance: side === "BUY" ? 50n : 50n,
-      beforeTokenBalanceKnown: false,
       lastValidBlockHeight: 123
     }),
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
@@ -1914,14 +1914,22 @@ test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", a
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-timeout-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
-  const engine = new LiveEngine(liveConfig(directory, { fastRequireInventoryBaseline: false }), () => {});
+  const engine = new LiveEngine(liveConfig(directory), () => {});
   engine.executor = {
     prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
     tokenBalance: async () => 50n,
     prepare: async (side) => ({
       expectedSignature: side === "BUY" ? "copy-timeout-buy" : "copy-timeout-sell",
       mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
-      beforeTokenBalance: side === "BUY" ? 0n : 50n, lastValidBlockHeight: 123
+      beforeTokenBalance: side === "BUY" ? 0n : 50n,
+      beforeTokenBalanceKnown: true,
+      beforeTokenBalanceEvidence: side === "BUY"
+        ? {
+            kind: "multi_commitment_account_context", rooted: true,
+            observations: [{ commitment: "finalized", slot: 123, amount: "0" }]
+          }
+        : null,
+      lastValidBlockHeight: 123
     }),
     submit: async () => { throw new Error("timeout"); },
     confirm: async () => new Promise(() => {})
@@ -2039,6 +2047,10 @@ test("fast profile uses its own drift window and latency prepare options", async
         venue: "pump-curve",
         beforeTokenBalance: 100n,
         beforeTokenBalanceKnown: true,
+        beforeTokenBalanceEvidence: {
+          kind: "multi_commitment_account_context", rooted: true,
+          observations: [{ commitment: "finalized", slot: 123, amount: "100" }]
+        },
         lastValidBlockHeight: 123,
         expectedTokenOutRaw: "1000000",
         tokenDecimals: 6
@@ -2064,6 +2076,7 @@ test("fast profile uses its own drift window and latency prepare options", async
     assert.equal(prepareOptions.venueHint, "pump-curve");
     assert.equal(prepareOptions.skipSimulation, true);
     assert.equal(prepareOptions.skipBeforeTokenBalance, false);
+    assert.equal(prepareOptions.requireBaselineContext, true);
     assert.equal(prepareOptions.balanceCommitment, "processed");
     assert.equal(prepareOptions.targetAveragePriceSol, 0.0042);
     assert.equal(prepareOptions.maxEntryDriftBps, 2_500);

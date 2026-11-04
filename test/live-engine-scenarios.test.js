@@ -71,6 +71,12 @@ function controlledExecutor(mint, {
       venue: "pump-curve",
       beforeTokenBalance: side === "BUY" ? baseline : balance,
       beforeTokenBalanceKnown: side === "BUY" ? !unknownBaseline : true,
+      beforeTokenBalanceEvidence: side === "BUY" && !unknownBaseline
+        ? {
+            kind: "multi_commitment_account_context", rooted: true,
+            observations: [{ commitment: "finalized", slot: 123, amount: String(baseline) }]
+          }
+        : null,
       lastValidBlockHeight: 123
     }),
     submit: async prepared => {
