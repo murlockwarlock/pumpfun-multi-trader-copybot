@@ -403,7 +403,11 @@ export class LiveEngine {
     const risk = settlement
       ? this.state.completeSellSettlement(settlement.targetSignature, {
           realizedPnlLamports,
-          closeWalletDeltaLamports: closeDelta
+          closeWalletDeltaLamports: closeDelta,
+          fastCanaryTargetSignature:
+            position.fastInventoryPolicy === "transaction_baseline" &&
+            settlement.remainingRaw === "0"
+              ? settlement.targetSignature : null
         })
       : this.state.recordRealizedPnl(realizedPnlLamports);
     this.#enforceRiskLimits();
@@ -2210,6 +2214,18 @@ export class LiveEngine {
       ? "processed" : "confirmed";
 
     if (trade.side === "BUY") {
+      if (trade.fastProfile && this.config.fastInventoryPolicy === "transaction_baseline") {
+        const activeCanary = this.preparingBuys.size > 0 ||
+          [...this.state.positions.values()].some(position =>
+            position.fastInventoryPolicy === "transaction_baseline") ||
+          this.state.handledSignals.some(signal =>
+            signal.side === "BUY" && signal.fastInventoryPolicy === "transaction_baseline" &&
+            ACTIVE_SIGNAL_STATUSES.has(signal.status));
+        if (this.state.fastCanaryRoundTrips >= this.config.fastCanaryMaxRoundTrips ||
+            activeCanary) {
+          return this.#skip(trade, "fast_canary_roundtrip_limit");
+        }
+      }
       if (this.state.isQuarantined(trade.mint)) {
         return this.#skip(trade, "mint_inventory_quarantined");
       }

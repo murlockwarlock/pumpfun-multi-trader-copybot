@@ -141,6 +141,11 @@ const fastTraderWallets = parseFastTraderWallets(
 const fastInventoryPolicy = enumSetting(
   "FAST_INVENTORY_POLICY", "disabled", ["disabled", "transaction_baseline", "isolated_wallet"]
 );
+const fastCanaryMaxRoundTrips = numberSetting(
+  "FAST_CANARY_MAX_ROUNDTRIPS",
+  fastInventoryPolicy === "transaction_baseline" ? 1 : 0,
+  { min: fastInventoryPolicy === "transaction_baseline" ? 1 : 0, max: 100 }
+);
 const fastIsolationWalletAddress = process.env.FAST_ISOLATION_WALLET_ADDRESS ?? "";
 const fastIsolationConfirmation = process.env.FAST_ISOLATION_CONFIRMATION ?? "";
 if (fastTraderWallets.length > 0 && fastInventoryPolicy === "disabled") {
@@ -177,6 +182,7 @@ export const config = Object.freeze({
   liveTraderWallets,
   fastTraderWallets,
   fastInventoryPolicy,
+  fastCanaryMaxRoundTrips,
   fastIsolationWalletAddress,
   fastIsolationConfirmation,
   rpcHttpUrl: process.env.RPC_HTTP_URL ?? "https://api.mainnet-beta.solana.com",

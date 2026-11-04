@@ -121,6 +121,8 @@ export class LiveState {
     this.dailySpendLamports = 0n;
     this.dailyRealizedPnlLamports = 0n;
     this.consecutiveLosses = 0;
+    this.fastCanaryRoundTrips = 0;
+    this.fastCanaryCompletedTargets = [];
     this.positions = new Map();
     // A quarantine is keyed by mint rather than by a signal.  Handled signals
     // are intentionally bounded, while an ownership ambiguity must survive
@@ -147,6 +149,11 @@ export class LiveState {
     this.consecutiveLosses = Number.isSafeInteger(state.consecutiveLosses)
       ? Math.max(0, state.consecutiveLosses)
       : 0;
+    this.fastCanaryRoundTrips = Number.isSafeInteger(state.fastCanaryRoundTrips)
+      ? Math.max(0, state.fastCanaryRoundTrips) : 0;
+    this.fastCanaryCompletedTargets = Array.isArray(state.fastCanaryCompletedTargets)
+      ? state.fastCanaryCompletedTargets.filter(value => typeof value === "string" && value)
+        .slice(-this.handledLimit) : [];
     for (const position of state.positions) {
       if (!position?.mint || !/^\d+$/.test(position.rawTokenAmount ?? "")) {
         throw new Error("Invalid position in live state");
@@ -260,6 +267,8 @@ export class LiveState {
       dailySpendLamports: this.dailySpendLamports.toString(),
       dailyRealizedPnlLamports: this.dailyRealizedPnlLamports.toString(),
       consecutiveLosses: this.consecutiveLosses,
+      fastCanaryRoundTrips: this.fastCanaryRoundTrips,
+      fastCanaryCompletedTargets: this.fastCanaryCompletedTargets,
       positions: [...this.positions.values()],
       quarantines: [...this.quarantines.values()],
       quarantineAudit: this.quarantineAudit.slice(-200),
@@ -606,7 +615,8 @@ export class LiveState {
 
   completeSellSettlement(targetSignature, {
     status = "reconciled_confirmed", confirmationStatus = null,
-    realizedPnlLamports = null, closeWalletDeltaLamports = "0"
+    realizedPnlLamports = null, closeWalletDeltaLamports = "0",
+    fastCanaryTargetSignature = null
   } = {}) {
     const settlement = this.sellSettlements.get(targetSignature);
     if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
@@ -686,6 +696,14 @@ export class LiveState {
       settlement.realizedPnlLamports = value.toString();
       settlement.closeWalletDeltaLamports = String(closeWalletDeltaLamports);
       settlement.pnlRecorded = true;
+      if (fastCanaryTargetSignature &&
+          !this.fastCanaryCompletedTargets.includes(fastCanaryTargetSignature)) {
+        this.fastCanaryCompletedTargets.push(fastCanaryTargetSignature);
+        if (this.fastCanaryCompletedTargets.length > this.handledLimit) {
+          this.fastCanaryCompletedTargets.shift();
+        }
+        this.fastCanaryRoundTrips += 1;
+      }
     }
     settlement.completed = true;
     settlement.completedAt = settlement.completedAt ?? new Date().toISOString();

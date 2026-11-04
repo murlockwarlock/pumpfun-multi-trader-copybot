@@ -155,6 +155,9 @@ For the first bounded canary using the standard executor, replace the three
 isolated-wallet lines with `FAST_INVENTORY_POLICY=transaction_baseline`. The
 canary must start from a zero token balance for the selected mint; any existing
 balance or delegate blocks FAST before broadcast.
+`FAST_CANARY_MAX_ROUNDTRIPS=1` is the default for this mode and is durable
+across restarts: after one fully settled BUY→SELL pair, further FAST BUY
+signals are rejected until the operator deliberately changes the canary state.
 
 The mainnet preflight is read-only and never submits the prepared transaction:
 

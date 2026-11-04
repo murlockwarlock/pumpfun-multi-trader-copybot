@@ -22,7 +22,11 @@ const benchConfig = {
 };
 const wallet = loadLiveWallet(walletFile);
 const executor = new PumpExecutor(benchConfig, wallet);
-const amount = 100_000n;
+const amountSol = Number(process.env.BENCH_AMOUNT_SOL ?? benchConfig.liveTradeSol);
+if (!Number.isFinite(amountSol) || amountSol <= 0) {
+  throw new Error("BENCH_AMOUNT_SOL must be a positive number");
+}
+const amount = BigInt(Math.round(amountSol * 1_000_000_000));
 const percentile = (values, p) => {
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1)];
@@ -48,6 +52,8 @@ async function measure(route) {
     await executor.prepare("BUY", mint.toBase58(), amount, {
       executionRoute: route === "jupiter" ? "jupiter" : null,
       skipSimulation: true,
+      balanceCommitment: "processed",
+      requireBaselineContext: true,
       timing
     });
     timing.totalMs = performance.now() - startedAt;
@@ -60,10 +66,11 @@ console.log(JSON.stringify({
   submitted: false,
   rpcHost: new URL(benchConfig.rpcHttpUrl).host,
   mint: mint.toBase58(),
+  amountSol,
   runs,
   routes: {
     direct: await measure("direct"),
     jupiter: await measure("jupiter")
   },
-  note: "Preparation only; no transaction was submitted. Signal/queue latency is not included in this RPC-only benchmark."
+  note: "Preparation only; no transaction was submitted. Each run uses the FAST BUY processed commitment plus processed/confirmed/finalized baseline reads. Signal/queue latency is not included."
 }, null, 2));

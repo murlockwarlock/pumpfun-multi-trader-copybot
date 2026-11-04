@@ -104,6 +104,47 @@ test("FAST baseline evidence takes the conservative maximum across RPC commitmen
   );
 });
 
+test("FAST SELL evidence keeps processed inventory while older commitments lag", async () => {
+  const wallet = Keypair.generate();
+  const mint = Keypair.generate().publicKey;
+  const executor = Object.create(PumpExecutor.prototype);
+  executor.wallet = wallet;
+  executor.rpcSource = "primary";
+  executor.connection = {
+    getAccountInfoAndContext: async (_account, commitment) => {
+      const amount = commitment === "processed" ? 100n : 0n;
+      const data = Buffer.alloc(AccountLayout.span);
+      AccountLayout.encode({
+        mint,
+        owner: wallet.publicKey,
+        amount,
+        delegateOption: 0,
+        delegate: PublicKey.default,
+        state: 1,
+        isNativeOption: 0,
+        isNative: 0n,
+        delegatedAmount: 0n,
+        closeAuthorityOption: 0,
+        closeAuthority: PublicKey.default
+      }, data);
+      return {
+        context: {
+          slot: commitment === "processed" ? 400 : commitment === "confirmed" ? 300 : 200
+        },
+        value: { owner: TOKEN_PROGRAM_ID, data, executable: false, lamports: 1 }
+      };
+    }
+  };
+
+  const evidence = await executor.tokenBalanceEvidence(mint, TOKEN_PROGRAM_ID);
+  assert.equal(evidence.amount, 100n);
+  assert.equal(evidence.proof.noDelegate, true);
+  assert.deepEqual(
+    evidence.proof.observations.map(observation => observation.amount),
+    ["100", "0", "0"]
+  );
+});
+
 test("token balance context exposes the slot used for a SELL baseline", async () => {
   const wallet = Keypair.generate();
   const mint = Keypair.generate().publicKey;

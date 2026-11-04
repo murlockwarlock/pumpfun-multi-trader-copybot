@@ -27,6 +27,7 @@ function liveConfig(directory, overrides = {}) {
     fastMaxEntryDriftBps: 2_500,
     fastSkipSimulation: true,
     fastInventoryPolicy: "isolated_wallet",
+    fastCanaryMaxRoundTrips: 1,
     fastIsolationWalletAddress: "test-isolation-wallet",
     ...overrides
   };
@@ -1960,7 +1961,9 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
     transactionWalletDelta: async signature => ({
       walletDeltaLamports: signature === "built-in-buy" ? "-5000000" : "1000000"
     }),
-    closeEmptyTokenAccount: async () => ({ status: "closed", reclaimedLamports: 0 })
+    closeEmptyTokenAccount: async () => ({
+      status: "closed", signature: "built-in-close", walletDeltaLamports: "0", feeLamports: "0"
+    })
   };
 
   const buy = await engine.onTrade({
@@ -1969,7 +1972,15 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
     signalSource: "processed_logs", fastProfile: true
   });
   assert.equal(buy.type, "LIVE_SUBMITTED");
-  await engine.settlements.get(mint.toBase58()).promise;
+  const buySettlement = engine.settlements.get(mint.toBase58())?.promise;
+  assert.ok(buySettlement);
+  const blockedConcurrentBuy = await engine.onTrade({
+    signature: "built-in-target-buy-concurrent", side: "BUY",
+    mint: Keypair.generate().publicKey.toBase58(), observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(blockedConcurrentBuy.reason, "fast_canary_roundtrip_limit");
+  await buySettlement;
   assert.equal(engine.positions.get(mint.toBase58()).fastInventoryPolicy, "transaction_baseline");
   assert.equal(engine.positions.get(mint.toBase58()).fastInventoryEvidence.kind, "transaction_baseline");
 
@@ -1977,6 +1988,7 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
     fastInventoryPolicy: "transaction_baseline"
   }), () => {});
   restarted.executor = engine.executor;
+  assert.equal(restarted.positions.get(mint.toBase58()).fastInventoryPolicy, "transaction_baseline");
   const sell = await restarted.onTrade({
     signature: "built-in-target-sell", side: "SELL", mint: mint.toBase58(),
     observedAtMs: Date.now(), signalSource: "processed_logs"
@@ -1985,6 +1997,12 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
   await restarted.settlements.get(mint.toBase58()).promise;
   assert.equal(restarted.positions.has(mint.toBase58()), false);
   assert.equal(sellEvidenceReads, 1);
+  assert.equal(restarted.state.fastCanaryRoundTrips, 1);
+  const blockedSecondBuy = await restarted.onTrade({
+    signature: "built-in-target-buy-2", side: "BUY", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(blockedSecondBuy.reason, "fast_canary_roundtrip_limit");
 });
 
 test("FAST SELL refuses sufficient but unproven inventory after an out-of-band flow", async t => {
