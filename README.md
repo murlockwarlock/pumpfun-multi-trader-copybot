@@ -145,6 +145,7 @@ FAST_TRADER_WALLETS=sniper_name
 FAST_MAX_SIGNAL_AGE_MS=1500
 FAST_MAX_ENTRY_DRIFT_BPS=2500
 FAST_SKIP_SIMULATION=true
+FAST_REQUIRE_INVENTORY_BASELINE=true
 FAST_SHADOW_PROBE_ENABLED=true
 ```
 
@@ -153,7 +154,9 @@ top of the Solana program log stack. In monitor-only mode the bot builds, signs,
 but does not submit a real candidate transaction; that read-only probe records
 the actual log-to-ready latency and available token quote. In live mode the same
 path submits through the configured sender only when a pre-BUY inventory proof is
-available. Skipping simulation reduces latency but increases the probability
+available. The execution executor captures that baseline at `processed`
+commitment in parallel with quote and transaction preparation, so the proof adds
+no serialized confirmation wait. Skipping simulation reduces latency but increases the probability
 that a transaction fails on-chain, so keep the fast wallet list explicit and
 small.
 
@@ -163,12 +166,10 @@ cannot then consume the separate slippage allowance and land beyond that target-
 relative ceiling. A matching SELL can be built at `processed` only when the
 executor has a trusted, signature-specific processed token-delta source *and a
 measured pre-BUY baseline*. A balance increase or a positive transaction delta
-by itself is never treated as proof of currently sellable inventory. The default
-fast PumpExecutor deliberately skips the pre-submit token-balance RPC; when
-that leaves the baseline unknown, FAST BUY is rejected before capital
-reservation or broadcast. A verified isolated-inventory executor may return
-`beforeTokenBalanceKnown=true` to opt into the fast path without adding a
-confirmation wait.
+by itself is never treated as proof of currently sellable inventory. When the
+baseline is unknown, FAST BUY is rejected before broadcast. A verified
+isolated-inventory executor may return `beforeTokenBalanceKnown=true` to provide
+an equivalent proof without adding a confirmation wait.
 
 Confirmed BUY recovery records the pre-BUY inventory floor. If current
 inventory is below that floor plus the transaction-specific BUY delta, the
@@ -186,7 +187,7 @@ single balance snapshot as a complete ledger:
 
 | State | Meaning |
 |---|---|
-| `beforeTokenBalance` + `beforeTokenBalanceKnown` | Measured pre-BUY baseline, or explicitly unknown in the low-latency path |
+| `beforeTokenBalance` + `beforeTokenBalanceKnown` | Measured pre-BUY baseline at `processed`, or explicitly unknown when an audited executor cannot prove it |
 | Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
 | Position `rawTokenAmount` | Remaining strategy amount after confirmed, transaction-specific SELL deltas |
 | `inventoryBaselineRaw` | The baseline floor that must remain below the strategy amount before SELL is allowed |

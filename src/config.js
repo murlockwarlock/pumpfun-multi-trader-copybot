@@ -192,6 +192,8 @@ export const config = Object.freeze({
     max: 10_000
   }),
   fastSkipSimulation: booleanSetting("FAST_SKIP_SIMULATION", false),
+  // Keep the inventory safety floor enabled for every FAST BUY.
+  fastRequireInventoryBaseline: booleanSetting("FAST_REQUIRE_INVENTORY_BASELINE", true),
   fastShadowProbeEnabled: booleanSetting("FAST_SHADOW_PROBE_ENABLED", true),
   fallbackConcurrency: numberSetting("FALLBACK_CONCURRENCY", 8, {
     min: 1,

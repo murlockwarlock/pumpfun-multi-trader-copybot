@@ -1771,12 +1771,19 @@ export class LiveEngine {
             firstError: errorMessage(firstError)
           });
         }
+        const baseline = toBigIntOrNull(prepared.beforeTokenBalance);
+        const baselineValid = baseline !== null && baseline >= 0n;
+        const inferredKnown = prepared.beforeTokenBalanceKnown === undefined &&
+          !(trade.side === "BUY" && prepareOptions.skipBeforeTokenBalance &&
+            prepareOptions.executionRoute !== "jupiter");
         return {
           ...prepared,
-          beforeTokenBalanceKnown: prepared.beforeTokenBalanceKnown ?? !(
-            trade.side === "BUY" && prepareOptions.skipBeforeTokenBalance &&
-            prepareOptions.executionRoute !== "jupiter"
-          )
+          // Keep downstream arithmetic deterministic even for an unknown
+          // baseline, while never treating malformed/missing evidence as
+          // proof of inventory provenance.
+          beforeTokenBalance: baselineValid ? baseline : 0n,
+          beforeTokenBalanceKnown: baselineValid &&
+            (prepared.beforeTokenBalanceKnown === true || inferredKnown)
         };
       } catch (error) {
         firstError ??= error;
@@ -1965,7 +1972,11 @@ export class LiveEngine {
     }).catch(() => null);
     let prewarm;
     let rawAmount;
-    let balanceCommitment = "confirmed";
+    // FAST BUY needs a durable inventory floor, but not a confirmed bank.
+    // PumpExecutor collects this processed snapshot in parallel with quote
+    // and transaction preparation, so it adds no serialized hot-path wait.
+    let balanceCommitment = trade.side === "BUY" && trade.fastProfile
+      ? "processed" : "confirmed";
 
     if (trade.side === "BUY") {
       if (this.state.isQuarantined(trade.mint)) {
@@ -2069,7 +2080,9 @@ export class LiveEngine {
       prepared = await this.#prepareWithFallback(trade, rawAmount, {
         venueHint: trade.venue ?? null,
         skipSimulation: Boolean(trade.fastProfile && this.config.fastSkipSimulation),
-        skipBeforeTokenBalance: Boolean(trade.fastProfile && trade.side === "BUY"),
+        // Every FAST BUY carries a pre-BUY baseline. The executor obtains it
+        // concurrently with preparation; unknown baselines remain fail-closed.
+        skipBeforeTokenBalance: false,
         balanceCommitment,
         targetAveragePriceSol: trade.side === "BUY" ? trade.averagePriceSol ?? null : null,
         maxEntryDriftBps
@@ -2083,12 +2096,10 @@ export class LiveEngine {
       return record;
     }
 
-    // The normal PumpExecutor deliberately skips the pre-BUY token-balance RPC
-    // for FAST BUY.  That is safe for quote latency but cannot prove which
-    // tokens remain sellable after the BUY.  Refuse the order before reserving
-    // capital or broadcasting when the executor did not provide an explicit
-    // baseline/isolated-inventory proof.  A verified executor may opt in by
-    // returning beforeTokenBalanceKnown=true; no confirmation wait is added.
+    // Refuse the order before broadcast when the executor did not provide an
+    // explicit baseline/isolated-inventory proof. PumpExecutor captures a
+    // processed baseline in parallel with preparation; a custom executor may
+    // provide an equivalent audited proof. No confirmation wait is added.
     if (trade.side === "BUY" && trade.fastProfile &&
         this.config.fastRequireInventoryBaseline !== false &&
         prepared.beforeTokenBalanceKnown !== true) {

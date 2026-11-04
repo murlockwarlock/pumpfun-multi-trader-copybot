@@ -26,6 +26,7 @@ function liveConfig(directory, overrides = {}) {
     fastMaxSignalAgeMs: 1_500,
     fastMaxEntryDriftBps: 2_500,
     fastSkipSimulation: true,
+    fastRequireInventoryBaseline: true,
     ...overrides
   };
 }
@@ -1845,7 +1846,9 @@ test("FAST BUY without inventory provenance is rejected before submit", async t 
     prepare: async (side) => ({
       expectedSignature: side === "BUY" ? "copy-buy" : "copy-sell",
       mint, tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
-      beforeTokenBalance: side === "BUY" ? 0n : 50n, lastValidBlockHeight: 123
+      beforeTokenBalance: side === "BUY" ? 50n : 50n,
+      beforeTokenBalanceKnown: false,
+      lastValidBlockHeight: 123
     }),
     submit: async prepared => { submissions.push(prepared.expectedSignature); return prepared.expectedSignature; },
     transactionTokenDelta: async () => 0n,
@@ -1869,7 +1872,7 @@ test("FAST BUY without inventory provenance is rejected before submit", async t 
   assert.deepEqual(submissions, []);
 });
 
-test("default PumpExecutor FAST prepare semantics block a BUY before funds are spent", async t => {
+test("FAST BUY with an unknown baseline stays fail-closed before funds are spent", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-delta-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
@@ -2034,7 +2037,7 @@ test("fast profile uses its own drift window and latency prepare options", async
         mint,
         tokenProgram: TOKEN_PROGRAM_ID,
         venue: "pump-curve",
-        beforeTokenBalance: 0n,
+        beforeTokenBalance: 100n,
         beforeTokenBalanceKnown: true,
         lastValidBlockHeight: 123,
         expectedTokenOutRaw: "1000000",
@@ -2060,9 +2063,15 @@ test("fast profile uses its own drift window and latency prepare options", async
     assert.ok(result.entryDriftBps > 1_800 && result.entryDriftBps < 2_000);
     assert.equal(prepareOptions.venueHint, "pump-curve");
     assert.equal(prepareOptions.skipSimulation, true);
-    assert.equal(prepareOptions.skipBeforeTokenBalance, true);
+    assert.equal(prepareOptions.skipBeforeTokenBalance, false);
+    assert.equal(prepareOptions.balanceCommitment, "processed");
     assert.equal(prepareOptions.targetAveragePriceSol, 0.0042);
     assert.equal(prepareOptions.maxEntryDriftBps, 2_500);
+    const durableBuy = engine.state.handledSignals.find(
+      signal => signal.targetSignature === "target-fast-buy"
+    );
+    assert.equal(durableBuy.beforeTokenBalance, "100");
+    assert.equal(durableBuy.beforeTokenBalanceKnown, true);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
