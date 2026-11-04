@@ -24,7 +24,10 @@ function settlementNeedsDurableHistory(settlement) {
   return settlement?.sellWalletDeltaKnown !== true ||
     settlement?.completed !== true ||
     (settlement?.remainingRaw === "0" && settlement?.pnlRecorded !== true) ||
-    (settlement?.closeRequired === true && settlement?.closeStatus !== "closed");
+    (settlement?.closeRequired === true && settlement?.closeStatus !== "closed") ||
+    (Array.isArray(settlement?.closeAttempts) && settlement.closeAttempts.some(attempt =>
+      attempt.walletDeltaKnown !== true && attempt.broadcastStatus !== "expired_unbroadcast"
+    ));
 }
 
 function signalNeedsDurableHistory(signal, quarantines = null) {
@@ -42,6 +45,72 @@ function signalNeedsDurableHistory(signal, quarantines = null) {
     )) return true;
   }
   return signal?.side === "SELL" && UNRESOLVED_SELL_STATUSES.has(signal.status);
+}
+
+function isWalletDelta(value) {
+  return /^-?\d+$/.test(String(value ?? ""));
+}
+
+function normalizeCloseAttempts(settlement) {
+  const attempts = Array.isArray(settlement?.closeAttempts)
+    ? settlement.closeAttempts : [];
+  const normalized = [];
+  for (const attempt of attempts) {
+    if (!attempt || typeof attempt.signature !== "string" || !attempt.signature) continue;
+    const walletDeltaKnown = isWalletDelta(attempt.walletDeltaLamports);
+    normalized.push({
+      ...attempt,
+      signature: attempt.signature,
+      status: attempt.status ?? "unknown",
+      broadcastStatus: attempt.broadcastStatus ?? "unknown",
+      walletDeltaKnown,
+      walletDeltaLamports: walletDeltaKnown
+        ? String(attempt.walletDeltaLamports ?? "0") : null,
+      feeLamports: isWalletDelta(attempt.feeLamports)
+        ? String(attempt.feeLamports) : null
+    });
+  }
+  const legacySignature = settlement?.closeSignature;
+  if (typeof legacySignature === "string" && legacySignature &&
+      !normalized.some(attempt => attempt.signature === legacySignature)) {
+    const legacyAlreadyClosedWithoutEvidence = settlement.tokenAccountClose?.status === "already_closed";
+    const walletDeltaKnown = !legacyAlreadyClosedWithoutEvidence &&
+      isWalletDelta(settlement.closeWalletDeltaLamports);
+    normalized.push({
+      signature: legacySignature,
+      status: settlement.closeStatus ?? "unknown",
+      broadcastStatus: settlement.closeStatus === "closed" ? "confirmed" : "unknown",
+      walletDeltaKnown,
+      walletDeltaLamports: walletDeltaKnown
+        ? String(settlement.closeWalletDeltaLamports) : null,
+      feeLamports: null
+    });
+  }
+  return normalized;
+}
+
+function upsertCloseAttempt(settlement, signature, patch = {}) {
+  if (typeof signature !== "string" || !signature) return null;
+  if (!Array.isArray(settlement.closeAttempts)) settlement.closeAttempts = [];
+  let attempt = settlement.closeAttempts.find(candidate => candidate.signature === signature);
+  if (!attempt) {
+    attempt = {
+      signature,
+      status: "unknown",
+      broadcastStatus: "unknown",
+      walletDeltaKnown: false,
+      walletDeltaLamports: null,
+      feeLamports: null
+    };
+    settlement.closeAttempts.push(attempt);
+  }
+  Object.assign(attempt, patch);
+  if (isWalletDelta(patch.walletDeltaLamports)) {
+    attempt.walletDeltaKnown = true;
+    attempt.walletDeltaLamports = String(patch.walletDeltaLamports);
+  }
+  if (isWalletDelta(patch.feeLamports)) attempt.feeLamports = String(patch.feeLamports);
+  return attempt;
 }
 
 export class LiveState {
@@ -112,7 +181,8 @@ export class LiveState {
         closeBroadcastStatus: settlement.closeBroadcastStatus ??
           (settlement.closeRequired === true ? "not_prepared" : "not_required"),
         closeLastValidBlockHeight: settlement.closeLastValidBlockHeight ?? null,
-        closeRecentBlockhash: settlement.closeRecentBlockhash ?? null
+        closeRecentBlockhash: settlement.closeRecentBlockhash ?? null,
+        closeAttempts: normalizeCloseAttempts(settlement)
       });
     }
     this.handledSignals = state.handledSignals.filter(
@@ -349,6 +419,7 @@ export class LiveState {
       closeBroadcastStatus: closeRequired === true ? "not_prepared" : "not_required",
       closeLastValidBlockHeight: null,
       closeRecentBlockhash: null,
+      closeAttempts: [],
       closeError: null,
       completed: false, pnlRecorded: false
     };
@@ -400,32 +471,60 @@ export class LiveState {
     if (!["pending", "delta_pending", "closed", "failed"].includes(status)) {
       throw new Error(`Invalid SELL close status: ${status}`);
     }
+    const signature = result?.signature ?? settlement.closeSignature ?? null;
     if (status === "closed") {
       const resultStatus = result?.status;
       const alreadyClosed = resultStatus === "already_closed";
       const walletDelta = result?.walletDeltaLamports;
-      if (!alreadyClosed && !/^-?\d+$/.test(String(walletDelta ?? ""))) {
+      if (!alreadyClosed && !isWalletDelta(walletDelta)) {
         throw new Error("Closed token account is missing verified wallet delta");
       }
+      const attempt = signature ? upsertCloseAttempt(settlement, signature, {
+        status: "closed", broadcastStatus: "confirmed",
+        ...(alreadyClosed ? {} : { walletDeltaLamports: String(walletDelta) }),
+        ...(result?.feeLamports != null ? { feeLamports: String(result.feeLamports) } : {})
+      }) : null;
+      if (alreadyClosed && (!attempt || attempt.walletDeltaKnown !== true)) {
+        throw new Error("Already-closed token account is missing exact CLOSE wallet delta");
+      }
       settlement.closeStatus = "closed";
-      settlement.closeWalletDeltaLamports = alreadyClosed ? "0" : String(walletDelta);
-      settlement.closeSignature = result?.signature ?? null;
+      settlement.closeWalletDeltaLamports = attempt?.walletDeltaLamports ?? String(walletDelta);
+      settlement.closeSignature = signature;
       settlement.tokenAccountClose = result ?? null;
       settlement.closeBroadcastStatus = "confirmed";
       settlement.closeError = null;
     } else if (status === "delta_pending") {
-      if (!result?.signature) {
+      if (!signature) {
         throw new Error("Close delta pending state requires a close signature");
       }
+      upsertCloseAttempt(settlement, signature, {
+        status: "delta_pending", broadcastStatus: "confirmed",
+        ...(result?.feeLamports != null ? { feeLamports: String(result.feeLamports) } : {})
+      });
       settlement.closeStatus = "delta_pending";
       settlement.closeWalletDeltaLamports = null;
-      settlement.closeSignature = result.signature;
+      settlement.closeSignature = signature;
       settlement.tokenAccountClose = result;
       settlement.closeBroadcastStatus = "confirmed";
       settlement.closeError = error ? String(error) : "close_wallet_delta_unavailable";
     } else {
+      if (signature) {
+        upsertCloseAttempt(settlement, signature, {
+          status,
+          broadcastStatus: result?.broadcastStatus ??
+            (status === "failed" ? "ambiguous" : settlement.closeBroadcastStatus ?? "unknown"),
+          ...(result?.walletDeltaLamports != null
+            ? { walletDeltaLamports: String(result.walletDeltaLamports) } : {}),
+          ...(result?.feeLamports != null ? { feeLamports: String(result.feeLamports) } : {})
+        });
+        settlement.closeSignature = signature;
+      }
       settlement.closeStatus = status;
-      settlement.closeWalletDeltaLamports = null;
+      if (status === "failed" && result?.broadcastStatus === "expired_unbroadcast") {
+        settlement.closeWalletDeltaLamports = "0";
+      } else if (status !== "closed") {
+        settlement.closeWalletDeltaLamports = null;
+      }
       settlement.closeError = error ? String(error) : null;
     }
     settlement.closeUpdatedAt = new Date().toISOString();
@@ -446,6 +545,9 @@ export class LiveState {
     }
     settlement.closeStatus = "pending";
     settlement.closeSignature = signature;
+    upsertCloseAttempt(settlement, signature, {
+      status: "prepared", broadcastStatus: "prepared"
+    });
     settlement.tokenAccountClose = result ?? settlement.tokenAccountClose ?? null;
     settlement.closeBroadcastStatus = "prepared";
     if (Number.isSafeInteger(Number(result?.lastValidBlockHeight))) {
@@ -473,10 +575,31 @@ export class LiveState {
     if (settlement.closeStatus !== "delta_pending") {
       throw new Error("SELL close delta is not pending");
     }
+    upsertCloseAttempt(settlement, settlement.closeSignature, {
+      status: "closed", broadcastStatus: "confirmed",
+      walletDeltaLamports: value.toString()
+    });
     settlement.closeStatus = "closed";
     settlement.closeWalletDeltaLamports = value.toString();
     settlement.closeError = null;
     settlement.closeDeltaResolvedAt = new Date().toISOString();
+    this.#save();
+    return { ...settlement };
+  }
+
+  resolveSellSettlementCloseAttempt(targetSignature, signature, {
+    walletDeltaLamports, feeLamports = null, status = "failed",
+    broadcastStatus = "confirmed"
+  } = {}) {
+    const settlement = this.sellSettlements.get(targetSignature);
+    if (!settlement) throw new Error(`Unknown SELL settlement: ${targetSignature}`);
+    if (!isWalletDelta(walletDeltaLamports)) {
+      throw new Error("CLOSE attempt evidence must contain a numeric wallet delta");
+    }
+    upsertCloseAttempt(settlement, signature, {
+      status, broadcastStatus, walletDeltaLamports: String(walletDeltaLamports),
+      ...(feeLamports != null ? { feeLamports: String(feeLamports) } : {})
+    });
     this.#save();
     return { ...settlement };
   }

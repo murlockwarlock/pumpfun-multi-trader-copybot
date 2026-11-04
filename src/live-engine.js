@@ -219,17 +219,34 @@ export class LiveEngine {
 
   async #transactionWalletDeltaEvidence(signature) {
     if (typeof this.executor.transactionWalletDelta !== "function") {
-      return { known: false, value: 0n, reason: "transaction_wallet_delta_unavailable" };
+      return {
+        known: false, value: 0n, feeLamports: null,
+        reason: "transaction_wallet_delta_unavailable"
+      };
     }
     try {
       const result = await this.executor.transactionWalletDelta(signature);
       if (!/^-?\d+$/.test(String(result?.walletDeltaLamports ?? ""))) {
-        return { known: false, value: 0n, reason: "transaction_wallet_delta_missing" };
+        return {
+          known: false, value: 0n,
+          feeLamports: /^\d+$/.test(String(result?.feeLamports ?? ""))
+            ? String(result.feeLamports) : null,
+          reason: "transaction_wallet_delta_missing"
+        };
       }
-      return { known: true, value: BigInt(result.walletDeltaLamports), reason: null };
+      return {
+        known: true,
+        value: BigInt(result.walletDeltaLamports),
+        feeLamports: /^\d+$/.test(String(result?.feeLamports ?? ""))
+          ? String(result.feeLamports) : null,
+        reason: null
+      };
     } catch (error) {
       this.log("live_wallet_delta_unavailable", { signature, message: errorMessage(error) });
-      return { known: false, value: 0n, reason: "transaction_wallet_delta_unavailable" };
+      return {
+        known: false, value: 0n, feeLamports: null,
+        reason: "transaction_wallet_delta_unavailable"
+      };
     }
   }
 
@@ -258,7 +275,7 @@ export class LiveEngine {
       throw new Error("Cannot realize SELL before token account close is verified");
     }
     const closeDelta = settlement
-      ? BigInt(settlement.closeWalletDeltaLamports ?? "0")
+      ? this.#closeAttemptWalletDelta(settlement)
       : /^-?\d+$/.test(tokenAccountClose?.walletDeltaLamports ?? "")
         ? BigInt(tokenAccountClose.walletDeltaLamports) : 0n;
     const realizedPnlLamports = entryDelta + sellDelta + closeDelta;
@@ -278,6 +295,27 @@ export class LiveEngine {
       dailyRealizedPnlSol: Number(risk.dailyRealizedPnlLamports) / LAMPORTS_PER_SOL,
       consecutiveLosses: risk.consecutiveLosses
     };
+  }
+
+  #closeAttemptWalletDelta(settlement) {
+    if (settlement?.closeRequired !== true) return 0n;
+    const attempts = Array.isArray(settlement?.closeAttempts)
+      ? settlement.closeAttempts : [];
+    if (attempts.length === 0) {
+      if (!/^-?\d+$/.test(String(settlement?.closeWalletDeltaLamports ?? ""))) {
+        throw new Error("Cannot realize SELL before CLOSE wallet delta is verified");
+      }
+      return BigInt(settlement.closeWalletDeltaLamports);
+    }
+    let total = 0n;
+    for (const attempt of attempts) {
+      if (attempt.walletDeltaKnown !== true ||
+          !/^-?\d+$/.test(String(attempt.walletDeltaLamports ?? ""))) {
+        throw new Error("Cannot realize SELL before every CLOSE attempt is verified");
+      }
+      total += BigInt(attempt.walletDeltaLamports);
+    }
+    return total;
   }
 
   settlementLocks = new Map();
@@ -311,8 +349,19 @@ export class LiveEngine {
     }
     const terminal = ["confirmed", "finalized"].includes(status?.confirmationStatus);
     if (terminal && status?.err) {
+      const evidence = await this.#transactionWalletDeltaEvidence(settlement.closeSignature);
+      const result = {
+        ...(settlement.tokenAccountClose ?? {}),
+        status: "failed",
+        signature: settlement.closeSignature,
+        broadcastStatus: "confirmed",
+        ...(evidence.known ? { walletDeltaLamports: evidence.value.toString() } : {}),
+        ...(evidence.feeLamports ? { feeLamports: evidence.feeLamports } : {})
+      };
       const failed = this.state.setSellSettlementClose(targetSignature, {
-        status: "failed", error: "close_transaction_failed_after_broadcast"
+        status: "failed", result, error: evidence.known
+          ? "close_transaction_failed_after_broadcast"
+          : "close_transaction_fee_unavailable"
       });
       return { action: "send", settlement: failed };
     }
@@ -344,7 +393,7 @@ export class LiveEngine {
     }
 
     const lastValidBlockHeight = Number(settlement.closeLastValidBlockHeight);
-    if (!Number.isSafeInteger(lastValidBlockHeight) ||
+    if (!Number.isSafeInteger(lastValidBlockHeight) || lastValidBlockHeight <= 0 ||
         typeof this.executor.currentBlockHeight !== "function") {
       return { action: "wait", settlement, reason: "close_signature_unresolved" };
     }
@@ -361,9 +410,51 @@ export class LiveEngine {
       return { action: "wait", settlement, reason: "close_signature_unresolved" };
     }
     const expired = this.state.setSellSettlementClose(targetSignature, {
-      status: "failed", error: "close_signature_expired_without_confirmation"
+      status: "failed",
+      result: {
+        signature: settlement.closeSignature,
+        status: "expired",
+        broadcastStatus: "expired_unbroadcast",
+        walletDeltaLamports: "0"
+      },
+      error: "close_signature_expired_without_confirmation"
     });
     return { action: "send", settlement: expired };
+  }
+
+  async #reconcileCloseAttemptEvidence(settlement) {
+    const attempts = Array.isArray(settlement?.closeAttempts)
+      ? settlement.closeAttempts : [];
+    for (const attempt of attempts) {
+      if (attempt.walletDeltaKnown === true ||
+          attempt.broadcastStatus === "expired_unbroadcast") continue;
+      if (!attempt.signature || typeof this.executor.signatureStatus !== "function") return false;
+      let status;
+      try {
+        status = await this.executor.signatureStatus(attempt.signature);
+      } catch (error) {
+        this.log("live_close_attempt_status_unavailable", {
+          signature: attempt.signature, message: errorMessage(error)
+        });
+        return false;
+      }
+      if (!status || !["confirmed", "finalized"].includes(status.confirmationStatus)) {
+        return false;
+      }
+      const evidence = await this.#transactionWalletDeltaEvidence(attempt.signature);
+      if (!evidence.known) return false;
+      this.state.resolveSellSettlementCloseAttempt(
+        settlement.targetSignature,
+        attempt.signature,
+        {
+          walletDeltaLamports: evidence.value.toString(),
+          feeLamports: evidence.feeLamports,
+          status: status.err ? "failed" : "closed",
+          broadcastStatus: "confirmed"
+        }
+      );
+    }
+    return true;
   }
 
   async #closeSoldTokenAccount(targetSignature, mint, tokenProgram, { settlementTargetSignature = null } = {}) {
@@ -656,7 +747,10 @@ export class LiveEngine {
       settlement.sellWalletDeltaKnown !== true ||
       settlement.completed !== true ||
       (settlement.remainingRaw === "0" && settlement.pnlRecorded !== true) ||
-      (settlement.closeRequired === true && settlement.closeStatus !== "closed")
+      (settlement.closeRequired === true && settlement.closeStatus !== "closed") ||
+      (Array.isArray(settlement.closeAttempts) && settlement.closeAttempts.some(attempt =>
+        attempt.walletDeltaKnown !== true && attempt.broadcastStatus !== "expired_unbroadcast"
+      ))
     ));
   }
 
@@ -723,6 +817,13 @@ export class LiveEngine {
     }
 
     if (settlement.remainingRaw === "0") {
+      if (!(await this.#reconcileCloseAttemptEvidence(settlement))) {
+        this.state.updateSignal(signal.targetSignature, {
+          status: "confirmed_pending_close",
+          recoveryEvidence: "close_attempt_wallet_delta_unavailable"
+        });
+        return false;
+      }
       if (!settlement.pnlRecorded) {
         await this.#realizePosition(
           settlement.positionSnapshot,

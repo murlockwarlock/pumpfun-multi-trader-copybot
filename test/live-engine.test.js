@@ -1657,6 +1657,140 @@ test("prepared CLOSE waits before expiry, then retries only after durable expiry
   assert.equal(restarted.state.dailyRealizedPnlLamports, 1_000_123n);
 });
 
+test("legacy CLOSE intent without a block height never authorizes a duplicate", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-legacy-close-expiry-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const first = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "legacy-close-entry", targetEntrySignature: "legacy-close-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  first.state.setPosition(position);
+  first.state.reserveSignal({ signature: "legacy-close-target", side: "SELL", mint }, {
+    signature: "legacy-close-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  first.state.updateSignal("legacy-close-target", {
+    status: "submitted", signature: "legacy-close-sell"
+  });
+  first.state.applySellSettlement({
+    mint, targetSignature: "legacy-close-target", signature: "legacy-close-sell",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  first.state.persistSellSettlementCloseIntent("legacy-close-target", {
+    signature: "legacy-close-intent", result: { status: "prepared" }
+  });
+  const persisted = JSON.parse(fs.readFileSync(config.liveStateFile, "utf8"));
+  const settlement = persisted.sellSettlements.find(item => item.targetSignature === "legacy-close-target");
+  delete settlement.closeLastValidBlockHeight;
+  delete settlement.closeAttempts;
+  fs.writeFileSync(config.liveStateFile, `${JSON.stringify(persisted, null, 2)}\n`);
+
+  const restarted = new LiveEngine(config, () => {});
+  let closeCalls = 0;
+  let blockHeightReads = 0;
+  restarted.executor = {
+    signatureStatus: async () => null,
+    currentBlockHeight: async () => { blockHeightReads += 1; return 100; },
+    closeEmptyTokenAccount: async () => { closeCalls += 1; return { status: "closed" }; }
+  };
+  await restarted.reconcile();
+  await restarted.reconcile();
+  assert.equal(closeCalls, 0);
+  assert.equal(blockHeightReads, 0);
+  assert.equal(restarted.state.getSellSettlement("legacy-close-target").closeSignature,
+    "legacy-close-intent");
+  assert.equal(restarted.state.getSellSettlement("legacy-close-target").closeStatus, "pending");
+});
+
+test("failed CLOSE wallet delta is included exactly once after a successful retry", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-fee-ledger-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const config = liveConfig(directory);
+  const mint = Keypair.generate().publicKey.toBase58();
+  const engine = new LiveEngine(config, () => {});
+  const position = {
+    mint, rawTokenAmount: "100", inventoryBaselineRaw: "0",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "close-fee-entry", targetEntrySignature: "close-fee-buy",
+    entryWalletDeltaLamports: "-5000000", costLamports: "5000000"
+  };
+  engine.state.setPosition(position);
+  engine.state.reserveSignal({ signature: "close-fee-target", side: "SELL", mint }, {
+    signature: "close-fee-sell", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    beforeTokenBalance: "100", rawAmount: "100", lastValidBlockHeight: 123,
+    entrySignature: position.entrySignature
+  });
+  engine.state.updateSignal("close-fee-target", {
+    status: "submitted", signature: "close-fee-sell"
+  });
+  engine.state.applySellSettlement({
+    mint, targetSignature: "close-fee-target", signature: "close-fee-sell",
+    entrySignature: position.entrySignature, rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  engine.state.persistSellSettlementCloseIntent("close-fee-target", {
+    signature: "close-attempt-1", result: {
+      status: "prepared", lastValidBlockHeight: 123, recentBlockhash: "close-fee-blockhash"
+    }
+  });
+
+  let closeCalls = 0;
+  const walletDeltaReads = [];
+  engine.executor = {
+    signatureStatus: async signature => {
+      assert.equal(signature, "close-attempt-1");
+      return { confirmationStatus: "confirmed", err: { InstructionError: [0, "Custom"] } };
+    },
+    transactionWalletDelta: async signature => {
+      walletDeltaReads.push(signature);
+      assert.equal(signature, "close-attempt-1");
+      return { walletDeltaLamports: "-5000", feeLamports: "5000" };
+    },
+    closeEmptyTokenAccount: async (_mint, _program, { onPrepared }) => {
+      closeCalls += 1;
+      await onPrepared("close-attempt-2", {
+        lastValidBlockHeight: 200, recentBlockhash: "close-fee-retry-blockhash"
+      });
+      return {
+        status: "closed", signature: "close-attempt-2",
+        walletDeltaLamports: "123", feeLamports: "5000"
+      };
+    }
+  };
+  await engine.reconcile();
+  const settlement = engine.state.getSellSettlement("close-fee-target");
+  assert.equal(closeCalls, 1);
+  assert.deepEqual(walletDeltaReads, ["close-attempt-1"]);
+  assert.deepEqual(settlement.closeAttempts.map(attempt => [
+    attempt.signature, attempt.walletDeltaLamports, attempt.walletDeltaKnown
+  ]), [
+    ["close-attempt-1", "-5000", true],
+    ["close-attempt-2", "123", true]
+  ]);
+  assert.equal(engine.state.dailyRealizedPnlLamports, 995_123n);
+  await engine.reconcile();
+  assert.equal(engine.state.dailyRealizedPnlLamports, 995_123n);
+
+  const restarted = new LiveEngine(config, () => {});
+  let duplicateCloseCalls = 0;
+  let duplicateDeltaReads = 0;
+  restarted.executor = {
+    closeEmptyTokenAccount: async () => { duplicateCloseCalls += 1; },
+    transactionWalletDelta: async () => { duplicateDeltaReads += 1; return { walletDeltaLamports: "0" }; }
+  };
+  await restarted.reconcile();
+  assert.equal(duplicateCloseCalls, 0);
+  assert.equal(duplicateDeltaReads, 0);
+  assert.equal(restarted.state.dailyRealizedPnlLamports, 995_123n);
+});
+
 test("unfinished full SELL keeps its mint occupied across restart until CLOSE settles", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-close-occupancy-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
