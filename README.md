@@ -206,6 +206,7 @@ single balance snapshot as a complete ledger:
 | State | Meaning |
 |---|---|
 | `beforeTokenBalance` + `beforeTokenBalanceKnown` | Conservative pre-BUY baseline from multi-commitment reads; FAST requires an explicit known flag |
+| `beforeTokenBalanceContextSlot` | Token-account context slot used by FAST SELL; the refreshed flow watermark must reach it |
 | `beforeTokenBalanceEvidence` | Context slots from processed/confirmed/finalized reads, including rooted evidence |
 | `inventoryIsolationProof` | Required dedicated-wallet flow-ledger proof; balance snapshots alone never substitute for it |
 | Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
