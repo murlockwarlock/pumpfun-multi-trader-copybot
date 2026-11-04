@@ -151,6 +151,30 @@ FAST_SKIP_SIMULATION=true
 FAST_SHADOW_PROBE_ENABLED=true
 ```
 
+For the first bounded canary using the standard executor, replace the three
+isolated-wallet lines with `FAST_INVENTORY_POLICY=transaction_baseline`. The
+canary must start from a zero token balance for the selected mint; any existing
+balance or delegate blocks FAST before broadcast.
+
+The mainnet preflight is read-only and never submits the prepared transaction:
+
+```powershell
+$env:TRADING_MODE = "paper"
+$env:FAST_TRADER_WALLETS = "none"
+$env:CANARY_WALLET_FILE = "./secrets/live-wallet.json"       # local test override
+$env:CANARY_JUPITER_KEY_FILE = "./secrets/jupiter-api-key"
+node deploy/live-dry-run.mjs <MINT> 0.005 direct
+```
+
+On the server, omit the two `CANARY_*_FILE` overrides so the existing
+`LIVE_WALLET_FILE` and configured Jupiter key file remain authoritative. The
+script requires a zero, delegate-free processed/confirmed/finalized baseline,
+prints `submitted:false`, and only builds/signs the transaction in memory. A
+future real canary still requires separate operator approval; size the single
+BUY at roughly $0.50–$1 using the current SOL/USD rate, then SELL only the
+transaction-specific acquired amount and retain both signatures, fee evidence,
+latency, and restart/reconciliation records.
+
 The parser accepts event bytes only while the official Pump program is at the
 top of the Solana program log stack. In monitor-only mode the bot builds, signs,
 but does not submit a real candidate transaction; that read-only probe records
@@ -161,22 +185,35 @@ context slots in parallel with quote and transaction preparation, takes the
 conservative maximum balance, and requires rooted evidence. This adds no
 serialized confirmation wait. Skipping simulation reduces latency but increases the probability
 that a transaction fails on-chain, so keep the fast wallet list explicit and
-small. FAST BUY additionally requires the dedicated-wallet policy above. A
-shared wallet, an unverified delegate, or a wallet with an untracked external
-outflow is not eligible for FAST BUY; the engine blocks before signing or
-broadcasting. The confirmation string is an operator attestation, not a claim
-that ordinary balance snapshots can reconstruct arbitrary token flows. The
-standard `PumpExecutor` deliberately does not manufacture this proof; an
-audited adapter must attach `dedicated_wallet_flow_ledger` with a durable flow
-cursor, `flowCoverage.gapFree=true`, and `noExternalOutgoing=true`. Before every
-FAST SELL the engine calls that adapter again, requires coverage to start at the
-persisted cursor, a non-decreasing cursor sequence and a newer checked slot,
-then requires that watermark to reach the context slot of the token balance
-used to authorize the SELL, and persists the refreshed proof before building
-the SELL. Crash recovery restores the FAST policy and proof from the durable
-BUY signal; missing legacy provenance is quarantined. A delegate seen in any
-baseline or refresh observation invalidates the proof and quarantines the
-position.
+small. FAST BUY requires an explicit inventory policy. The standard
+`PumpExecutor` supports `FAST_INVENTORY_POLICY=transaction_baseline` for a
+bounded canary: it accepts only a zero pre-BUY balance with delegate-free
+processed/confirmed/finalized context, records the expected BUY signature, and
+attributes the acquired amount to the confirmed transaction delta. Before a
+SELL it rereads the token-account context, requires processed to show exactly
+the remaining bot-owned amount, forbids any higher amount at another
+commitment, and rejects delegates; lower confirmed/finalized observations may
+still lag during an early SELL. This mode does not reconstruct arbitrary
+external transfers; it is a deliberately narrow zero-baseline canary, not a
+general shared-wallet proof.
+
+For BUY execution, the engine attempts the direct Pump/PumpSwap route first
+when no route is requested and falls back to Jupiter only if preparation fails.
+An explicit `executionRoute=jupiter` keeps Jupiter first and uses direct
+Pump/PumpSwap as its fallback. Different mints still use independent execution
+lanes, so a slow route on one mint does not serialize another mint.
+
+The stronger `isolated_wallet` policy still requires an audited adapter to
+attach `dedicated_wallet_flow_ledger` with a durable flow cursor,
+`flowCoverage.gapFree=true`, and `noExternalOutgoing=true`. Before every FAST
+SELL in that mode the engine calls the adapter again, requires coverage to start
+at the persisted cursor, a non-decreasing cursor sequence and a newer checked
+slot, then requires that watermark to reach the context slot of the token
+balance used to authorize the SELL. The refreshed proof is persisted before
+building the SELL. Crash recovery restores FAST policy and evidence from the
+durable BUY signal; missing legacy provenance is quarantined. A delegate seen
+in any baseline or refresh observation invalidates the proof and quarantines
+the position.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
@@ -208,7 +245,8 @@ single balance snapshot as a complete ledger:
 | `beforeTokenBalance` + `beforeTokenBalanceKnown` | Conservative pre-BUY baseline from multi-commitment reads; FAST requires an explicit known flag |
 | `beforeTokenBalanceContextSlot` | Token-account context slot used by FAST SELL; the refreshed flow watermark must reach it |
 | `beforeTokenBalanceEvidence` | Context slots from processed/confirmed/finalized reads, including rooted evidence |
-| `inventoryIsolationProof` | Required dedicated-wallet flow-ledger proof; balance snapshots alone never substitute for it |
+| `fastInventoryEvidence` | Built-in zero-baseline transaction provenance for the bounded FAST canary |
+| `inventoryIsolationProof` | Optional stronger dedicated-wallet flow-ledger proof; balance snapshots alone never substitute for it |
 | Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
 | Position `rawTokenAmount` | Remaining strategy amount after confirmed, transaction-specific SELL deltas |
 | `inventoryBaselineRaw` | The baseline floor that must remain below the strategy amount before SELL is allowed |

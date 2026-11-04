@@ -1912,6 +1912,81 @@ test("FAST BUY with an unknown baseline stays fail-closed before funds are spent
   assert.deepEqual(submissions, []);
 });
 
+test("built-in transaction baseline completes FAST BUY confirmation and SELL without a flow adapter", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-built-in-baseline-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory, {
+    fastInventoryPolicy: "transaction_baseline"
+  }), () => {});
+  let activeSide = "BUY";
+  let sellEvidenceReads = 0;
+  const baselineEvidence = (amount, slot = 300, lagging = false) => ({
+    amount,
+    proof: {
+      kind: "multi_commitment_account_context", rooted: true, noDelegate: true,
+      observations: [
+        { commitment: "processed", slot, amount: amount.toString(), delegate: null },
+        { commitment: "confirmed", slot: slot - 1, amount: lagging ? "0" : amount.toString(), delegate: null },
+        { commitment: "finalized", slot: slot - 2, amount: lagging ? "0" : amount.toString(), delegate: null }
+      ]
+    }
+  });
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    tokenBalance: async () => activeSide === "SELL" ? 0n : 100n,
+    tokenBalanceEvidence: async () => {
+      sellEvidenceReads += 1;
+      return baselineEvidence(100n, 300, true);
+    },
+    prepare: async (side, address) => {
+      activeSide = side;
+      const evidence = side === "BUY" ? baselineEvidence(0n, 200) : null;
+      return {
+        expectedSignature: side === "BUY" ? "built-in-buy" : "built-in-sell",
+        mint: new PublicKey(address), tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+        beforeTokenBalance: side === "BUY" ? 0n : 100n,
+        beforeTokenBalanceKnown: true,
+        beforeTokenBalanceEvidence: evidence?.proof ?? null,
+        beforeTokenBalanceContextSlot: side === "SELL" ? 300 : null,
+        beforeTokenBalanceContextDelegate: side === "SELL" ? null : null,
+        lastValidBlockHeight: 123
+      };
+    },
+    submit: async prepared => prepared.expectedSignature,
+    confirm: async () => "confirmed",
+    transactionTokenDelta: async signature => signature === "built-in-buy" ? 100n : -100n,
+    transactionWalletDelta: async signature => ({
+      walletDeltaLamports: signature === "built-in-buy" ? "-5000000" : "1000000"
+    }),
+    closeEmptyTokenAccount: async () => ({ status: "closed", reclaimedLamports: 0 })
+  };
+
+  const buy = await engine.onTrade({
+    signature: "built-in-target-buy", side: "BUY", mint: mint.toBase58(),
+    averagePriceSol: 0.00004, observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(buy.type, "LIVE_SUBMITTED");
+  await engine.settlements.get(mint.toBase58()).promise;
+  assert.equal(engine.positions.get(mint.toBase58()).fastInventoryPolicy, "transaction_baseline");
+  assert.equal(engine.positions.get(mint.toBase58()).fastInventoryEvidence.kind, "transaction_baseline");
+
+  const restarted = new LiveEngine(liveConfig(directory, {
+    fastInventoryPolicy: "transaction_baseline"
+  }), () => {});
+  restarted.executor = engine.executor;
+  const sell = await restarted.onTrade({
+    signature: "built-in-target-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(sell.type, "LIVE_SUBMITTED");
+  await restarted.settlements.get(mint.toBase58()).promise;
+  assert.equal(restarted.positions.has(mint.toBase58()), false);
+  assert.equal(sellEvidenceReads, 1);
+});
+
 test("FAST SELL refuses sufficient but unproven inventory after an out-of-band flow", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-flow-gap-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -2497,6 +2572,41 @@ test("fast profile uses its own drift window and latency prepare options", async
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("BUY prefers direct PumpSwap and falls back to Jupiter on a direct-route failure", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-buy-route-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const routes = [];
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    prepare: async (side, address, _rawAmount, options) => {
+      routes.push(options.executionRoute);
+      if (options.executionRoute === null) throw new Error("direct PumpSwap route unavailable");
+      return {
+        expectedSignature: "jupiter-fallback-buy",
+        mint: new PublicKey(address),
+        tokenProgram: TOKEN_PROGRAM_ID,
+        venue: "jupiter-multi-hop",
+        beforeTokenBalance: side === "BUY" ? 0n : 100n,
+        lastValidBlockHeight: 123
+      };
+    },
+    submit: async prepared => prepared.expectedSignature,
+    confirm: async () => new Promise(() => {})
+  };
+  const result = await engine.onTrade({
+    signature: "route-fallback-buy",
+    side: "BUY",
+    mint: mint.toBase58(),
+    observedAtMs: Date.now(),
+    signalSource: "processed_logs"
+  });
+  assert.equal(result.type, "LIVE_SUBMITTED");
+  assert.deepEqual(routes, [null, "jupiter"]);
 });
 
 test("shadow probe measures the actual ready-to-submit quote without sending", async () => {

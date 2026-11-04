@@ -64,6 +64,75 @@ const hasConsistentIsolationProof = (prepared, config) => {
     (!config.fastIsolationWalletAddress || proof.wallet === config.fastIsolationWalletAddress);
 };
 
+const hasConsistentTransactionBaselineEvidence = (subject) => {
+  const baseline = toBigIntOrNull(subject?.inventoryBaselineRaw ?? subject?.beforeTokenBalance);
+  const evidence = subject?.fastInventoryEvidence;
+  if (subject?.fastInventoryPolicy !== "transaction_baseline" || baseline !== 0n ||
+      evidence?.kind !== "transaction_baseline" ||
+      evidence.policy !== "transaction_baseline" || evidence.noDelegate !== true ||
+      typeof evidence.expectedBuySignature !== "string" || !evidence.expectedBuySignature ||
+      evidence.baselineRaw !== "0") return false;
+  return hasConsistentBaselineEvidence({
+    beforeTokenBalance: 0n,
+    beforeTokenBalanceEvidence: {
+      kind: "multi_commitment_account_context",
+      rooted: true,
+      noDelegate: evidence.noDelegate,
+      observations: evidence.observations
+    }
+  }) && evidence.observations.every(observation => observation.amount === "0");
+};
+
+const transactionBaselineEvidenceFromPrepared = (prepared) => {
+  if (prepared?.beforeTokenBalance !== 0n ||
+      !hasConsistentBaselineEvidence(prepared)) return null;
+  return {
+    kind: "transaction_baseline",
+    policy: "transaction_baseline",
+    baselineRaw: "0",
+    noDelegate: true,
+    expectedBuySignature: prepared.expectedSignature,
+    source: "pump_executor_token_balance_evidence",
+    observations: prepared.beforeTokenBalanceEvidence.observations
+  };
+};
+
+const hasConsistentCurrentInventoryEvidence = (result, expectedAmount) => {
+  const amount = toBigIntOrNull(result?.amount);
+  if (amount === null || amount !== expectedAmount ||
+      !hasConsistentBaselineEvidence({
+        beforeTokenBalance: amount,
+        beforeTokenBalanceEvidence: result?.proof
+      })) return false;
+  const processed = result.proof.observations.find(
+    observation => observation.commitment === "processed"
+  );
+  return processed?.amount === expectedAmount.toString() &&
+    result.proof.observations.every(observation =>
+      BigInt(observation.amount) <= expectedAmount && observation.delegate === null
+    );
+};
+
+const hasRecoveredFastInventory = (subject, config) => {
+  if (subject?.fastInventoryPolicy === "isolated_wallet") {
+    return config.fastInventoryPolicy === "isolated_wallet" &&
+      subject.beforeTokenBalanceKnown === true &&
+      hasConsistentIsolationProof({
+        beforeTokenBalance: toBigIntOrNull(subject.beforeTokenBalance),
+        inventoryIsolationProof: subject.inventoryIsolationProof
+      }, config);
+  }
+  if (subject?.fastInventoryPolicy === "transaction_baseline") {
+    return config.fastInventoryPolicy === "transaction_baseline" &&
+      subject.beforeTokenBalanceKnown === true &&
+      hasConsistentTransactionBaselineEvidence({
+        ...subject,
+        inventoryBaselineRaw: subject.beforeTokenBalance
+      });
+  }
+  return false;
+};
+
 export class LiveEngine {
   constructor(config, log, lanes = new ExecutionLanes()) {
     this.lanes = lanes;
@@ -134,13 +203,15 @@ export class LiveEngine {
     }
     this.wallet = loadLiveWallet(this.config.liveWalletFile, this.config.liveWalletAddress);
     if (this.config.fastTraderWallets?.length > 0) {
-      if (this.config.fastInventoryPolicy !== "isolated_wallet") {
-        throw new Error("FAST live traders require the isolated-wallet inventory policy");
+      if (this.config.fastInventoryPolicy === "disabled") {
+        throw new Error("FAST live traders require an inventory policy");
       }
-      if (this.config.fastIsolationWalletAddress !== this.wallet.publicKey.toBase58()) {
+      if (this.config.fastInventoryPolicy === "isolated_wallet" &&
+          this.config.fastIsolationWalletAddress !== this.wallet.publicKey.toBase58()) {
         throw new Error("FAST isolation wallet does not match the live wallet");
       }
-      if (this.config.fastIsolationConfirmation !== "I_UNDERSTAND_FAST_ISOLATED_WALLET") {
+      if (this.config.fastInventoryPolicy === "isolated_wallet" &&
+          this.config.fastIsolationConfirmation !== "I_UNDERSTAND_FAST_ISOLATED_WALLET") {
         throw new Error("FAST isolation confirmation is missing");
       }
     }
@@ -778,6 +849,16 @@ export class LiveEngine {
     return true;
   }
 
+  async #refreshTransactionBaselineEvidence(position) {
+    if (typeof this.executor.tokenBalanceEvidence !== "function" ||
+        !hasConsistentTransactionBaselineEvidence(position)) return null;
+    const result = await this.executor.tokenBalanceEvidence(
+      new PublicKey(position.mint), new PublicKey(position.tokenProgram)
+    );
+    const expectedAmount = BigInt(position.rawTokenAmount);
+    return hasConsistentCurrentInventoryEvidence(result, expectedAmount) ? result : null;
+  }
+
   #hasActiveSell(mint) {
     return this.state.handledSignals.some(
       (signal) => signal.mint === mint && signal.side === "SELL" &&
@@ -1028,14 +1109,9 @@ export class LiveEngine {
       }
       const bought = executedDelta;
       const fastRecovery = orphan.fastProfile === true ||
-        orphan.fastInventoryPolicy === "isolated_wallet";
-      if (fastRecovery && !(this.config.fastInventoryPolicy === "isolated_wallet" &&
-          orphan.fastInventoryPolicy === "isolated_wallet" &&
-          orphan.beforeTokenBalanceKnown === true &&
-          hasConsistentIsolationProof({
-            beforeTokenBalance: before,
-            inventoryIsolationProof: orphan.inventoryIsolationProof
-          }, this.config))) {
+        orphan.fastInventoryPolicy === "isolated_wallet" ||
+        orphan.fastInventoryPolicy === "transaction_baseline";
+      if (fastRecovery && !hasRecoveredFastInventory(orphan, this.config)) {
         this.#quarantineBuy(orphan, "inventory_flow_provenance_missing", {
           observedTokenBalance: balance.toString(),
           evidence: "recovered_fast_pending_exit_missing_isolated_flow_proof"
@@ -1050,6 +1126,7 @@ export class LiveEngine {
           inventoryBaselineRaw: before.toString(),
           fastInventoryPolicy: orphan.fastInventoryPolicy ?? null,
           inventoryIsolationProof: orphan.inventoryIsolationProof ?? null,
+          fastInventoryEvidence: orphan.fastInventoryEvidence ?? null,
           fastProfile: orphan.fastProfile === true,
           provisional: buyStatus.confirmationStatus === "processed",
           sourceWallet: orphan.sourceWallet, sourceName: orphan.sourceName
@@ -1248,14 +1325,9 @@ export class LiveEngine {
           )
         );
         const fastRecovery = signal.fastProfile === true ||
-          signal.fastInventoryPolicy === "isolated_wallet";
-        if (fastRecovery && !(this.config.fastInventoryPolicy === "isolated_wallet" &&
-            signal.fastInventoryPolicy === "isolated_wallet" &&
-            signal.beforeTokenBalanceKnown === true &&
-            hasConsistentIsolationProof({
-              beforeTokenBalance: before,
-              inventoryIsolationProof: signal.inventoryIsolationProof
-            }, this.config))) {
+          signal.fastInventoryPolicy === "isolated_wallet" ||
+          signal.fastInventoryPolicy === "transaction_baseline";
+        if (fastRecovery && !hasRecoveredFastInventory(signal, this.config)) {
           this.#quarantineBuy(signal, "inventory_flow_provenance_missing", {
             observedTokenBalance: after.toString(),
             evidence: "recovered_fast_position_missing_isolated_flow_proof"
@@ -1271,6 +1343,7 @@ export class LiveEngine {
             inventoryBaselineRaw: before.toString(),
             fastInventoryPolicy: signal.fastInventoryPolicy ?? null,
             inventoryIsolationProof: signal.inventoryIsolationProof ?? null,
+            fastInventoryEvidence: signal.fastInventoryEvidence ?? null,
             fastProfile: signal.fastProfile === true,
             provisional: false,
             sourceWallet: signal.sourceWallet ?? null, sourceName: signal.sourceName ?? null
@@ -1282,6 +1355,7 @@ export class LiveEngine {
             inventoryBaselineRaw: existing.inventoryBaselineRaw ?? before.toString(),
             fastInventoryPolicy: existing.fastInventoryPolicy ?? signal.fastInventoryPolicy ?? null,
             inventoryIsolationProof: existing.inventoryIsolationProof ?? signal.inventoryIsolationProof ?? null,
+            fastInventoryEvidence: existing.fastInventoryEvidence ?? signal.fastInventoryEvidence ?? null,
             fastProfile: existing.fastProfile === true || signal.fastProfile === true,
             entryWalletDeltaLamports: entryDelta.toString(),
             provisional: false
@@ -1512,6 +1586,9 @@ export class LiveEngine {
           inventoryIsolationProof: buySignal?.inventoryIsolationProof ??
             (buySignal?.fastProfile || trade.fastProfile
               ? prepared.inventoryIsolationProof ?? null : null),
+          fastInventoryEvidence: buySignal?.fastInventoryEvidence ??
+            (buySignal?.fastProfile || trade.fastProfile
+              ? prepared.fastInventoryEvidence ?? null : null),
           provisional: true,
           sourceWallet: trade.sourceWallet ?? null,
           sourceName: trade.sourceName ?? null
@@ -1693,6 +1770,9 @@ export class LiveEngine {
         inventoryIsolationProof: existing?.inventoryIsolationProof ??
           (buySignal?.fastProfile || trade.fastProfile
             ? prepared.inventoryIsolationProof ?? null : null),
+        fastInventoryEvidence: existing?.fastInventoryEvidence ??
+          (buySignal?.fastProfile || trade.fastProfile
+            ? buySignal?.fastInventoryEvidence ?? prepared.fastInventoryEvidence ?? null : null),
         provisional: false,
         sourceWallet: trade.sourceWallet ?? null, sourceName: trade.sourceName ?? null
       };
@@ -1907,7 +1987,7 @@ export class LiveEngine {
     const requested = trade.executionRoute ?? null;
     const routes = trade.side === "SELL"
       ? requested === "jupiter" ? ["jupiter", null] : [requested, "jupiter"]
-      : [requested];
+      : requested === "jupiter" ? ["jupiter", null] : [requested, "jupiter"];
     let firstError;
     for (let index = 0; index < routes.length; index += 1) {
       try {
@@ -2177,11 +2257,23 @@ export class LiveEngine {
       prewarm = startPrewarm();
       let current;
       try {
-        current = await this.executor.tokenBalance(
-          new PublicKey(position.mint),
-          new PublicKey(position.tokenProgram),
-          position.provisional ? "processed" : "confirmed"
-        );
+        if (position.fastInventoryPolicy === "transaction_baseline") {
+          const evidence = await this.#refreshTransactionBaselineEvidence(position);
+          if (!evidence) {
+            this.#quarantinePosition(position, "inventory_flow_unproven", {
+              ownedTokenAmount: position.rawTokenAmount,
+              evidence: "transaction_baseline_current_inventory_mismatch_or_delegate"
+            });
+            return this.#skip(trade, "fast_inventory_flow_unproven");
+          }
+          current = evidence.amount;
+        } else {
+          current = await this.executor.tokenBalance(
+            new PublicKey(position.mint),
+            new PublicKey(position.tokenProgram),
+            position.provisional ? "processed" : "confirmed"
+          );
+        }
       } catch (error) {
         this.#scheduleExitRetry(trade.mint, `balance_unavailable:${errorMessage(error)}`);
         return this.#skip(trade, "sell_balance_unavailable");
@@ -2237,7 +2329,9 @@ export class LiveEngine {
         requireBaselineContext: Boolean(trade.fastProfile && trade.side === "BUY"),
         requireBalanceContext: Boolean(
           trade.side === "SELL" &&
-          this.state.positions.get(trade.mint)?.fastInventoryPolicy === "isolated_wallet"
+          ["isolated_wallet", "transaction_baseline"].includes(
+            this.state.positions.get(trade.mint)?.fastInventoryPolicy
+          )
         ),
         balanceCommitment,
         targetAveragePriceSol: trade.side === "BUY" ? trade.averagePriceSol ?? null : null,
@@ -2255,11 +2349,15 @@ export class LiveEngine {
     // Refuse the order before broadcast unless the executor provided both an
     // explicit baseline flag and rooted/context-correlated evidence. A single
     // processed amount (or an omitted flag) is never enough to prove ownership.
-    if (trade.side === "BUY" && trade.fastProfile &&
-        !(this.config.fastInventoryPolicy === "isolated_wallet" &&
-          prepared.beforeTokenBalanceKnown === true &&
-          hasConsistentBaselineEvidence(prepared) &&
-          hasConsistentIsolationProof(prepared, this.config))) {
+    let preparedFastInventoryEvidence = null;
+    const fastBuyBaselineReady = trade.side === "BUY" && trade.fastProfile &&
+      prepared.beforeTokenBalanceKnown === true &&
+      hasConsistentBaselineEvidence(prepared) &&
+      (this.config.fastInventoryPolicy === "isolated_wallet"
+        ? hasConsistentIsolationProof(prepared, this.config)
+        : this.config.fastInventoryPolicy === "transaction_baseline" &&
+          (preparedFastInventoryEvidence = transactionBaselineEvidenceFromPrepared(prepared)) !== null);
+    if (trade.side === "BUY" && trade.fastProfile && !fastBuyBaselineReady) {
       const record = this.#skip(trade, "fast_buy_inventory_baseline_unavailable");
       this.log("live_fast_buy_blocked", {
         mint: trade.mint,
@@ -2295,6 +2393,21 @@ export class LiveEngine {
         });
         return this.#skip(trade, "fast_inventory_flow_unproven");
       }
+      if (position?.fastInventoryPolicy === "transaction_baseline") {
+        const preparedAmount = toBigIntOrNull(prepared.beforeTokenBalance);
+        if (!hasConsistentTransactionBaselineEvidence(position) ||
+            preparedAmount === null || preparedAmount !== BigInt(position.rawTokenAmount) ||
+            !Number.isSafeInteger(Number(prepared.beforeTokenBalanceContextSlot)) ||
+            Number(prepared.beforeTokenBalanceContextSlot) <= 0 ||
+            prepared.beforeTokenBalanceContextDelegate !== null) {
+          this.#quarantinePosition(position, "inventory_flow_unproven", {
+            ownedTokenAmount: position.rawTokenAmount,
+            observedTokenBalance: prepared.beforeTokenBalance?.toString?.() ?? null,
+            evidence: "transaction_baseline_sell_context_missing_or_mismatched"
+          });
+          return this.#skip(trade, "fast_inventory_flow_unproven");
+        }
+      }
       position = this.state.positions.get(trade.mint);
       const sellable = bigintMin(BigInt(position.rawTokenAmount), prepared.beforeTokenBalance);
       if (sellable === 0n) {
@@ -2328,7 +2441,8 @@ export class LiveEngine {
         try {
           prepared = await this.#prepareWithFallback(trade, sellable, {
             balanceCommitment,
-            requireBalanceContext: position.fastInventoryPolicy === "isolated_wallet"
+            requireBalanceContext: ["isolated_wallet", "transaction_baseline"]
+              .includes(position.fastInventoryPolicy)
           });
           preparedAtMs = Date.now();
           rawAmount = sellable;
@@ -2337,6 +2451,16 @@ export class LiveEngine {
             this.#quarantinePosition(position, "inventory_flow_unproven", {
               ownedTokenAmount: position.rawTokenAmount,
               evidence: "flow_watermark_lags_adjusted_sell_balance_context"
+            });
+            return this.#skip(trade, "fast_inventory_flow_unproven");
+          }
+          if (position.fastInventoryPolicy === "transaction_baseline" &&
+              (toBigIntOrNull(prepared.beforeTokenBalance) !== BigInt(position.rawTokenAmount) ||
+               prepared.beforeTokenBalanceContextDelegate !== null)) {
+            this.#quarantinePosition(position, "inventory_flow_unproven", {
+              ownedTokenAmount: position.rawTokenAmount,
+              observedTokenBalance: prepared.beforeTokenBalance?.toString?.() ?? null,
+              evidence: "transaction_baseline_adjusted_sell_context_mismatch"
             });
             return this.#skip(trade, "fast_inventory_flow_unproven");
           }
@@ -2359,6 +2483,8 @@ export class LiveEngine {
       beforeTokenBalanceEvidence: prepared.beforeTokenBalanceEvidence ?? null,
       fastInventoryPolicy: trade.fastProfile ? this.config.fastInventoryPolicy : null,
       inventoryIsolationProof: trade.fastProfile ? prepared.inventoryIsolationProof ?? null : null,
+      fastInventoryEvidence: trade.fastProfile
+        ? preparedFastInventoryEvidence ?? prepared.fastInventoryEvidence ?? null : null,
       fastProfile: Boolean(trade.fastProfile),
       rawAmount: rawAmount.toString(), lastValidBlockHeight: prepared.lastValidBlockHeight,
       hardMinimumTokenOutRaw: prepared.hardMinimumTokenOutRaw ?? null,

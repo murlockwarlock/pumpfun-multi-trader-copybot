@@ -387,8 +387,10 @@ export class PumpExecutor {
     balanceCommitment = "confirmed",
     hardMinimumTokenOut = null,
     requireBaselineContext = false,
-    requireBalanceContext = false
+    requireBalanceContext = false,
+    timing = null
   ) {
+    const prepareStartedAt = performance.now();
     const inputMint = side === "BUY" ? JUPITER_SOL_MINT : mint.toBase58();
     const outputMint = side === "BUY" ? mint.toBase58() : JUPITER_SOL_MINT;
     const url = new URL(`${this.config.jupiterApiUrl.replace(/\/$/, "")}/order`);
@@ -408,13 +410,20 @@ export class PumpExecutor {
           .then(context => ({ amount: context.amount, proof: null, context }))
       : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
         .then(amount => ({ amount, proof: null }));
-    const [response, baseline] = await Promise.all([
-      fetch(url, {
+    const quoteStartedAt = performance.now();
+    const quotePromise = fetch(url, {
         headers: this.#jupiterHeaders(),
         signal: AbortSignal.timeout(this.config.jupiterTimeoutMs)
-      }),
-      baselinePromise
-    ]);
+      }).then(response => {
+        if (timing) timing.quoteMs = performance.now() - quoteStartedAt;
+        return response;
+      });
+    const balanceStartedAt = performance.now();
+    const measuredBaselinePromise = baselinePromise.then(value => {
+      if (timing) timing.balanceMs = performance.now() - balanceStartedAt;
+      return value;
+    });
+    const [response, baseline] = await Promise.all([quotePromise, measuredBaselinePromise]);
     if (!response.ok) {
       throw new Error(`Jupiter order HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
     }
@@ -454,7 +463,14 @@ export class PumpExecutor {
     if (walletSignerIndex !== 0) {
       throw new Error("Jupiter transaction does not use the live wallet as its primary signer");
     }
+    const assembleStartedAt = performance.now();
     transaction.sign([this.wallet]);
+    if (timing) {
+      timing.assembleSignMs = performance.now() - assembleStartedAt;
+      timing.blockhashMs = 0;
+      timing.readyMs = performance.now() - prepareStartedAt;
+      timing.prepareMs = timing.readyMs;
+    }
     const expectedSignature = bs58.encode(transaction.signatures[0]);
     return {
       transaction,
@@ -465,6 +481,7 @@ export class PumpExecutor {
       beforeTokenBalance: baseline.amount,
       beforeTokenBalanceEvidence: baseline.proof,
       beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
+      beforeTokenBalanceContextDelegate: baseline.context?.delegate ?? null,
       lastValidBlockHeight,
       jupiterRequestId: order.requestId,
       jupiterRouter: order.router ?? "unknown",
@@ -649,10 +666,14 @@ export class PumpExecutor {
     targetAveragePriceSol = null,
     maxEntryDriftBps = null,
     requireBaselineContext = false,
-    requireBalanceContext = false
+    requireBalanceContext = false,
+    timing = null
   } = {}) {
     const mint = new PublicKey(mintAddress);
+    const prepareStartedAt = performance.now();
+    const marketStartedAt = performance.now();
     const market = await this.#market(mint, venueHint);
+    if (timing) timing.marketRouteMs = performance.now() - marketStartedAt;
     const hardMinimumTokenOut = side === "BUY"
       ? minimumTargetTokenOutRaw(
           rawAmount,
@@ -670,7 +691,8 @@ export class PumpExecutor {
         balanceCommitment,
         hardMinimumTokenOut,
         requireBaselineContext,
-        requireBalanceContext
+        requireBalanceContext,
+        timing
       );
     }
     const baselinePromise = skipBeforeTokenBalance
@@ -682,17 +704,32 @@ export class PumpExecutor {
             .then(context => ({ amount: context.amount, proof: null, context }))
         : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
           .then(amount => ({ amount, proof: null }));
-    const [trade, baseline, tip, latest] = await Promise.all([
-      this.#tradeInstructions(
+    const quoteStartedAt = performance.now();
+    const tradePromise = this.#tradeInstructions(
         side,
         mint,
         BigInt(rawAmount),
         market,
         hardMinimumTokenOut
-      ),
-      baselinePromise,
+      ).then(value => {
+        if (timing) timing.quoteMs = performance.now() - quoteStartedAt;
+        return value;
+      });
+    const balanceStartedAt = performance.now();
+    const measuredBaselinePromise = baselinePromise.then(value => {
+      if (timing) timing.balanceMs = performance.now() - balanceStartedAt;
+      return value;
+    });
+    const blockhashStartedAt = performance.now();
+    const blockhashPromise = this._recentBlockhash().then(value => {
+      if (timing) timing.blockhashMs = performance.now() - blockhashStartedAt;
+      return value;
+    });
+    const [trade, baseline, tip, latest] = await Promise.all([
+      tradePromise,
+      measuredBaselinePromise,
       this.sender.tipInstruction(this.wallet.publicKey),
-      this._recentBlockhash()
+      blockhashPromise
     ]);
     const priorityPrice = priorityMicroLamports(
       this.config.livePriorityFeeSol,
@@ -711,7 +748,13 @@ export class PumpExecutor {
         instructions
       }).compileToV0Message()
     );
+    const assembleStartedAt = performance.now();
     transaction.sign([this.wallet]);
+    if (timing) {
+      timing.assembleSignMs = performance.now() - assembleStartedAt;
+      timing.readyMs = performance.now() - prepareStartedAt;
+      timing.prepareMs = timing.readyMs;
+    }
     const expectedSignature = bs58.encode(transaction.signatures[0]);
 
     if (this.config.liveSimulate && !skipSimulation) {
@@ -737,6 +780,7 @@ export class PumpExecutor {
       beforeTokenBalance: baseline.amount,
       beforeTokenBalanceEvidence: baseline.proof,
       beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
+      beforeTokenBalanceContextDelegate: baseline.context?.delegate ?? null,
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,

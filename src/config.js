@@ -139,13 +139,13 @@ const fastTraderWallets = parseFastTraderWallets(
   targetTraders
 );
 const fastInventoryPolicy = enumSetting(
-  "FAST_INVENTORY_POLICY", "disabled", ["disabled", "isolated_wallet"]
+  "FAST_INVENTORY_POLICY", "disabled", ["disabled", "transaction_baseline", "isolated_wallet"]
 );
 const fastIsolationWalletAddress = process.env.FAST_ISOLATION_WALLET_ADDRESS ?? "";
 const fastIsolationConfirmation = process.env.FAST_ISOLATION_CONFIRMATION ?? "";
-if (fastTraderWallets.length > 0 && fastInventoryPolicy !== "isolated_wallet") {
+if (fastTraderWallets.length > 0 && fastInventoryPolicy === "disabled") {
   throw new Error(
-    "FAST_TRADER_WALLETS requires FAST_INVENTORY_POLICY=isolated_wallet"
+    "FAST_TRADER_WALLETS requires FAST_INVENTORY_POLICY=transaction_baseline or isolated_wallet"
   );
 }
 if (
