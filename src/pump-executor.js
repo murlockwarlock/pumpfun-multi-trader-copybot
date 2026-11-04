@@ -217,8 +217,9 @@ export class PumpExecutor {
   // A single processed account read is not a provenance proof: that bank can
   // be rolled back.  FAST BUY captures the same ATA at processed, confirmed,
   // and finalized commitments in parallel, keeps the highest observed amount
-  // (the conservative floor), and records the RPC context slots.  A rooted
-  // finalized observation is required before the result can unlock FAST BUY.
+  // (the conservative floor), and records the RPC context slots. A rooted
+  // finalized observation is necessary but not sufficient: LiveEngine also
+  // requires a dedicated-wallet flow-ledger proof before FAST can submit.
   async tokenBalanceEvidence(mint, tokenProgram) {
     const account = getAssociatedTokenAddressSync(
       mint,
@@ -237,10 +238,14 @@ export class PumpExecutor {
         if (!Number.isSafeInteger(slot) || slot <= 0) {
           throw new Error(`token balance RPC returned no valid ${commitment} context slot`);
         }
-        const amount = result.value
-          ? BigInt(unpackAccount(account, result.value, tokenProgram).amount.toString())
-          : 0n;
-        return { commitment, slot, amount: amount.toString() };
+        const accountState = result.value ? unpackAccount(account, result.value, tokenProgram) : null;
+        const amount = accountState ? BigInt(accountState.amount.toString()) : 0n;
+        return {
+          commitment,
+          slot,
+          amount: amount.toString(),
+          delegate: accountState?.delegate?.toBase58() ?? null
+        };
       }));
       const amount = observations.reduce(
         (highest, observation) => BigInt(observation.amount) > highest
@@ -252,6 +257,7 @@ export class PumpExecutor {
         proof: {
           kind: "multi_commitment_account_context",
           rooted: true,
+          noDelegate: observations.every(observation => observation.delegate === null),
           observations,
           rpcSource: this.rpcSource
         }

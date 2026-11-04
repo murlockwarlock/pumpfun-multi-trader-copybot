@@ -26,6 +26,8 @@ function liveConfig(directory, overrides = {}) {
     fastMaxSignalAgeMs: 1_500,
     fastMaxEntryDriftBps: 2_500,
     fastSkipSimulation: true,
+    fastInventoryPolicy: "isolated_wallet",
+    fastIsolationWalletAddress: "test-isolation-wallet",
     ...overrides
   };
 }
@@ -1910,6 +1912,85 @@ test("FAST BUY with an unknown baseline stays fail-closed before funds are spent
   assert.deepEqual(submissions, []);
 });
 
+test("FAST SELL refuses sufficient but unproven inventory after an out-of-band flow", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-flow-gap-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  engine.state.setPosition({
+    mint: mint.toBase58(),
+    rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(),
+    entrySignature: "fast-entry",
+    targetEntrySignature: "fast-target-entry",
+    inventoryBaselineRaw: "0",
+    fastInventoryPolicy: "isolated_wallet",
+    inventoryIsolationProof: null
+  });
+  let submits = 0;
+  engine.executor = {
+    prewarm: async () => {},
+    tokenBalance: async () => 200n,
+    prepare: async () => { throw new Error("prepare must not run"); },
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+
+  const result = await engine.onTrade({
+    signature: "fast-flow-gap-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "fast_inventory_flow_unproven");
+  assert.equal(submits, 0);
+  assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
+test("FAST BUY rejects contradictory baseline evidence before submit", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-evidence-mismatch-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let submits = 0;
+  engine.executor = {
+    prewarm: async () => {},
+    balanceLamports: async () => 1_000_000_000,
+    prepare: async () => ({
+      expectedSignature: "contradictory-fast-buy",
+      mint,
+      tokenProgram: TOKEN_PROGRAM_ID,
+      venue: "pump-curve",
+      beforeTokenBalance: 0n,
+      beforeTokenBalanceKnown: true,
+      beforeTokenBalanceEvidence: {
+        kind: "multi_commitment_account_context",
+        rooted: true,
+        observations: [
+          { commitment: "processed", slot: 300, amount: "200" },
+          { commitment: "confirmed", slot: 200, amount: "200" },
+          { commitment: "finalized", slot: 100, amount: "200" }
+        ]
+      },
+      inventoryIsolationProof: {
+        kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+        wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+        noExternalOutgoing: true, verified: true
+      },
+      lastValidBlockHeight: 123,
+      expectedTokenOutRaw: "1000000",
+      tokenDecimals: 6
+    }),
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+
+  const result = await engine.onTrade({
+    signature: "contradictory-fast-target", side: "BUY", mint: mint.toBase58(),
+    averagePriceSol: 0.00004, observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(result.reason, "fast_buy_inventory_baseline_unavailable");
+  assert.equal(submits, 0);
+});
+
 test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-timeout-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -1926,7 +2007,18 @@ test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", a
       beforeTokenBalanceEvidence: side === "BUY"
         ? {
             kind: "multi_commitment_account_context", rooted: true,
-            observations: [{ commitment: "finalized", slot: 123, amount: "0" }]
+            observations: [
+              { commitment: "processed", slot: 125, amount: "0" },
+              { commitment: "confirmed", slot: 124, amount: "0" },
+              { commitment: "finalized", slot: 123, amount: "0" }
+            ]
+          }
+        : null,
+      inventoryIsolationProof: side === "BUY"
+        ? {
+            kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+            wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+            noExternalOutgoing: true, verified: true
           }
         : null,
       lastValidBlockHeight: 123
@@ -2049,7 +2141,16 @@ test("fast profile uses its own drift window and latency prepare options", async
         beforeTokenBalanceKnown: true,
         beforeTokenBalanceEvidence: {
           kind: "multi_commitment_account_context", rooted: true,
-          observations: [{ commitment: "finalized", slot: 123, amount: "100" }]
+          observations: [
+            { commitment: "processed", slot: 125, amount: "100" },
+            { commitment: "confirmed", slot: 124, amount: "100" },
+            { commitment: "finalized", slot: 123, amount: "100" }
+          ]
+        },
+        inventoryIsolationProof: {
+          kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+          wallet: "test-isolation-wallet", baselineRaw: "100", flowCursor: "cursor-1",
+          noExternalOutgoing: true, verified: true
         },
         lastValidBlockHeight: 123,
         expectedTokenOutRaw: "1000000",

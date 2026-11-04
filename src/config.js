@@ -138,6 +138,26 @@ const fastTraderWallets = parseFastTraderWallets(
   process.env.FAST_TRADER_WALLETS,
   targetTraders
 );
+const fastInventoryPolicy = enumSetting(
+  "FAST_INVENTORY_POLICY", "disabled", ["disabled", "isolated_wallet"]
+);
+const fastIsolationWalletAddress = process.env.FAST_ISOLATION_WALLET_ADDRESS ?? "";
+const fastIsolationConfirmation = process.env.FAST_ISOLATION_CONFIRMATION ?? "";
+if (fastTraderWallets.length > 0 && fastInventoryPolicy !== "isolated_wallet") {
+  throw new Error(
+    "FAST_TRADER_WALLETS requires FAST_INVENTORY_POLICY=isolated_wallet"
+  );
+}
+if (
+  fastInventoryPolicy === "isolated_wallet" && fastTraderWallets.length > 0 &&
+  (!validWallet(fastIsolationWalletAddress) ||
+    fastIsolationConfirmation !== "I_UNDERSTAND_FAST_ISOLATED_WALLET")
+) {
+  throw new Error(
+    "FAST isolated-wallet mode requires FAST_ISOLATION_WALLET_ADDRESS and " +
+    "FAST_ISOLATION_CONFIRMATION=I_UNDERSTAND_FAST_ISOLATED_WALLET"
+  );
+}
 const liveTradeSol = numberSetting("LIVE_TRADE_SOL", 0.005, { min: 0.001, max: 1 });
 const livePriorityFeeSol = numberSetting("LIVE_PRIORITY_FEE_SOL", 0.0001, {
   min: 0.000001,
@@ -156,6 +176,9 @@ export const config = Object.freeze({
   targetTraders,
   liveTraderWallets,
   fastTraderWallets,
+  fastInventoryPolicy,
+  fastIsolationWalletAddress,
+  fastIsolationConfirmation,
   rpcHttpUrl: process.env.RPC_HTTP_URL ?? "https://api.mainnet-beta.solana.com",
   rpcFallbackHttpUrl: process.env.RPC_FALLBACK_HTTP_URL ?? "",
   rpcWsUrl: process.env.RPC_WS_URL ?? "wss://api.mainnet-beta.solana.com",

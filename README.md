@@ -142,6 +142,9 @@ positions last only a few seconds:
 
 ```dotenv
 FAST_TRADER_WALLETS=sniper_name
+FAST_INVENTORY_POLICY=isolated_wallet
+FAST_ISOLATION_WALLET_ADDRESS=<dedicated-wallet-address>
+FAST_ISOLATION_CONFIRMATION=I_UNDERSTAND_FAST_ISOLATED_WALLET
 FAST_MAX_SIGNAL_AGE_MS=1500
 FAST_MAX_ENTRY_DRIFT_BPS=2500
 FAST_SKIP_SIMULATION=true
@@ -158,7 +161,14 @@ context slots in parallel with quote and transaction preparation, takes the
 conservative maximum balance, and requires rooted evidence. This adds no
 serialized confirmation wait. Skipping simulation reduces latency but increases the probability
 that a transaction fails on-chain, so keep the fast wallet list explicit and
-small.
+small. FAST BUY additionally requires the dedicated-wallet policy above. A
+shared wallet, an unverified delegate, or a wallet with an untracked external
+outflow is not eligible for FAST BUY; the engine blocks before signing or
+broadcasting. The confirmation string is an operator attestation, not a claim
+that ordinary balance snapshots can reconstruct arbitrary token flows. The
+standard `PumpExecutor` deliberately does not manufacture this proof; an
+audited adapter must attach `dedicated_wallet_flow_ledger` with a durable flow
+cursor and `noExternalOutgoing=true`.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
@@ -189,6 +199,7 @@ single balance snapshot as a complete ledger:
 |---|---|
 | `beforeTokenBalance` + `beforeTokenBalanceKnown` | Conservative pre-BUY baseline from multi-commitment reads; FAST requires an explicit known flag |
 | `beforeTokenBalanceEvidence` | Context slots from processed/confirmed/finalized reads, including rooted evidence |
+| `inventoryIsolationProof` | Required dedicated-wallet flow-ledger proof; balance snapshots alone never substitute for it |
 | Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
 | Position `rawTokenAmount` | Remaining strategy amount after confirmed, transaction-specific SELL deltas |
 | `inventoryBaselineRaw` | The baseline floor that must remain below the strategy amount before SELL is allowed |

@@ -30,7 +30,9 @@ function config(directory) {
     liveMaxEntryDriftBps: 500,
     fastMaxSignalAgeMs: 1_500,
     fastMaxEntryDriftBps: 2_500,
-    fastSkipSimulation: true
+    fastSkipSimulation: true,
+    fastInventoryPolicy: "isolated_wallet",
+    fastIsolationWalletAddress: "test-isolation-wallet"
   };
 }
 
@@ -74,7 +76,18 @@ function controlledExecutor(mint, {
       beforeTokenBalanceEvidence: side === "BUY" && !unknownBaseline
         ? {
             kind: "multi_commitment_account_context", rooted: true,
-            observations: [{ commitment: "finalized", slot: 123, amount: String(baseline) }]
+            observations: [
+              { commitment: "processed", slot: 125, amount: String(baseline) },
+              { commitment: "confirmed", slot: 124, amount: String(baseline) },
+              { commitment: "finalized", slot: 123, amount: String(baseline) }
+            ]
+          }
+        : null,
+      inventoryIsolationProof: side === "BUY" && !unknownBaseline
+        ? {
+            kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+            wallet: "test-isolation-wallet", baselineRaw: String(baseline),
+            flowCursor: "cursor-1", noExternalOutgoing: true, verified: true
           }
         : null,
       lastValidBlockHeight: 123
