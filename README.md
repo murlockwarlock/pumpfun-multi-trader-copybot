@@ -168,7 +168,12 @@ broadcasting. The confirmation string is an operator attestation, not a claim
 that ordinary balance snapshots can reconstruct arbitrary token flows. The
 standard `PumpExecutor` deliberately does not manufacture this proof; an
 audited adapter must attach `dedicated_wallet_flow_ledger` with a durable flow
-cursor and `noExternalOutgoing=true`.
+cursor, `flowCoverage.gapFree=true`, and `noExternalOutgoing=true`. Before every
+FAST SELL the engine calls that adapter again, requires coverage to start at the
+persisted cursor, a non-decreasing cursor sequence and a newer checked slot,
+then persists the refreshed proof before building the SELL. A delegate seen in
+any baseline or refresh observation invalidates the proof and quarantines the
+position.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally

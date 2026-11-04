@@ -28,7 +28,8 @@ const hasConsistentBaselineEvidence = (prepared) => {
   const evidence = prepared?.beforeTokenBalanceEvidence;
   const observations = evidence?.observations;
   if (evidence?.kind !== "multi_commitment_account_context" ||
-      evidence.rooted !== true || !Array.isArray(observations) || observations.length !== 3) {
+      evidence.rooted !== true || evidence.noDelegate !== true ||
+      !Array.isArray(observations) || observations.length !== 3) {
     return false;
   }
   const expected = new Set(["processed", "confirmed", "finalized"]);
@@ -37,7 +38,7 @@ const hasConsistentBaselineEvidence = (prepared) => {
   for (const observation of observations) {
     if (!expected.has(observation?.commitment) || seen.has(observation.commitment) ||
         !Number.isSafeInteger(Number(observation.slot)) || Number(observation.slot) <= 0 ||
-        !/^\d+$/.test(String(observation.amount ?? ""))) return false;
+        !/^\d+$/.test(String(observation.amount ?? "")) || observation.delegate !== null) return false;
     seen.add(observation.commitment);
     highest = highest < BigInt(observation.amount) ? BigInt(observation.amount) : highest;
   }
@@ -46,10 +47,18 @@ const hasConsistentBaselineEvidence = (prepared) => {
 
 const hasConsistentIsolationProof = (prepared, config) => {
   const proof = prepared?.inventoryIsolationProof;
+  const coverage = proof?.flowCoverage;
   return proof?.verified === true && proof.kind === "dedicated_wallet_flow_ledger" &&
     proof.policy === "isolated_wallet" &&
     proof.noExternalOutgoing === true &&
     typeof proof.flowCursor === "string" && proof.flowCursor.length > 0 &&
+    Number.isSafeInteger(Number(proof.flowCursorSeq)) && Number(proof.flowCursorSeq) > 0 &&
+    Number.isSafeInteger(Number(proof.checkedAtSlot)) && Number(proof.checkedAtSlot) > 0 &&
+    coverage?.gapFree === true &&
+    typeof coverage.fromCursor === "string" && coverage.fromCursor.length > 0 &&
+    Number.isSafeInteger(Number(coverage.fromCursorSeq)) && Number(coverage.fromCursorSeq) > 0 &&
+    Number(coverage.fromCursorSeq) <= Number(proof.flowCursorSeq) &&
+    proof.noDelegate === true &&
     /^\d+$/.test(String(proof.baselineRaw ?? "")) &&
     BigInt(proof.baselineRaw) === prepared.beforeTokenBalance &&
     (!config.fastIsolationWalletAddress || proof.wallet === config.fastIsolationWalletAddress);
@@ -718,6 +727,35 @@ export class LiveEngine {
       return BigInt(entry.beforeTokenBalance);
     }
     return null;
+  }
+
+  async #refreshFastIsolationProof(position) {
+    if (typeof this.executor.refreshInventoryIsolation !== "function") return null;
+    const baseline = toBigIntOrNull(position.inventoryBaselineRaw);
+    const previous = position.inventoryIsolationProof;
+    if (baseline === null || !hasConsistentIsolationProof(
+      { beforeTokenBalance: baseline, inventoryIsolationProof: previous }, this.config
+    )) return null;
+    const refreshed = await this.executor.refreshInventoryIsolation({
+      mint: position.mint,
+      tokenProgram: position.tokenProgram,
+      baselineRaw: baseline.toString(),
+      previousProof: previous
+    });
+    if (!hasConsistentIsolationProof(
+      { beforeTokenBalance: baseline, inventoryIsolationProof: refreshed }, this.config
+    )) return null;
+    const previousSeq = Number(previous.flowCursorSeq);
+    const refreshedSeq = Number(refreshed.flowCursorSeq);
+    const previousSlot = Number(previous.checkedAtSlot);
+    const refreshedSlot = Number(refreshed.checkedAtSlot);
+    if (refreshedSeq < previousSeq || refreshedSlot <= previousSlot ||
+        refreshed.flowCoverage.fromCursor !== previous.flowCursor ||
+        Number(refreshed.flowCoverage.fromCursorSeq) !== previousSeq ||
+        (refreshedSeq === previousSeq) !== (refreshed.flowCursor === previous.flowCursor)) {
+      return null;
+    }
+    return refreshed;
   }
 
   #hasActiveSell(mint) {
@@ -1395,7 +1433,7 @@ export class LiveEngine {
         return { ready: false, error: readiness.error };
       }
 
-      const existing = this.state.positions.get(trade.mint);
+      let existing = this.state.positions.get(trade.mint);
       if (this.state.isQuarantined(trade.mint) || existing?.ownershipStatus === "quarantined") {
         readiness.error = "inventory_quarantine_sticky";
         return { ready: false, deferred: true, error: readiness.error };
@@ -2071,29 +2109,30 @@ export class LiveEngine {
       if (balance < minimumAfterTrade + otherExposure) return this.#skip(trade, "insufficient_balance_reserve");
       rawAmount = tradeLamports;
     } else {
-      const existing = this.state.positions.get(trade.mint);
+      let existing = this.state.positions.get(trade.mint);
       if (!existing) return this.#skip(trade, "no_live_position");
       if (!this.#samePositionSource(existing, trade)) {
         return this.#skip(trade, "position_owned_by_other_trader");
       }
       if (existing.fastInventoryPolicy === "isolated_wallet") {
-        const proof = existing.inventoryIsolationProof;
-        const baseline = toBigIntOrNull(existing.inventoryBaselineRaw);
-        const proofConsistent = proof?.verified === true &&
-          proof.kind === "dedicated_wallet_flow_ledger" &&
-          proof.policy === "isolated_wallet" && proof.noExternalOutgoing === true &&
-          typeof proof.flowCursor === "string" && proof.flowCursor.length > 0 &&
-          /^\d+$/.test(String(proof.baselineRaw ?? "")) && baseline !== null &&
-          BigInt(proof.baselineRaw) === baseline &&
-          (!this.config.fastIsolationWalletAddress ||
-            proof.wallet === this.config.fastIsolationWalletAddress);
-        if (!proofConsistent) {
+        let refreshed;
+        try {
+          refreshed = await this.#refreshFastIsolationProof(existing);
+        } catch (error) {
+          this.log("live_fast_flow_refresh_failed", {
+            mint: trade.mint, targetSignature: trade.signature,
+            message: errorMessage(error)
+          });
+        }
+        if (!refreshed) {
           this.#quarantinePosition(existing, "inventory_flow_unproven", {
             ownedTokenAmount: existing.rawTokenAmount,
-            evidence: "isolated_wallet_flow_ledger_missing_or_inconsistent"
+            evidence: "isolated_wallet_flow_ledger_missing_stale_or_inconsistent"
           });
           return this.#skip(trade, "fast_inventory_flow_unproven");
         }
+        this.state.setPosition({ ...existing, inventoryIsolationProof: refreshed });
+        existing = this.state.positions.get(trade.mint);
       }
       const position = this.#requestExit(
         existing, trade, trade.signalSource === "max_hold" ? "max_hold" : "target_sell"

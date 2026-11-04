@@ -1917,6 +1917,14 @@ test("FAST SELL refuses sufficient but unproven inventory after an out-of-band f
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
   const mint = Keypair.generate().publicKey;
   const engine = new LiveEngine(liveConfig(directory), () => {});
+  const proof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true,
+    noExternalOutgoing: true, verified: true
+  };
   engine.state.setPosition({
     mint: mint.toBase58(),
     rawTokenAmount: "100",
@@ -1926,10 +1934,15 @@ test("FAST SELL refuses sufficient but unproven inventory after an out-of-band f
     targetEntrySignature: "fast-target-entry",
     inventoryBaselineRaw: "0",
     fastInventoryPolicy: "isolated_wallet",
-    inventoryIsolationProof: null
+    inventoryIsolationProof: proof
   });
   let submits = 0;
   engine.executor = {
+    refreshInventoryIsolation: async () => ({
+      ...proof, flowCursor: "cursor-2", flowCursorSeq: 2, checkedAtSlot: 200,
+      flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+      noExternalOutgoing: false
+    }),
     prewarm: async () => {},
     tokenBalance: async () => 200n,
     prepare: async () => { throw new Error("prepare must not run"); },
@@ -1964,15 +1977,19 @@ test("FAST BUY rejects contradictory baseline evidence before submit", async t =
       beforeTokenBalanceEvidence: {
         kind: "multi_commitment_account_context",
         rooted: true,
+        noDelegate: true,
         observations: [
-          { commitment: "processed", slot: 300, amount: "200" },
-          { commitment: "confirmed", slot: 200, amount: "200" },
-          { commitment: "finalized", slot: 100, amount: "200" }
+          { commitment: "processed", slot: 300, amount: "200", delegate: null },
+          { commitment: "confirmed", slot: 200, amount: "200", delegate: null },
+          { commitment: "finalized", slot: 100, amount: "200", delegate: null }
         ]
       },
       inventoryIsolationProof: {
         kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
         wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+        flowCursorSeq: 1, checkedAtSlot: 123,
+        flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+        noDelegate: true,
         noExternalOutgoing: true, verified: true
       },
       lastValidBlockHeight: 123,
@@ -1991,6 +2008,177 @@ test("FAST BUY rejects contradictory baseline evidence before submit", async t =
   assert.equal(submits, 0);
 });
 
+test("FAST SELL refreshes the flow cursor before submit and persists it across restart", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-flow-refresh-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const initialProof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true,
+    noExternalOutgoing: true, verified: true
+  };
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "fast-entry", targetEntrySignature: "fast-target-entry",
+    inventoryBaselineRaw: "0", fastInventoryPolicy: "isolated_wallet",
+    inventoryIsolationProof: initialProof
+  });
+  let refreshCalls = 0;
+  engine.executor = {
+    refreshInventoryIsolation: async request => {
+      refreshCalls += 1;
+      assert.equal(request.previousProof.flowCursorSeq, 1);
+      return {
+        ...initialProof,
+        flowCursor: "cursor-2", flowCursorSeq: 2, checkedAtSlot: 200,
+        flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true }
+      };
+    },
+    prewarm: async () => {}, tokenBalance: async () => 100n,
+    prepare: async (_side, address) => ({
+      expectedSignature: "fast-refresh-sell", mint: new PublicKey(address),
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true, lastValidBlockHeight: 123
+    }),
+    submit: async () => "fast-refresh-sell",
+    confirm: async () => new Promise(() => {})
+  };
+  const result = await engine.onTrade({
+    signature: "fast-refresh-target-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.type, "LIVE_SUBMITTED");
+  assert.equal(refreshCalls, 1);
+  assert.equal(engine.positions.get(mint.toBase58()).inventoryIsolationProof.flowCursorSeq, 2);
+  const restarted = new LiveEngine(liveConfig(directory), () => {});
+  assert.equal(
+    restarted.positions.get(mint.toBase58()).inventoryIsolationProof.flowCursorSeq, 2
+  );
+});
+
+test("FAST SELL blocks a refresh whose ledger coverage skips the saved cursor", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-flow-gap-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const proof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true, noExternalOutgoing: true, verified: true
+  };
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "fast-entry", inventoryBaselineRaw: "0",
+    fastInventoryPolicy: "isolated_wallet", inventoryIsolationProof: proof
+  });
+  let submits = 0;
+  engine.executor = {
+    refreshInventoryIsolation: async () => ({
+      ...proof, flowCursor: "cursor-3", flowCursorSeq: 3, checkedAtSlot: 200,
+      flowCoverage: { fromCursor: "cursor-2", fromCursorSeq: 2, gapFree: true }
+    }),
+    prewarm: async () => {}, tokenBalance: async () => 100n,
+    prepare: async () => { throw new Error("prepare must not run"); },
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+  const result = await engine.onTrade({
+    signature: "fast-flow-gap-target-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "fast_inventory_flow_unproven");
+  assert.equal(submits, 0);
+  assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
+test("FAST BUY rejects a delegate present in baseline observations", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-delegate-buy-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  let submits = 0;
+  const observations = [
+    { commitment: "processed", slot: 300, amount: "0", delegate: "Delegate1111111111111111111111111111111111" },
+    { commitment: "confirmed", slot: 200, amount: "0", delegate: null },
+    { commitment: "finalized", slot: 100, amount: "0", delegate: null }
+  ];
+  engine.executor = {
+    prewarm: async () => {}, balanceLamports: async () => 1_000_000_000,
+    prepare: async () => ({
+      expectedSignature: "delegated-fast-buy", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 0n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceEvidence: {
+        kind: "multi_commitment_account_context", rooted: true,
+        noDelegate: false, observations
+      },
+      inventoryIsolationProof: {
+        kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+        wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+        flowCursorSeq: 1, checkedAtSlot: 123,
+        flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+        noDelegate: false,
+        noExternalOutgoing: true, verified: true
+      },
+      lastValidBlockHeight: 123, expectedTokenOutRaw: "1000000", tokenDecimals: 6
+    }),
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+  const result = await engine.onTrade({
+    signature: "delegated-fast-target-buy", side: "BUY", mint: mint.toBase58(),
+    averagePriceSol: 0.00004, observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(result.reason, "fast_buy_inventory_baseline_unavailable");
+  assert.equal(submits, 0);
+});
+
+test("FAST SELL blocks a delegated transfer detected by the refreshed flow ledger", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-delegate-refresh-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const proof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true,
+    noExternalOutgoing: true, verified: true
+  };
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "fast-entry", inventoryBaselineRaw: "0",
+    fastInventoryPolicy: "isolated_wallet", inventoryIsolationProof: proof
+  });
+  let submits = 0;
+  engine.executor = {
+    refreshInventoryIsolation: async () => ({
+      ...proof, flowCursor: "cursor-2", flowCursorSeq: 2, checkedAtSlot: 200,
+      flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+      noDelegate: false
+    }),
+    prewarm: async () => {}, tokenBalance: async () => 100n,
+    prepare: async () => { throw new Error("prepare must not run"); },
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+  const result = await engine.onTrade({
+    signature: "fast-delegate-target-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "fast_inventory_flow_unproven");
+  assert.equal(submits, 0);
+  assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
 test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-timeout-"));
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
@@ -2007,10 +2195,11 @@ test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", a
       beforeTokenBalanceEvidence: side === "BUY"
         ? {
             kind: "multi_commitment_account_context", rooted: true,
+            noDelegate: true,
             observations: [
-              { commitment: "processed", slot: 125, amount: "0" },
-              { commitment: "confirmed", slot: 124, amount: "0" },
-              { commitment: "finalized", slot: 123, amount: "0" }
+              { commitment: "processed", slot: 125, amount: "0", delegate: null },
+              { commitment: "confirmed", slot: 124, amount: "0", delegate: null },
+              { commitment: "finalized", slot: 123, amount: "0", delegate: null }
             ]
           }
         : null,
@@ -2018,6 +2207,9 @@ test("lost FAST BUY response with pre-existing tokens keeps the SELL pending", a
         ? {
             kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
             wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+            flowCursorSeq: 1, checkedAtSlot: 123,
+            flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+            noDelegate: true,
             noExternalOutgoing: true, verified: true
           }
         : null,
@@ -2141,15 +2333,19 @@ test("fast profile uses its own drift window and latency prepare options", async
         beforeTokenBalanceKnown: true,
         beforeTokenBalanceEvidence: {
           kind: "multi_commitment_account_context", rooted: true,
+          noDelegate: true,
           observations: [
-            { commitment: "processed", slot: 125, amount: "100" },
-            { commitment: "confirmed", slot: 124, amount: "100" },
-            { commitment: "finalized", slot: 123, amount: "100" }
+            { commitment: "processed", slot: 125, amount: "100", delegate: null },
+            { commitment: "confirmed", slot: 124, amount: "100", delegate: null },
+            { commitment: "finalized", slot: 123, amount: "100", delegate: null }
           ]
         },
         inventoryIsolationProof: {
           kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
           wallet: "test-isolation-wallet", baselineRaw: "100", flowCursor: "cursor-1",
+          flowCursorSeq: 1, checkedAtSlot: 123,
+          flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+          noDelegate: true,
           noExternalOutgoing: true, verified: true
         },
         lastValidBlockHeight: 123,

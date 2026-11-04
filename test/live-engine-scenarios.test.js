@@ -76,10 +76,11 @@ function controlledExecutor(mint, {
       beforeTokenBalanceEvidence: side === "BUY" && !unknownBaseline
         ? {
             kind: "multi_commitment_account_context", rooted: true,
+            noDelegate: true,
             observations: [
-              { commitment: "processed", slot: 125, amount: String(baseline) },
-              { commitment: "confirmed", slot: 124, amount: String(baseline) },
-              { commitment: "finalized", slot: 123, amount: String(baseline) }
+              { commitment: "processed", slot: 125, amount: String(baseline), delegate: null },
+              { commitment: "confirmed", slot: 124, amount: String(baseline), delegate: null },
+              { commitment: "finalized", slot: 123, amount: String(baseline), delegate: null }
             ]
           }
         : null,
@@ -87,7 +88,9 @@ function controlledExecutor(mint, {
         ? {
             kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
             wallet: "test-isolation-wallet", baselineRaw: String(baseline),
-            flowCursor: "cursor-1", noExternalOutgoing: true, verified: true
+            flowCursor: "cursor-1", flowCursorSeq: 1, checkedAtSlot: 123,
+            flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+            noDelegate: true, noExternalOutgoing: true, verified: true
           }
         : null,
       lastValidBlockHeight: 123
