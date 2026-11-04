@@ -171,8 +171,11 @@ audited adapter must attach `dedicated_wallet_flow_ledger` with a durable flow
 cursor, `flowCoverage.gapFree=true`, and `noExternalOutgoing=true`. Before every
 FAST SELL the engine calls that adapter again, requires coverage to start at the
 persisted cursor, a non-decreasing cursor sequence and a newer checked slot,
-then persists the refreshed proof before building the SELL. A delegate seen in
-any baseline or refresh observation invalidates the proof and quarantines the
+then requires that watermark to reach the context slot of the token balance
+used to authorize the SELL, and persists the refreshed proof before building
+the SELL. Crash recovery restores the FAST policy and proof from the durable
+BUY signal; missing legacy provenance is quarantined. A delegate seen in any
+baseline or refresh observation invalidates the proof and quarantines the
 position.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a

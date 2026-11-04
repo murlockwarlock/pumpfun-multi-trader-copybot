@@ -1945,7 +1945,12 @@ test("FAST SELL refuses sufficient but unproven inventory after an out-of-band f
     }),
     prewarm: async () => {},
     tokenBalance: async () => 200n,
-    prepare: async () => { throw new Error("prepare must not run"); },
+    prepare: async () => ({
+      expectedSignature: "must-not-submit", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 200n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 200, lastValidBlockHeight: 123
+    }),
     submit: async () => { submits += 1; return "unexpected"; }
   };
 
@@ -2043,7 +2048,8 @@ test("FAST SELL refreshes the flow cursor before submit and persists it across r
     prepare: async (_side, address) => ({
       expectedSignature: "fast-refresh-sell", mint: new PublicKey(address),
       tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
-      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true, lastValidBlockHeight: 123
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 200, lastValidBlockHeight: 123
     }),
     submit: async () => "fast-refresh-sell",
     confirm: async () => new Promise(() => {})
@@ -2086,7 +2092,12 @@ test("FAST SELL blocks a refresh whose ledger coverage skips the saved cursor", 
       flowCoverage: { fromCursor: "cursor-2", fromCursorSeq: 2, gapFree: true }
     }),
     prewarm: async () => {}, tokenBalance: async () => 100n,
-    prepare: async () => { throw new Error("prepare must not run"); },
+    prepare: async () => ({
+      expectedSignature: "must-not-submit", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 200, lastValidBlockHeight: 123
+    }),
     submit: async () => { submits += 1; return "unexpected"; }
   };
   const result = await engine.onTrade({
@@ -2096,6 +2107,102 @@ test("FAST SELL blocks a refresh whose ledger coverage skips the saved cursor", 
   assert.equal(result.reason, "fast_inventory_flow_unproven");
   assert.equal(submits, 0);
   assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
+test("FAST SELL rejects a flow watermark that lags the balance context slot", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-flow-slot-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const engine = new LiveEngine(liveConfig(directory), () => {});
+  const proof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true, noExternalOutgoing: true, verified: true
+  };
+  engine.state.setPosition({
+    mint: mint.toBase58(), rawTokenAmount: "100",
+    tokenProgram: TOKEN_PROGRAM_ID.toBase58(), openedAt: new Date().toISOString(),
+    entrySignature: "fast-entry", inventoryBaselineRaw: "0",
+    fastInventoryPolicy: "isolated_wallet", inventoryIsolationProof: proof
+  });
+  let submits = 0;
+  engine.executor = {
+    refreshInventoryIsolation: async () => ({
+      ...proof, flowCursor: "cursor-2", flowCursorSeq: 2, checkedAtSlot: 124,
+      flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true }
+    }),
+    prewarm: async () => {}, tokenBalance: async () => 100n,
+    prepare: async () => ({
+      expectedSignature: "stale-flow-sell", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 300, lastValidBlockHeight: 123
+    }),
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+  const result = await engine.onTrade({
+    signature: "stale-flow-target-sell", side: "SELL", mint: mint.toBase58(),
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "fast_inventory_flow_unproven");
+  assert.equal(submits, 0);
+  assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
+test("restart recovery preserves FAST provenance before allowing a SELL", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-recovery-proof-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey.toBase58();
+  const proof = {
+    kind: "dedicated_wallet_flow_ledger", policy: "isolated_wallet",
+    wallet: "test-isolation-wallet", baselineRaw: "0", flowCursor: "cursor-1",
+    flowCursorSeq: 1, checkedAtSlot: 123,
+    flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+    noDelegate: true, noExternalOutgoing: true, verified: true
+  };
+  const first = new LiveEngine(liveConfig(directory), () => {});
+  first.state.reserveSignal({ signature: "recovery-fast-target-buy", side: "BUY", mint }, {
+    signature: "recovery-fast-copy-buy", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    venue: "pump-curve", beforeTokenBalance: "0", beforeTokenBalanceKnown: true,
+    beforeTokenBalanceEvidence: null, rawAmount: "5000000", lastValidBlockHeight: 123,
+    fastInventoryPolicy: "isolated_wallet", inventoryIsolationProof: proof,
+    fastProfile: true
+  }, 5_000_000n);
+  first.state.updateSignal("recovery-fast-target-buy", { status: "submitted" });
+
+  let submits = 0;
+  const restarted = new LiveEngine(liveConfig(directory), () => {});
+  restarted.executor = {
+    signatureStatus: async () => ({ confirmationStatus: "confirmed", err: null }),
+    transactionTokenDelta: async () => 100n,
+    transactionWalletDelta: async () => ({ walletDeltaLamports: "-5000000" }),
+    tokenBalance: async () => 100n,
+    refreshInventoryIsolation: async () => ({
+      ...proof, flowCursor: "cursor-2", flowCursorSeq: 2, checkedAtSlot: 200,
+      flowCoverage: { fromCursor: "cursor-1", fromCursorSeq: 1, gapFree: true },
+      noExternalOutgoing: false
+    }),
+    prewarm: async () => {},
+    prepare: async () => ({
+      expectedSignature: "recovery-fast-sell", mint: new PublicKey(mint),
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 200, lastValidBlockHeight: 123
+    }),
+    submit: async () => { submits += 1; return "unexpected"; }
+  };
+  await restarted.reconcile();
+  const recovered = restarted.positions.get(mint);
+  assert.equal(recovered.fastInventoryPolicy, "isolated_wallet");
+  assert.equal(recovered.inventoryIsolationProof.flowCursor, "cursor-1");
+  const result = await restarted.onTrade({
+    signature: "recovery-fast-target-sell", side: "SELL", mint,
+    observedAtMs: Date.now(), signalSource: "processed_logs"
+  });
+  assert.equal(result.reason, "fast_inventory_flow_unproven");
+  assert.equal(submits, 0);
 });
 
 test("FAST BUY rejects a delegate present in baseline observations", async t => {
@@ -2167,7 +2274,12 @@ test("FAST SELL blocks a delegated transfer detected by the refreshed flow ledge
       noDelegate: false
     }),
     prewarm: async () => {}, tokenBalance: async () => 100n,
-    prepare: async () => { throw new Error("prepare must not run"); },
+    prepare: async () => ({
+      expectedSignature: "must-not-submit", mint,
+      tokenProgram: TOKEN_PROGRAM_ID, venue: "pump-curve",
+      beforeTokenBalance: 100n, beforeTokenBalanceKnown: true,
+      beforeTokenBalanceContextSlot: 200, lastValidBlockHeight: 123
+    }),
     submit: async () => { submits += 1; return "unexpected"; }
   };
   const result = await engine.onTrade({

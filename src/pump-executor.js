@@ -214,6 +214,40 @@ export class PumpExecutor {
     return BigInt(unpackAccount(account, info, tokenProgram).amount.toString());
   }
 
+  async tokenBalanceContext(mint, tokenProgram, commitment = "confirmed") {
+    const account = getAssociatedTokenAddressSync(
+      mint,
+      this.wallet.publicKey,
+      true,
+      tokenProgram
+    );
+    let result;
+    try {
+      if (typeof this.connection.getAccountInfoAndContext !== "function") {
+        throw new Error("token balance RPC does not provide context slots");
+      }
+      result = await this.connection.getAccountInfoAndContext(account, commitment);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      if (typeof this.fallbackExecutor.tokenBalanceContext !== "function") {
+        throw new Error("fallback token balance RPC does not provide context slots");
+      }
+      return this.fallbackExecutor.tokenBalanceContext(mint, tokenProgram, commitment);
+    }
+    const slot = Number(result?.context?.slot);
+    if (!Number.isSafeInteger(slot) || slot <= 0) {
+      throw new Error(`token balance RPC returned no valid ${commitment} context slot`);
+    }
+    const accountState = result.value ? unpackAccount(account, result.value, tokenProgram) : null;
+    return {
+      amount: accountState ? BigInt(accountState.amount.toString()) : 0n,
+      slot,
+      commitment,
+      delegate: accountState?.delegate?.toBase58() ?? null,
+      rpcSource: this.rpcSource
+    };
+  }
+
   // A single processed account read is not a provenance proof: that bank can
   // be rolled back.  FAST BUY captures the same ATA at processed, confirmed,
   // and finalized commitments in parallel, keeps the highest observed amount
@@ -352,7 +386,8 @@ export class PumpExecutor {
     market,
     balanceCommitment = "confirmed",
     hardMinimumTokenOut = null,
-    requireBaselineContext = false
+    requireBaselineContext = false,
+    requireBalanceContext = false
   ) {
     const inputMint = side === "BUY" ? JUPITER_SOL_MINT : mint.toBase58();
     const outputMint = side === "BUY" ? mint.toBase58() : JUPITER_SOL_MINT;
@@ -368,6 +403,9 @@ export class PumpExecutor {
     });
     const baselinePromise = requireBaselineContext
       ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+      : requireBalanceContext
+        ? this.tokenBalanceContext(mint, market.tokenProgram, balanceCommitment)
+          .then(context => ({ amount: context.amount, proof: null, context }))
       : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
         .then(amount => ({ amount, proof: null }));
     const [response, baseline] = await Promise.all([
@@ -426,6 +464,7 @@ export class PumpExecutor {
       venue: "jupiter-multi-hop",
       beforeTokenBalance: baseline.amount,
       beforeTokenBalanceEvidence: baseline.proof,
+      beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
       lastValidBlockHeight,
       jupiterRequestId: order.requestId,
       jupiterRouter: order.router ?? "unknown",
@@ -609,7 +648,8 @@ export class PumpExecutor {
     balanceCommitment = "confirmed",
     targetAveragePriceSol = null,
     maxEntryDriftBps = null,
-    requireBaselineContext = false
+    requireBaselineContext = false,
+    requireBalanceContext = false
   } = {}) {
     const mint = new PublicKey(mintAddress);
     const market = await this.#market(mint, venueHint);
@@ -629,13 +669,17 @@ export class PumpExecutor {
         market,
         balanceCommitment,
         hardMinimumTokenOut,
-        requireBaselineContext
+        requireBaselineContext,
+        requireBalanceContext
       );
     }
     const baselinePromise = skipBeforeTokenBalance
       ? Promise.resolve({ amount: 0n, proof: null })
       : requireBaselineContext
         ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+        : requireBalanceContext
+          ? this.tokenBalanceContext(mint, market.tokenProgram, balanceCommitment)
+            .then(context => ({ amount: context.amount, proof: null, context }))
         : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
           .then(amount => ({ amount, proof: null }));
     const [trade, baseline, tip, latest] = await Promise.all([
@@ -692,6 +736,7 @@ export class PumpExecutor {
       venue: trade.venue,
       beforeTokenBalance: baseline.amount,
       beforeTokenBalanceEvidence: baseline.proof,
+      beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,

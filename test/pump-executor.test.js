@@ -104,6 +104,41 @@ test("FAST baseline evidence takes the conservative maximum across RPC commitmen
   );
 });
 
+test("token balance context exposes the slot used for a SELL baseline", async () => {
+  const wallet = Keypair.generate();
+  const mint = Keypair.generate().publicKey;
+  const executor = Object.create(PumpExecutor.prototype);
+  executor.wallet = wallet;
+  executor.rpcSource = "primary";
+  executor.connection = {
+    getAccountInfoAndContext: async () => {
+      const data = Buffer.alloc(AccountLayout.span);
+      AccountLayout.encode({
+        mint,
+        owner: wallet.publicKey,
+        amount: 100n,
+        delegateOption: 0,
+        delegate: PublicKey.default,
+        state: 1,
+        isNativeOption: 0,
+        isNative: 0n,
+        delegatedAmount: 0n,
+        closeAuthorityOption: 0,
+        closeAuthority: PublicKey.default
+      }, data);
+      return {
+        context: { slot: 300 },
+        value: { owner: TOKEN_PROGRAM_ID, data, executable: false, lamports: 1 }
+      };
+    }
+  };
+  const context = await executor.tokenBalanceContext(mint, TOKEN_PROGRAM_ID, "confirmed");
+  assert.equal(context.amount, 100n);
+  assert.equal(context.slot, 300);
+  assert.equal(context.commitment, "confirmed");
+  assert.equal(context.delegate, null);
+});
+
 function closeExecutor({ rawBalance = 0n, accountInfo = { lamports: 2_039_280 } } = {}) {
   const wallet = Keypair.generate();
   const config = {
