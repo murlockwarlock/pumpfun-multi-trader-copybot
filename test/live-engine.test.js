@@ -1922,6 +1922,7 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
   }), () => {});
   let activeSide = "BUY";
   let sellEvidenceReads = 0;
+  const prepareCommitments = [];
   const baselineEvidence = (amount, slot = 300, lagging = false) => ({
     amount,
     proof: {
@@ -1941,8 +1942,9 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
       sellEvidenceReads += 1;
       return baselineEvidence(100n, 300, true);
     },
-    prepare: async (side, address) => {
+    prepare: async (side, address, _rawAmount, options) => {
       activeSide = side;
+      prepareCommitments.push({ side, commitment: options.balanceCommitment });
       const evidence = side === "BUY" ? baselineEvidence(0n, 200) : null;
       return {
         expectedSignature: side === "BUY" ? "built-in-buy" : "built-in-sell",
@@ -1997,6 +1999,8 @@ test("built-in transaction baseline completes FAST BUY confirmation and SELL wit
   await restarted.settlements.get(mint.toBase58()).promise;
   assert.equal(restarted.positions.has(mint.toBase58()), false);
   assert.equal(sellEvidenceReads, 1);
+  assert.equal(prepareCommitments.at(-1).side, "SELL");
+  assert.equal(prepareCommitments.at(-1).commitment, "processed");
   assert.equal(restarted.state.fastCanaryRoundTrips, 1);
   const blockedSecondBuy = await restarted.onTrade({
     signature: "built-in-target-buy-2", side: "BUY", mint: mint.toBase58(),
@@ -2054,6 +2058,69 @@ test("FAST SELL refuses sufficient but unproven inventory after an out-of-band f
   assert.equal(result.reason, "fast_inventory_flow_unproven");
   assert.equal(submits, 0);
   assert.equal(engine.state.isQuarantined(mint.toBase58()), true);
+});
+
+test("FAST canary remains occupied after token SELL until CLOSE and PnL settle", async t => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "copybot-live-fast-canary-close-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const mint = Keypair.generate().publicKey;
+  const position = {
+    mint: mint.toBase58(), rawTokenAmount: "100", tokenProgram: TOKEN_PROGRAM_ID.toBase58(),
+    openedAt: new Date().toISOString(), entrySignature: "canary-entry",
+    targetEntrySignature: "canary-target-entry", costLamports: "5000000",
+    inventoryBaselineRaw: "0", fastInventoryPolicy: "transaction_baseline",
+    fastInventoryEvidence: {
+      kind: "transaction_baseline", policy: "transaction_baseline", baselineRaw: "0",
+      noDelegate: true, expectedBuySignature: "canary-entry",
+      observations: [
+        { commitment: "processed", slot: 300, amount: "0", delegate: null },
+        { commitment: "confirmed", slot: 299, amount: "0", delegate: null },
+        { commitment: "finalized", slot: 298, amount: "0", delegate: null }
+      ]
+    }
+  };
+  const engine = new LiveEngine(liveConfig(directory, {
+    fastInventoryPolicy: "transaction_baseline"
+  }), () => {});
+  engine.state.setPosition(position);
+  const settlement = engine.state.applySellSettlement({
+    mint: mint.toBase58(), targetSignature: "canary-target-sell", signature: "canary-sell",
+    entrySignature: "canary-entry", rawSoldAmount: "100",
+    sellWalletDeltaLamports: "6000000", sellWalletDeltaKnown: true, closeRequired: true
+  });
+  assert.equal(settlement.remainingRaw, "0");
+  assert.equal(engine.positions.has(mint.toBase58()), false);
+  assert.deepEqual(engine.state.fastCanaryPendingTargets, ["canary-target-sell"]);
+
+  const blocked = await engine.onTrade({
+    signature: "canary-buy-while-close", side: "BUY",
+    mint: Keypair.generate().publicKey.toBase58(), observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(blocked.reason, "fast_canary_roundtrip_limit");
+
+  const restarted = new LiveEngine(liveConfig(directory, {
+    fastInventoryPolicy: "transaction_baseline"
+  }), () => {});
+  assert.deepEqual(restarted.state.fastCanaryPendingTargets, ["canary-target-sell"]);
+  const blockedAfterRestart = await restarted.onTrade({
+    signature: "canary-buy-after-restart", side: "BUY",
+    mint: Keypair.generate().publicKey.toBase58(), observedAtMs: Date.now(),
+    signalSource: "processed_logs", fastProfile: true
+  });
+  assert.equal(blockedAfterRestart.reason, "fast_canary_roundtrip_limit");
+
+  restarted.state.setSellSettlementClose("canary-target-sell", {
+    status: "closed",
+    result: {
+      status: "closed", signature: "canary-close", walletDeltaLamports: "0", feeLamports: "0"
+    }
+  });
+  restarted.state.completeSellSettlement("canary-target-sell", {
+    realizedPnlLamports: "1000000", closeWalletDeltaLamports: "0"
+  });
+  assert.equal(restarted.state.fastCanaryRoundTrips, 1);
+  assert.deepEqual(restarted.state.fastCanaryPendingTargets, []);
 });
 
 test("FAST BUY rejects contradictory baseline evidence before submit", async t => {

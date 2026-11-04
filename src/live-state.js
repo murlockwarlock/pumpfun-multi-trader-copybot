@@ -123,6 +123,7 @@ export class LiveState {
     this.consecutiveLosses = 0;
     this.fastCanaryRoundTrips = 0;
     this.fastCanaryCompletedTargets = [];
+    this.fastCanaryPendingTargets = [];
     this.positions = new Map();
     // A quarantine is keyed by mint rather than by a signal.  Handled signals
     // are intentionally bounded, while an ownership ambiguity must survive
@@ -154,6 +155,9 @@ export class LiveState {
     this.fastCanaryCompletedTargets = Array.isArray(state.fastCanaryCompletedTargets)
       ? state.fastCanaryCompletedTargets.filter(value => typeof value === "string" && value)
         .slice(-this.handledLimit) : [];
+    this.fastCanaryPendingTargets = Array.isArray(state.fastCanaryPendingTargets)
+      ? state.fastCanaryPendingTargets.filter(value => typeof value === "string" && value)
+      : [];
     for (const position of state.positions) {
       if (!position?.mint || !/^\d+$/.test(position.rawTokenAmount ?? "")) {
         throw new Error("Invalid position in live state");
@@ -191,6 +195,13 @@ export class LiveState {
         closeRecentBlockhash: settlement.closeRecentBlockhash ?? null,
         closeAttempts: normalizeCloseAttempts(settlement)
       });
+    }
+    for (const settlement of this.sellSettlements.values()) {
+      if (settlement.positionSnapshot?.fastInventoryPolicy === "transaction_baseline" &&
+          settlement.remainingRaw === "0" && settlement.pnlRecorded !== true &&
+          !this.fastCanaryPendingTargets.includes(settlement.targetSignature)) {
+        this.fastCanaryPendingTargets.push(settlement.targetSignature);
+      }
     }
     this.handledSignals = state.handledSignals.filter(
       (signal) => typeof signal?.targetSignature === "string"
@@ -269,6 +280,7 @@ export class LiveState {
       consecutiveLosses: this.consecutiveLosses,
       fastCanaryRoundTrips: this.fastCanaryRoundTrips,
       fastCanaryCompletedTargets: this.fastCanaryCompletedTargets,
+      fastCanaryPendingTargets: this.fastCanaryPendingTargets,
       positions: [...this.positions.values()],
       quarantines: [...this.quarantines.values()],
       quarantineAudit: this.quarantineAudit.slice(-200),
@@ -440,6 +452,10 @@ export class LiveState {
       exitRequest: { ...position.exitRequest, nextAttemptAt: new Date().toISOString() }
     });
     this.sellSettlements.set(targetSignature, record);
+    if (remaining === 0n && position.fastInventoryPolicy === "transaction_baseline" &&
+        !this.fastCanaryPendingTargets.includes(targetSignature)) {
+      this.fastCanaryPendingTargets.push(targetSignature);
+    }
     this.#save();
     return record;
   }
@@ -696,13 +712,20 @@ export class LiveState {
       settlement.realizedPnlLamports = value.toString();
       settlement.closeWalletDeltaLamports = String(closeWalletDeltaLamports);
       settlement.pnlRecorded = true;
-      if (fastCanaryTargetSignature &&
-          !this.fastCanaryCompletedTargets.includes(fastCanaryTargetSignature)) {
-        this.fastCanaryCompletedTargets.push(fastCanaryTargetSignature);
-        if (this.fastCanaryCompletedTargets.length > this.handledLimit) {
-          this.fastCanaryCompletedTargets.shift();
+      const canaryTarget = fastCanaryTargetSignature ??
+        (settlement.positionSnapshot?.fastInventoryPolicy === "transaction_baseline"
+          ? targetSignature : null);
+      if (canaryTarget) {
+        this.fastCanaryPendingTargets = this.fastCanaryPendingTargets.filter(
+          value => value !== canaryTarget
+        );
+        if (!this.fastCanaryCompletedTargets.includes(canaryTarget)) {
+          this.fastCanaryCompletedTargets.push(canaryTarget);
+          if (this.fastCanaryCompletedTargets.length > this.handledLimit) {
+            this.fastCanaryCompletedTargets.shift();
+          }
+          this.fastCanaryRoundTrips += 1;
         }
-        this.fastCanaryRoundTrips += 1;
       }
     }
     settlement.completed = true;

@@ -2216,6 +2216,7 @@ export class LiveEngine {
     if (trade.side === "BUY") {
       if (trade.fastProfile && this.config.fastInventoryPolicy === "transaction_baseline") {
         const activeCanary = this.preparingBuys.size > 0 ||
+          this.state.fastCanaryPendingTargets.length > 0 ||
           [...this.state.positions.values()].some(position =>
             position.fastInventoryPolicy === "transaction_baseline") ||
           this.state.handledSignals.some(signal =>
@@ -2269,7 +2270,9 @@ export class LiveEngine {
       const position = this.#requestExit(
         existing, trade, trade.signalSource === "max_hold" ? "max_hold" : "target_sell"
       );
-      balanceCommitment = position.provisional ? "processed" : "confirmed";
+      balanceCommitment = position.provisional ||
+        position.fastInventoryPolicy === "transaction_baseline"
+        ? "processed" : "confirmed";
       prewarm = startPrewarm();
       let current;
       try {
