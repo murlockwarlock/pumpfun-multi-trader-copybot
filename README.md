@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml/badge.svg)](https://github.com/murlockwarlock/pumpfun-multi-trader-copybot/actions/workflows/ci.yml)
 ![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=node.js&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-56%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A low-latency Solana copy-trading engine that monitors multiple public wallets,
@@ -36,8 +36,9 @@ limits, crash recovery, and auditable JSONL logs.
 - Run a fee-aware shadow portfolio for every monitored trader alongside guarded
   live execution, Telegram reports, and exact realized PnL accounting.
 - Recover incomplete settlements and retry emergency exits after restarts.
-- Make a submitted BUY sellable from its processed token balance while confirmed
-  settlement and exact accounting continue in the background.
+- Make a submitted BUY sellable only when a measured pre-BUY baseline and
+  sufficient post-BUY inventory are proven; a positive transaction delta alone
+  never proves the currently available strategy inventory.
 - Deploy atomically with systemd health checks and automatic rollback.
 
 ## Architecture
@@ -65,9 +66,10 @@ flowchart LR
 
 The normal WebSocket path decodes a processed event immediately, then re-decodes
 the same authenticated event from the confirmed transaction before submission.
-An explicitly allowlisted fast profile can submit from the processed event and
-verify it afterward; a mismatch automatically pauses new live buys. Periodic
-HTTP backfill repairs gaps caused by disconnects or restarts.
+An explicitly allowlisted fast profile can prepare from the processed event and
+verify it afterward; live submission additionally requires the executor to
+provide inventory provenance. A mismatch automatically pauses new live buys.
+Periodic HTTP backfill repairs gaps caused by disconnects or restarts.
 
 ## Quick start
 
@@ -133,6 +135,28 @@ SHADOW_TX_FEE_SOL=0.00011
 Keep new candidates monitor-only until enough shadow positions have closed to
 compare their net results after estimated costs.
 
+### Kaaox read-only profile
+
+The wallet `3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG` is a directly signed
+source for the Pump/PumpSwap trades confirmed in the current RPC sample. A
+safe observation-only profile is:
+
+```dotenv
+TARGET_WALLETS=kaaox:3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG
+LIVE_TRADER_WALLETS=none
+FAST_TRADER_WALLETS=none
+SHADOW_ENABLED=true
+```
+
+The parser rejects address mentions without the Kaaox signer, so those
+transactions do not create BUY signals; no non-signer attribution is inferred
+from account-key proximity alone.
+Raydium CPMM swaps are decoded from the confirmed signer transaction and
+recorded with `venue=raydium-cpmm`, but the executor marks that venue
+`unsupported_venue:raydium-cpmm`; it is shadow-observable only until a separate
+CPMM executor is audited. Do not put Kaaox in `FAST_TRADER_WALLETS` based on
+leaderboard PnL alone.
+
 ### Launch-sniper fast profile
 
 Fast mode is opt-in per monitored trader and is intended for wallets whose
@@ -140,25 +164,141 @@ positions last only a few seconds:
 
 ```dotenv
 FAST_TRADER_WALLETS=sniper_name
+FAST_INVENTORY_POLICY=isolated_wallet
+FAST_ISOLATION_WALLET_ADDRESS=<dedicated-wallet-address>
+FAST_ISOLATION_CONFIRMATION=I_UNDERSTAND_FAST_ISOLATED_WALLET
 FAST_MAX_SIGNAL_AGE_MS=1500
 FAST_MAX_ENTRY_DRIFT_BPS=2500
 FAST_SKIP_SIMULATION=true
 FAST_SHADOW_PROBE_ENABLED=true
 ```
 
+For the first bounded canary using the standard executor, replace the three
+isolated-wallet lines with `FAST_INVENTORY_POLICY=transaction_baseline`. The
+canary must start from a zero token balance for the selected mint; any existing
+balance or delegate blocks FAST before broadcast.
+`FAST_CANARY_MAX_ROUNDTRIPS=1` is the default for this mode and is durable
+across restarts: after one fully settled BUY→SELL pair, further FAST BUY
+signals are rejected until the operator deliberately changes the canary state.
+
+The mainnet preflight is read-only and never submits the prepared transaction:
+
+```powershell
+$env:TRADING_MODE = "paper"
+$env:FAST_TRADER_WALLETS = "none"
+$env:CANARY_WALLET_FILE = "./secrets/live-wallet.json"       # local test override
+$env:CANARY_JUPITER_KEY_FILE = "./secrets/jupiter-api-key"
+node deploy/live-dry-run.mjs <MINT> 0.005 direct
+```
+
+On the server, omit the two `CANARY_*_FILE` overrides so the existing
+`LIVE_WALLET_FILE` and configured Jupiter key file remain authoritative. The
+script requires a zero, delegate-free processed/confirmed/finalized baseline,
+prints `submitted:false`, and only builds/signs the transaction in memory. A
+future real canary still requires separate operator approval; size the single
+BUY at roughly $0.50–$1 using the current SOL/USD rate, then SELL only the
+transaction-specific acquired amount and retain both signatures, fee evidence,
+latency, and restart/reconciliation records.
+
 The parser accepts event bytes only while the official Pump program is at the
 top of the Solana program log stack. In monitor-only mode the bot builds, signs,
 but does not submit a real candidate transaction; that read-only probe records
 the actual log-to-ready latency and available token quote. In live mode the same
-path submits through the configured sender. Skipping simulation reduces latency
-but increases the probability that a transaction fails on-chain, so keep the
-fast wallet list explicit and small.
+path submits through the configured sender only when a pre-BUY inventory proof is
+available. The execution executor captures processed, confirmed, and finalized
+context slots in parallel with quote and transaction preparation, takes the
+conservative maximum balance, and requires rooted evidence. This adds no
+serialized confirmation wait. Skipping simulation reduces latency but increases the probability
+that a transaction fails on-chain, so keep the fast wallet list explicit and
+small. FAST BUY requires an explicit inventory policy. The standard
+`PumpExecutor` supports `FAST_INVENTORY_POLICY=transaction_baseline` for a
+bounded canary: it accepts only a zero pre-BUY balance with delegate-free
+processed/confirmed/finalized context, records the expected BUY signature, and
+attributes the acquired amount to the confirmed transaction delta. Before a
+SELL it rereads the token-account context, requires processed to show exactly
+the remaining bot-owned amount, forbids any higher amount at another
+commitment, and rejects delegates; lower confirmed/finalized observations may
+still lag during an early SELL. This mode does not reconstruct arbitrary
+external transfers; it is a deliberately narrow zero-baseline canary, not a
+general shared-wallet proof.
+
+For BUY execution, the engine attempts the direct Pump/PumpSwap route first
+when no route is requested and falls back to Jupiter only if preparation fails.
+An explicit `executionRoute=jupiter` keeps Jupiter first and uses direct
+Pump/PumpSwap as its fallback. Different mints still use independent execution
+lanes, so a slow route on one mint does not serialize another mint.
+
+The stronger `isolated_wallet` policy still requires an audited adapter to
+attach `dedicated_wallet_flow_ledger` with a durable flow cursor,
+`flowCoverage.gapFree=true`, and `noExternalOutgoing=true`. Before every FAST
+SELL in that mode the engine calls the adapter again, requires coverage to start
+at the persisted cursor, a non-decreasing cursor sequence and a newer checked
+slot, then requires that watermark to reach the context slot of the token
+balance used to authorize the SELL. The refreshed proof is persisted before
+building the SELL. Crash recovery restores FAST policy and evidence from the
+durable BUY signal; missing legacy provenance is quarantined. A delegate seen
+in any baseline or refresh observation invalidates the proof and quarantines
+the position.
 
 For fast profiles, the configured entry-drift ceiling is also converted into a
 minimum token output inside the signed transaction. A quote that passes locally
 cannot then consume the separate slippage allowance and land beyond that target-
-relative ceiling. Once a BUY is observed at `processed`, a matching SELL can be
-built immediately without waiting for full BUY confirmation.
+relative ceiling. A matching SELL can be built at `processed` only when the
+executor has a trusted, signature-specific processed token-delta source *and a
+measured pre-BUY baseline*. A balance increase or a positive transaction delta
+by itself is never treated as proof of currently sellable inventory. When the
+baseline or its rooted/context evidence is unknown, FAST BUY is rejected before
+broadcast. An audited isolated-inventory executor may provide an explicit
+`inventoryIsolationProof.verified=true` proof without adding a confirmation wait.
+
+Confirmed BUY recovery records the pre-BUY inventory floor. If current
+inventory is below that floor plus the transaction-specific BUY delta, the
+mint is quarantined as ownership-ambiguous and remains non-sellable across
+restart, even if a later foreign transfer restores the numeric balance.
+Confirmed SELL settlement uses its own transaction token delta as the source of
+sold quantity; missing metadata or a delta larger than the proven position is
+surfaced as unknown instead of using an arbitrary balance snapshot or
+rebroadcasting blindly.
+
+### Inventory ownership model
+
+The durable state for one mint distinguishes these facts instead of treating a
+single balance snapshot as a complete ledger:
+
+| State | Meaning |
+|---|---|
+| `beforeTokenBalance` + `beforeTokenBalanceKnown` | Conservative pre-BUY baseline from multi-commitment reads; FAST requires an explicit known flag |
+| `beforeTokenBalanceContextSlot` | Token-account context slot used by FAST SELL; the refreshed flow watermark must reach it |
+| `beforeTokenBalanceEvidence` | Context slots from processed/confirmed/finalized reads, including rooted evidence |
+| `fastInventoryEvidence` | Built-in zero-baseline transaction provenance for the bounded FAST canary |
+| `inventoryIsolationProof` | Optional stronger dedicated-wallet flow-ledger proof; balance snapshots alone never substitute for it |
+| Transaction-specific BUY delta | Proof that this signed BUY acquired tokens; it is not proof of current availability |
+| Position `rawTokenAmount` | Remaining strategy amount after confirmed, transaction-specific SELL deltas |
+| `inventoryBaselineRaw` | The baseline floor that must remain below the strategy amount before SELL is allowed |
+| `quarantines[mint]` | Sticky evidence that baseline/history/flow is incomplete or inconsistent; keyed by mint and durable beyond signal pruning |
+| Pending/ambiguous signals | Reserved exposure whose outcome is not yet known; ambiguous submits are never blindly retried |
+
+The strategy sellable amount is non-zero only when the baseline is known, the
+current balance is at least `baseline + position amount`, and no mint-scoped
+quarantine exists. External deficits, unexplained zero balances, unavailable
+metadata, and SELL deltas exceeding the proven amount preserve the position and
+enter quarantine rather than creating a fake SELL or PnL result. Standard Solana
+RPC does not guarantee a complete historical sequence of every fungible-token
+movement between two observations; when that sequence cannot be proven, the
+implementation fails closed and requires an explicit audited resolution.
+
+A quarantined BUY that is later proven failed on-chain is a separate terminal
+case: after verified fee evidence and zero owned inventory are persisted, an
+operator may call `releaseFailedBuyQuarantine` with the matching transaction
+signature, fee, and non-empty audit evidence. This removes only that failed-BUY
+quarantine and permits a new BUY; ambiguous or successful BUY quarantines still
+require a restored position through `clearQuarantine`.
+
+A fully proven SELL that consumes the last strategy tokens is also resolved by
+an explicit `releaseClosedSellQuarantine` procedure. It requires the completed
+transaction-specific SELL settlement, zero remaining position, no unresolved
+mint transactions, and audit evidence; partial or ambiguous SELLs remain
+quarantined.
 
 ## Live mode
 
@@ -209,6 +349,8 @@ touch data/STOP_LIVE
 | Signal-age limit | Avoid copying stale transactions after reconnects |
 | Entry-drift min-out | Reject a bad quote and enforce the target-relative ceiling inside the transaction |
 | Processed BUY readiness | Permit an immediate SELL while final BUY accounting continues in background |
+| Token provenance quarantine | Block sales when external transfers make remaining inventory ambiguous |
+| Transaction-specific settlement | Attribute BUY/SELL quantities to their signed transaction, not a raw balance change |
 | Dual WSS and execution RPC | Deduplicate two staggered feeds and retry transport/rate-limit failures through the fallback |
 | Daily spend/loss caps | Bound aggregate exposure across every followed trader |
 | SOL reserve | Keep enough balance for exits and transaction fees |
