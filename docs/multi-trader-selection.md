@@ -7,7 +7,7 @@
 | Kaaox | Not established | Conditional subtotal only | See kaaox-pnl-analysis.md | See previous report | 40 weekly sales in previous window | Preserve existing shadow |
 | decu | Not established | Not established | Not established | 0 own trades in 100-transaction sample | Unquantified | Not qualified for addition |
 | trunoest | Not established | Not established | Not established | 0 own trades in 100-transaction sample | Unquantified | Not qualified for addition |
-| Nyhrox | Not established | Not established | Not established | Sample recorded separately | Unquantified | Not qualified for addition |
+| Nyhrox | Not established | Not established | Not established | 0 own trades in 100-transaction sample | Unquantified | Not qualified for addition |
 
 This is a partial selection report, not completion of the requested six-wallet profitability analysis. No candidate has been newly proven profitable. Missing values do not mean zero profit or inactivity. No new trader was added. Existing monitoring configuration was not changed.
 
@@ -28,6 +28,7 @@ The [shared failed transaction](https://solscan.io/tx/48sGLU5vXhei9hHGWDhAgKPRRx
 
 - decu: 100 latest finalized transactions spanning Unix times 1793967810–1793967812; 0 signed, 0 successful signed, 0 owned SPL balance changes, 98 failed.
 - trunoest: 100 latest finalized transactions spanning Unix times 1793967930–1793967947; 0 signed, 0 successful signed, 0 owned SPL balance changes, 95 failed.
+- Nyhrox: 100 latest finalized transactions spanning Unix times 1793968076–1793968080; 0 signed, 0 successful signed, 0 owned SPL balance changes, 97 failed.
 
 These tiny time windows cannot establish 24h/7d activity, PnL, trading frequency or absence of trades. High mention frequency must not be interpreted as high trading frequency. Broad mention pagination was stopped; it had not reached the requested history boundary. Helius also returned `Too Many Requests` during this investigation. A filtered history query must be verified before attempting another broad backfill on the RPC used by the running bot.
 
