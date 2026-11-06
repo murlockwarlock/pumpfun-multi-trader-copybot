@@ -1,12 +1,13 @@
 // Read-only RPC evidence collector. Never imports the trading executor.
 import fs from 'node:fs';
 import path from 'node:path';
-const wallet = '3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG';
+import { PublicKey } from '@solana/web3.js';
+const wallet = new PublicKey(process.argv[3] || '3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG').toBase58();
 for (const l of fs.readFileSync('.env','utf8').split(/\r?\n/)) {
   const m = /^([^#=\s]+)=(.*)$/.exec(l); if(m && !process.env[m[1]]) process.env[m[1]]=m[2].replace(/^['"]|['"]$/g,'');
 }
 const dir = process.argv[2] || 'data/kaaox-pnl-evidence'; fs.mkdirSync(dir,{recursive:true});
-const end = Math.floor(Date.now()/1000), start=end-7*86400;
+const end = Number(process.env.ANALYSIS_END || Math.floor(Date.now()/1000)), start=end-7*86400;
 async function rpc(method,params) {
   for(let a=0;a<8;a++) {
     try { const r=await fetch(process.env.RPC_HTTP_URL,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params}),signal:AbortSignal.timeout(20000)}); if(!r.ok)throw Error('http'); const j=await r.json(); if(j.error)throw Error('rpc'); return j.result; }
