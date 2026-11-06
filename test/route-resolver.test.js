@@ -43,3 +43,17 @@ test("resolves a SOL-quoted PumpSwap pool without changing its route", async () 
   assert.equal(result.unsupportedTrades.length, 0);
   assert.equal(result.trades[0].mint, "base-mint");
 });
+
+test("marks Raydium CPMM signals unsupported instead of routing them to Pump", async () => {
+  const result = await resolvePumpCandidates([{
+    signature: "cpmm-signature",
+    side: "BUY",
+    mint: "cpmm-mint",
+    venue: "raydium-cpmm",
+    executionRoute: "raydium-cpmm"
+  }], {});
+  assert.equal(result.trades.length, 0);
+  assert.equal(result.unsupportedTrades.length, 1);
+  assert.equal(result.unsupportedTrades[0].reason, "unsupported_venue:raydium-cpmm");
+  assert.equal(result.unsupportedTrades[0].trade.mint, "cpmm-mint");
+});

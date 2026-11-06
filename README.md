@@ -135,6 +135,28 @@ SHADOW_TX_FEE_SOL=0.00011
 Keep new candidates monitor-only until enough shadow positions have closed to
 compare their net results after estimated costs.
 
+### Kaaox read-only profile
+
+The wallet `3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG` is a directly signed
+source for the Pump/PumpSwap trades confirmed in the current RPC sample. A
+safe observation-only profile is:
+
+```dotenv
+TARGET_WALLETS=kaaox:3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG
+LIVE_TRADER_WALLETS=none
+FAST_TRADER_WALLETS=none
+SHADOW_ENABLED=true
+```
+
+The parser rejects address mentions without the Kaaox signer, so those
+transactions do not create BUY signals; no non-signer attribution is inferred
+from account-key proximity alone.
+Raydium CPMM swaps are decoded from the confirmed signer transaction and
+recorded with `venue=raydium-cpmm`, but the executor marks that venue
+`unsupported_venue:raydium-cpmm`; it is shadow-observable only until a separate
+CPMM executor is audited. Do not put Kaaox in `FAST_TRADER_WALLETS` based on
+leaderboard PnL alone.
+
 ### Launch-sniper fast profile
 
 Fast mode is opt-in per monitored trader and is intended for wallets whose

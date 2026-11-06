@@ -2,8 +2,14 @@ import { PUMP_SDK } from "@pump-fun/pump-sdk";
 
 export const PUMP_PROGRAMS = new Set([
   "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
-  "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA"
+  "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  // Raydium CPMM does not emit a Pump-compatible Anchor trade event. It is
+  // accepted here only for confirmed, signer-authenticated balance-delta
+  // decoding; route resolution blocks it from execution below.
+  "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C"
 ]);
+export const RAYDIUM_CPMM_PROGRAM =
+  "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
 
 export const QUOTE_MINTS = new Set([
   "So11111111111111111111111111111111111111112",
@@ -331,6 +337,11 @@ export function parsePumpTrades(tx, targetWallet, signature = "unknown") {
   const context = authenticatedPumpTransaction(tx, targetWallet);
   if (!context) return [];
   const { meta, targetIndex } = context;
+  const venue = context.keys.includes(RAYDIUM_CPMM_PROGRAM)
+    ? "raydium-cpmm"
+    : context.keys.includes("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA")
+      ? "pumpswap"
+      : "pump-curve";
 
   const logSignal = parsePumpLogSignal(
     meta.logMessages,
@@ -369,7 +380,7 @@ export function parsePumpTrades(tx, targetWallet, signature = "unknown") {
     const solAmount = Math.abs(solDelta);
     if (!Number.isFinite(tokenAmount) || tokenAmount <= 0 || solAmount <= 0) continue;
 
-    trades.push({
+    const trade = {
       signature,
       side,
       mint,
@@ -384,8 +395,13 @@ export function parsePumpTrades(tx, targetWallet, signature = "unknown") {
             routeKind: logSignal.routeKind,
             venue: logSignal.routeKind
           }
-        : {})
-    });
+        : { venue })
+    };
+    if (venue === "raydium-cpmm" && !trade.executionRoute) {
+      trade.executionRoute = "raydium-cpmm";
+      trade.routeKind = "raydium-cpmm";
+    }
+    trades.push(trade);
   }
 
   return trades;

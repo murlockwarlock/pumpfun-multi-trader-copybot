@@ -303,7 +303,7 @@ async function processConfirmedSignature(target, signature, source, observedAtMs
   );
   const resolution = confirmedSignal.trades.length > 0
     ? await resolvePumpCandidates(confirmedSignal.trades, rpc)
-    : { trades: parsePumpTrades(tx, target.wallet, signature), unsupportedTrades: [] };
+    : await resolvePumpCandidates(parsePumpTrades(tx, target.wallet, signature), rpc);
   const { trades, unsupportedTrades } = resolution;
   for (const unsupported of unsupportedTrades) {
     const trade = attributedTrade({

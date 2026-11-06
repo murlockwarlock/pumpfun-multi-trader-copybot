@@ -16,7 +16,18 @@ function jupiterRoute(candidate, pool, poolAddress) {
 }
 
 export async function resolvePumpCandidates(candidates, rpc) {
-  const trades = await Promise.all(candidates.map(async candidate => {
+  const unsupportedTrades = [];
+  const supportedCandidates = candidates.filter((candidate) => {
+    if (candidate.executionRoute !== "raydium-cpmm" && candidate.venue !== "raydium-cpmm") {
+      return true;
+    }
+    unsupportedTrades.push({
+      trade: candidate,
+      reason: "unsupported_venue:raydium-cpmm"
+    });
+    return false;
+  });
+  const trades = await Promise.all(supportedCandidates.map(async candidate => {
     if (candidate.boundaryPool) {
       const pool = await rpc.resolvePumpPool(candidate.boundaryPool);
       return pool.quoteMint !== WRAPPED_SOL_MINT ? jupiterRoute(candidate, pool, candidate.boundaryPool) : candidate;
@@ -28,5 +39,5 @@ export async function resolvePumpCandidates(candidates, rpc) {
     const resolved = { ...candidate, mint: pool.baseMint };
     return pool.quoteMint !== WRAPPED_SOL_MINT ? jupiterRoute(resolved, pool, candidate.pool) : resolved;
   }));
-  return { trades, unsupportedTrades: [] };
+  return { trades, unsupportedTrades };
 }
