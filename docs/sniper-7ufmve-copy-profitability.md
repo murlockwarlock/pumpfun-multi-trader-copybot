@@ -214,3 +214,103 @@ Reproduce with `node scripts/sniper-copy-analysis.mjs` using the saved local his
   }
 ]
 ```
+
+## Completed fixed-window RPC reconstruction
+
+The cache contains every transaction body in the saved 5,958-signature 14-day collection (missing = 0). The 7d window ends 2026-11-06T12:40:26Z, not at report publication. The extra prior week supplies opening inventory where observable. These are conditional cost-model results, not a newly certified whole-wallet PnL.
+```json
+{
+  "missing": 0,
+  "start": "2026-10-30T12:40:26.000Z",
+  "end": "2026-11-06T12:40:26.000Z",
+  "day": {
+    "rows": 467,
+    "buys": 27,
+    "sells": 306,
+    "knownSales": 284,
+    "unknownSales": 22,
+    "unknownProceeds": "16525988426",
+    "conditionalRealized": "94505392317",
+    "fees": "38178842",
+    "netNative": "24523215705",
+    "closed": 26,
+    "wins": 26,
+    "venues": {
+      "Pump curve": {
+        "buys": 26,
+        "sells": 295,
+        "conditionalRealized": "94505392317"
+      },
+      "Orca": {
+        "buys": 1,
+        "sells": 0,
+        "conditionalRealized": "0"
+      },
+      "Pump curve+Orca": {
+        "buys": 0,
+        "sells": 11,
+        "conditionalRealized": "0"
+      }
+    }
+  },
+  "week": {
+    "rows": 2263,
+    "buys": 121,
+    "sells": 1418,
+    "knownSales": 1098,
+    "unknownSales": 320,
+    "unknownProceeds": "249897213220",
+    "conditionalRealized": "403853108528",
+    "fees": "177410396",
+    "netNative": "48774969254",
+    "closed": 102,
+    "wins": 98,
+    "venues": {
+      "Pump curve": {
+        "buys": 104,
+        "sells": 1222,
+        "conditionalRealized": "403712770602"
+      },
+      "Orca": {
+        "buys": 15,
+        "sells": 0,
+        "conditionalRealized": "0"
+      },
+      "Pump curve+Orca": {
+        "buys": 1,
+        "sells": 166,
+        "conditionalRealized": "262318434"
+      },
+      "Pump curve+Raydium AMM": {
+        "buys": 0,
+        "sells": 11,
+        "conditionalRealized": "0"
+      },
+      "PumpSwap": {
+        "buys": 1,
+        "sells": 19,
+        "conditionalRealized": "-121980508"
+      }
+    }
+  }
+}
+```
+Lamport values in this JSON are exact integer strings. The 7d reconstructed subtotal is +403.853108528 SOL; 320 unknown-cost SELLs received 249.897213220 SOL. The 24h subtotal is +94.505392317 SOL; 22 unknown-cost SELLs received 16.525988426 SOL. Receipts are not profit. Known-cycle wins: 98 of 102 weekly, 26 of 26 daily; these exclude unknown-cost positions and are not whole-strategy win rates. Pump curve subtotal +403.712770602 SOL; PumpSwap subtotal -0.121980508 SOL; mixed-route remainder +0.262318434 SOL. Cash transfers, account-local inventory and unallocated failed-attempt fees prevent upgrading these figures to audited net PnL.
+
+## Independent raw check of the 94 selected cycles
+
+```json
+{
+  "missing": 0,
+  "cycles": 94,
+  "networkFeesLamports": "79327803",
+  "adjustedSelectedFlowLamports": "447796632549",
+  "note": "Adjusted selected-transaction cash flow includes all native costs and cancels observed account rent; not full-wallet PnL or proof of no simultaneous external transfers."
+}
+```
+All successfully checked cycle transactions require the target signer, successful metadata and safe numeric lamport inputs. Raw audit details include each BUY/partial SELL signature, slot, time, token quantity, native balance change, token-account lamport change and network fee. Priority fees are already part of meta.fee. Tips and ancillary transfers are included in native changes but not proven individually; the adjusted flow therefore remains selected-transaction cash flow, not fully attributed trade profit.
+The historical collector explicitly used filters.status=succeeded. Consequently even fetching every saved historical signature cannot recover failed transactions that the collector never listed. The 94/94 claim has both completion-selection bias and successful-transaction selection.
+
+## Actionable probe observation
+
+On 2026-11-07, a finalized getAccountInfo check for 4wERfPyXhdrDxbZnqoVvMRPNxBKUSQDtRPHhJD71pump returned an existing Token-2022 mint on both configured execution and analytics RPCs (slots 466562863 and 466562866). It had previously produced Mint account not found during shadow preparation. This rules out permanent current absence for that mint, but does not prove its availability at the original processed observation. Transient RPC visibility, timing or the preparation lookup require a separate reproducible diagnosis; this report does not assert a proven root cause or modify the executor.

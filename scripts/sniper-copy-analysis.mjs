@@ -49,4 +49,21 @@ const doc=['# sniper_7ufmve copy profitability','',
 'Current 24h/7d trader PnL and per-venue full coverage are not established here. The separate current RPC collection is not interchangeable with the historical window. Raw historical transactions for all 94 cycles, complete token-owner flows, exact tips/rent allocation, and delayed pool/landing states are required to claim audited net returns. The saved report and server journal do not contain all these facts. No execution configuration changes or real transactions were made.',
 'Reproduce with `node scripts/sniper-copy-analysis.mjs` using the saved local historical files and downloaded JSONL snapshots. Machine-readable cycle details, signatures and summary are in ignored `data/sniper-copy-analysis.json`.','',
 '## Prior real execution records (control only)','```json',JSON.stringify(result.manual,null,2),'```'];
+if(fs.existsSync('data/sniper-current-pnl/summary.json')) {
+ const current=read('data/sniper-current-pnl/summary.json');
+ doc.push('', '## Completed fixed-window RPC reconstruction', '',
+ 'The cache contains every transaction body in the saved 5,958-signature 14-day collection (missing = 0). The 7d window ends 2026-11-06T12:40:26Z, not at report publication. The extra prior week supplies opening inventory where observable. These are conditional cost-model results, not a newly certified whole-wallet PnL.',
+ '```json',JSON.stringify(current,null,2),'```',
+ 'Lamport values in this JSON are exact integer strings. The 7d reconstructed subtotal is +403.853108528 SOL; 320 unknown-cost SELLs received 249.897213220 SOL. The 24h subtotal is +94.505392317 SOL; 22 unknown-cost SELLs received 16.525988426 SOL. Receipts are not profit. Known-cycle wins: 98 of 102 weekly, 26 of 26 daily; these exclude unknown-cost positions and are not whole-strategy win rates. Pump curve subtotal +403.712770602 SOL; PumpSwap subtotal -0.121980508 SOL; mixed-route remainder +0.262318434 SOL. Cash transfers, account-local inventory and unallocated failed-attempt fees prevent upgrading these figures to audited net PnL.');
+}
+if(fs.existsSync('data/sniper-raw-audit.json')) {
+ const raw=read('data/sniper-raw-audit.json');
+ doc.push('', '## Independent raw check of the 94 selected cycles', '',
+ '```json',JSON.stringify({...raw,rows:undefined},null,2),'```',
+ 'All successfully checked cycle transactions require the target signer, successful metadata and safe numeric lamport inputs. Raw audit details include each BUY/partial SELL signature, slot, time, token quantity, native balance change, token-account lamport change and network fee. Priority fees are already part of meta.fee. Tips and ancillary transfers are included in native changes but not proven individually; the adjusted flow therefore remains selected-transaction cash flow, not fully attributed trade profit.',
+ 'The historical collector explicitly used filters.status=succeeded. Consequently even fetching every saved historical signature cannot recover failed transactions that the collector never listed. The 94/94 claim has both completion-selection bias and successful-transaction selection.');
+ fs.mkdirSync('docs/evidence',{recursive:true});fs.writeFileSync('docs/evidence/sniper-94-cycle-raw-audit.json',JSON.stringify(raw,null,2));
+}
+doc.push('', '## Actionable probe observation', '',
+ 'On 2026-11-07, a finalized getAccountInfo check for 4wERfPyXhdrDxbZnqoVvMRPNxBKUSQDtRPHhJD71pump returned an existing Token-2022 mint on both configured execution and analytics RPCs (slots 466562863 and 466562866). It had previously produced Mint account not found during shadow preparation. This rules out permanent current absence for that mint, but does not prove its availability at the original processed observation. Transient RPC visibility, timing or the preparation lookup require a separate reproducible diagnosis; this report does not assert a proven root cause or modify the executor.');
 fs.writeFileSync('docs/sniper-7ufmve-copy-profitability.md',doc.join('\n')+'\n');console.log(JSON.stringify(result,null,2));
