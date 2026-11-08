@@ -35,7 +35,7 @@ const EVENT_DISCRIMINATORS = new Map([
   }]
 ]);
 
-function authenticatedProgramData(logs) {
+export function authenticatedProgramData(logs) {
   const stack = [];
   const records = [];
   for (const line of logs ?? []) {

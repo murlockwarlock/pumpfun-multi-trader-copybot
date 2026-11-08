@@ -55,6 +55,9 @@ if (-not $RuntimeEnvPath) {
 
 $server = Read-EnvFile $ServerConfigPath
 $runtime = Read-EnvFile $RuntimeEnvPath
+if ($runtime['SNIPER_LAUNCH_FOLLOW'] -eq 'shadow' -and $runtime['LIVE_TRADER_WALLETS'] -ne 'none') {
+    throw 'Launch-follow shadow rollout requires LIVE_TRADER_WALLETS=none.'
+}
 $hostName = Require-Value $server 'DEPLOY_HOST'
 $userName = Require-Value $server 'DEPLOY_USER'
 $port = Require-Value $server 'DEPLOY_PORT'
@@ -64,11 +67,13 @@ if ($port -notmatch '^\d+$') { throw 'DEPLOY_PORT must be numeric.' }
 if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) { throw 'DEPLOY_KEY is not readable.' }
 
 $allowedRuntimeKeys = @(
+    'SNIPER_LAUNCH_FOLLOW',
     'TRADING_MODE',
     'TARGET_WALLET',
     'TARGET_WALLETS',
     'LIVE_TRADER_WALLETS',
     'RPC_HTTP_URL',
+    'ANALYTICS_RPC_HTTP_URL',
     'RPC_FALLBACK_HTTP_URL',
     'RPC_WS_URL',
     'RPC_FALLBACK_WS_URL',
@@ -215,6 +220,8 @@ try {
     Push-Location $ProjectRoot
     try {
         & $tar -czf $bundlePath `
+            --exclude='.git' `
+            --exclude='work' `
             --exclude='.env' `
             --exclude='data' `
             --exclude='secrets' `

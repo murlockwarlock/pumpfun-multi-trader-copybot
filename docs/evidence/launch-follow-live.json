@@ -1,0 +1,266 @@
+{
+  "generatedAt": "2026-11-08T09:36:51.609Z",
+  "launches": 0,
+  "prepared": 0,
+  "skipReasons": {},
+  "signalToPreparedMs": {
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "entryDriftBps": {
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "firstCreatorSellObservedMs": {
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "p99": null
+  },
+  "portfolios": {
+    "A": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "B": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "C": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "D": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "E": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "F": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    }
+  },
+  "exploratory": {
+    "A": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "B": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "C": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "D": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "E": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "F": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    }
+  },
+  "holdout": {
+    "A": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "B": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "C": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "D": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "E": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    },
+    "F": {
+      "closed": 0,
+      "unknown": 0,
+      "unverifiedQuotes": 0,
+      "netPnlSol": null,
+      "winRate": null,
+      "exitLatenessMs": {
+        "n": 0,
+        "p50": null,
+        "p95": null,
+        "p99": null
+      }
+    }
+  },
+  "splitRule": "first 25 launches exploratory; next 25 holdout; no timer selection until exploration completes",
+  "verdict": "UNPROVEN"
+}

@@ -13,7 +13,7 @@ for (const slow of ["prepare","resolve"]) test(`one WS notification submits B wh
   const tasks = new Map(), submitted = [];
   const notify = vm.runInNewContext(source.slice(source.indexOf("function enqueueTrade("),
     source.indexOf("async function initializeTargetIngestion(")) + "\nprocessWebsocketSignature", {
-    performance, setImmediate, config: { fastSignalEnabled: true, tradingMode: "live" },
+    performance, setImmediate, launchPost() {}, config: { fastSignalEnabled: true, tradingMode: "live" },
     shadowTrader: null, liveLanes: new ExecutionLanes(), ingressLanes: new ExecutionLanes(),
     signatureTasks: tasks, fastMetrics: { detected: 0 }, log() {}, rememberLatency() {},
     rpc: { resolvePumpPool: async () => { await release.promise; return { baseMint: "A", quoteMint: WRAPPED_SOL_MINT }; }, getTransactionWithRetry: async () => null },

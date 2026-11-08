@@ -9,6 +9,10 @@ import {
 } from "@solana/web3.js";
 import {
   createCloseAccountInstruction,
+  ExtensionType,
+  getAccountLen,
+  getAccountTypeOfMintType,
+  getExtensionTypes,
   getAssociatedTokenAddressSync,
   NATIVE_MINT,
   TOKEN_2022_PROGRAM_ID,
@@ -26,6 +30,7 @@ import {
 } from "@pump-fun/pump-sdk";
 import {
   buyQuoteInput as quotePumpAmmBuy,
+  sellBaseInput as quotePumpAmmSell,
   OnlinePumpAmmSdk,
   PUMP_AMM_SDK,
   supportsTradeV2
@@ -98,13 +103,14 @@ export class PumpExecutor {
     this.config = config;
     this.wallet = wallet;
     this.connection = new Connection(config.rpcHttpUrl, {
+      ...(config.shadowReadOnlyFetch ? { disableRetryOnRateLimit: true } : {}),
       // Quote/build against the same processed bank that emitted the target
       // event. Safety balances and final reconciliation still use confirmed.
       commitment: "processed",
       wsEndpoint: config.rpcWsUrl,
       fetch: (url, options = {}) => {
         const deadline = AbortSignal.timeout(config.rpcTimeoutMs ?? 10000);
-        return fetch(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
+        return (config.shadowReadOnlyFetch ?? fetch)(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
       },
       confirmTransactionInitialTimeout: config.liveConfirmationTimeoutMs
     });
@@ -338,6 +344,7 @@ export class PumpExecutor {
     return {
       mint,
       mintSupply: new BN(mintAccount.supply.toString()),
+      mintAccount,
       tokenDecimals: mintAccount.decimals,
       tokenProgram: mintInfo.owner,
       pool,
@@ -368,6 +375,71 @@ export class PumpExecutor {
       if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
       return this.fallbackExecutor.prewarm(mintAddress, { venueHint });
     });
+  }
+
+  // Read-only shadow capability. Never calls prepare(), initialize(), sender,
+  // blockhash, simulation or signing. A public key alone is sufficient.
+  async quoteShadow(side, mintAddress, rawAmount, options = {}) {
+    if (!["BUY", "SELL"].includes(side) || BigInt(rawAmount) <= 0n) throw Error("Invalid shadow quote");
+    const startedAtMs = Date.now();
+    const mint = new PublicKey(mintAddress);
+    // Do not cache pre-migration classification for a later exit.
+    const market = await this.#loadMarket(mint, side === "BUY" ? options.venueHint : null);
+    if (!this.pumpParameters || Date.now() - this.pumpParameters.fetchedAtMs > 60000) await this._refreshPumpParameters();
+    if (side === "BUY") {
+      const minimum = minimumTargetTokenOutRaw(rawAmount, market.tokenDecimals,
+        options.targetAveragePriceSol, options.maxEntryDriftBps);
+      if (minimum === null) throw Error("Shadow entry requires target-relative price protection");
+      const built = await this.#tradeInstructions(side, mint, BigInt(rawAmount), market, minimum, true);
+      const size = market.tokenProgram.equals(TOKEN_2022_PROGRAM_ID)
+        ? getAccountLen([...getExtensionTypes(market.mintAccount.tlvData).map(getAccountTypeOfMintType)
+          .filter(type => type !== ExtensionType.Uninitialized), ExtensionType.ImmutableOwner]) : 165;
+      this.shadowRent ??= new Map();
+      if (!this.shadowRent.has(size)) this.shadowRent.set(size, await this.connection.getMinimumBalanceForRentExemption(size));
+      return { expectedTokenOutRaw: built.expectedTokenOutRaw, tokenDecimals: market.tokenDecimals,
+        hardMinimumTokenOutRaw: built.hardMinimumTokenOutRaw, venue: built.venue,
+        startedAtMs, stateReceivedAtMs: Date.now(), unsignedInstructionCount: built.instructions.length,
+        tradingFees: "included_in_SDK_quote", ...built.shadowQuoteDetails,
+        slippageBps: this.config.liveSlippageBps, rentSol: this.shadowRent.get(size) / 1e9,
+        rentAssumption: "new_associated_token_account", tokenAccountSize: size };
+    }
+    let amount, reserves, gross, spot;
+    if (market.hasPool) {
+      const s = await this.amm.swapSolanaState(market.pool, this.wallet.publicKey);
+      if (!s.pool.quoteMint.equals(NATIVE_MINT)) throw Error("Only SOL-quoted PumpSwap pools are supported");
+      const q = quotePumpAmmSell({ base: new BN(rawAmount), slippage: 0,
+        baseReserve: s.poolBaseAmount, quoteReserve: s.poolQuoteAmount,
+        virtualQuoteReserves: s.pool.virtualQuoteReserves,
+        feeBucketsTotal: s.pool.protocolFees.add(s.pool.creatorFees),
+        globalConfig: s.globalConfig, baseMintAccount: s.baseMintAccount, baseMint: s.baseMint,
+        coinCreator: s.pool.coinCreator, creator: s.pool.creator, feeConfig: s.feeConfig,
+        quoteMint: s.pool.quoteMint, isMayhemMode: s.pool.isMayhemMode,
+        creatorFeeBps: s.pool.creatorFeeBps, quoteTransferFee: s.quoteTransferFee });
+      amount = q.uiQuote;
+      gross = q.internalQuoteAmountOut;
+      spot = Number(s.poolQuoteAmount.add(s.pool.virtualQuoteReserves ?? new BN(0)).toString()) / Number(s.poolBaseAmount.toString());
+      reserves = { baseRaw: s.poolBaseAmount.toString(), quoteRaw: s.poolQuoteAmount.toString() };
+    } else {
+      // fetchSellState requires a real wallet ATA. A hypothetical shadow holding
+      // has none: fetchBuyState reads the same curve without inventing an ATA.
+      const s = await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram);
+      if (!s.quoteMint.equals(NATIVE_MINT) || isBondingCurveMigrated(s.bondingCurve)) throw Error("Curve unavailable or migrated");
+      amount = getSellSolAmountFromTokenAmount({ ...this.pumpParameters,
+        mintSupply: market.mintSupply, bondingCurve: s.bondingCurve,
+        amount: new BN(rawAmount), quoteTransferFee: s.quoteTransferFee });
+      gross = new BN(rawAmount).mul(s.bondingCurve.virtualQuoteReserves)
+        .div(s.bondingCurve.virtualTokenReserves.add(new BN(rawAmount)));
+      spot = Number(s.bondingCurve.virtualQuoteReserves.toString()) / Number(s.bondingCurve.virtualTokenReserves.toString());
+      if (amount.gt(s.bondingCurve.realQuoteReserves)) throw Error("Insufficient real SOL reserves");
+      reserves = { virtualSolRaw: s.bondingCurve.virtualQuoteReserves.toString(),
+        virtualTokenRaw: s.bondingCurve.virtualTokenReserves.toString(), realSolRaw: s.bondingCurve.realQuoteReserves.toString() };
+    }
+    if (amount.lte(new BN(0))) throw Error("Zero sell quote");
+    return { expectedSolOutRaw: amount.toString(), venue: market.hasPool ? "pumpswap" : "pump-curve",
+      startedAtMs, stateReceivedAtMs: Date.now(), reserves, tradingFees: "included_in_SDK_quote",
+      tradingFeeRaw: gross.sub(amount).toString(),
+      priceImpactBps: (1 - Number(gross.toString()) / Number(rawAmount) / spot) * 10000,
+      slippageBps: this.config.liveSlippageBps };
   }
 
   #jupiterHeaders(json = false) {
@@ -494,7 +566,7 @@ export class PumpExecutor {
     };
   }
 
-  async #tradeInstructions(side, mint, rawAmount, market = null, hardMinimumTokenOut = null) {
+  async #tradeInstructions(side, mint, rawAmount, market = null, hardMinimumTokenOut = null, shadowDetails = false) {
     market ??= await this.#market(mint);
     const slippage = this.config.liveSlippageBps / 100;
 
@@ -630,6 +702,18 @@ export class PumpExecutor {
         tokenProgram: market.tokenProgram,
         venue: "pump-curve",
         expectedTokenOutRaw: tokenAmount.toString(),
+        ...(shadowDetails ? { shadowQuoteDetails: {
+          reserves: { virtualSolRaw: state.bondingCurve.virtualQuoteReserves.toString(),
+            virtualTokenRaw: state.bondingCurve.virtualTokenReserves.toString(),
+            realSolRaw: state.bondingCurve.realQuoteReserves.toString(),
+            realTokenRaw: state.bondingCurve.realTokenReserves.toString() },
+          // Constant-product curve price impact excludes fees. Crossing the
+          // remaining curve supply cannot be represented by this expression.
+          priceImpactBps: tokenAmount.lt(state.bondingCurve.realTokenReserves)
+            ? Number(tokenAmount.toString()) / Number(state.bondingCurve.virtualTokenReserves.sub(tokenAmount).toString()) * 10000 : null,
+          tradingFeeRaw: null,
+          tradingFeeDetail: "SDK includes dynamic fees; exact BUY debit split not exposed"
+        } } : {}),
         hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }

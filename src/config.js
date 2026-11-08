@@ -175,6 +175,7 @@ const latencyPenaltyBps = numberSetting("LATENCY_PENALTY_BPS", 300, {
 });
 
 export const config = Object.freeze({
+  launchFollowEnabled: process.env.SNIPER_LAUNCH_FOLLOW === "shadow",
   tradingMode: enumSetting("TRADING_MODE", "paper", ["paper", "live"]),
   targetWallet: targetTraders[0].wallet,
   targetWallets: Object.freeze(targetTraders.map((trader) => trader.wallet)),
