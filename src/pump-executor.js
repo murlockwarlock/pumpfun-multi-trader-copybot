@@ -1,4 +1,5 @@
 import BN from "bn.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import bs58 from "bs58";
 import {
   ComputeBudgetProgram,
@@ -102,15 +103,34 @@ export class PumpExecutor {
   constructor(config, wallet, { enableFallback = true } = {}) {
     this.config = config;
     this.wallet = wallet;
+    this.shadowQuoteContext = new AsyncLocalStorage();
     this.connection = new Connection(config.rpcHttpUrl, {
       ...(config.shadowReadOnlyFetch ? { disableRetryOnRateLimit: true } : {}),
       // Quote/build against the same processed bank that emitted the target
       // event. Safety balances and final reconciliation still use confirmed.
       commitment: "processed",
       wsEndpoint: config.rpcWsUrl,
-      fetch: (url, options = {}) => {
+      fetch: async (url, options = {}) => {
         const deadline = AbortSignal.timeout(config.rpcTimeoutMs ?? 10000);
-        return (config.shadowReadOnlyFetch ?? fetch)(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
+        const context=this.shadowQuoteContext.getStore();
+        let body=context ? JSON.parse(options.body) : null;
+        const contextual=body && ["getAccountInfo","getMultipleAccounts"].includes(body.method);
+        if (contextual) {
+          body.params[1]={...body.params[1],minContextSlot:context.minSlot,commitment:"processed"};
+          options={...options,body:JSON.stringify(body)};
+        }
+        const started=performance.now();
+        const response=await (config.shadowReadOnlyFetch ?? fetch)(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
+        if (context) { context.rpcCalls++; context.rpcMs+=performance.now()-started; }
+        if (contextual && response.ok) {
+          const json=await response.clone().json();
+          if (!json.error) {
+            const slot=json.result?.context?.slot;
+            if (!Number.isSafeInteger(slot)||slot<context.minSlot) throw Error("shadow_market_slot_unproven");
+            context.slots.push(slot);
+          }
+        }
+        return response;
       },
       confirmTransactionInitialTimeout: config.liveConfirmationTimeoutMs
     });
@@ -380,12 +400,26 @@ export class PumpExecutor {
   // Read-only shadow capability. Never calls prepare(), initialize(), sender,
   // blockhash, simulation or signing. A public key alone is sufficient.
   async quoteShadow(side, mintAddress, rawAmount, options = {}) {
+    return this.shadowQuoteContext.run({minSlot:options.minContextSlot??0,slots:[],rpcCalls:0,rpcMs:0},async()=>{
+      const q=await this.#quoteShadowOnce(side,mintAddress,rawAmount,options);
+      const c=this.shadowQuoteContext.getStore();
+      return {...q,marketContextSlot:c.slots.length?Math.min(...c.slots):null,
+        requiredContextSlot:c.minSlot,marketCommitment:"processed",contextVerified:c.slots.length>0,
+        marketContextMaxSlot:c.slots.length?Math.max(...c.slots):null,rpcCalls:c.rpcCalls,rpcMs:c.rpcMs,
+        quoteMs:Date.now()-q.startedAtMs};
+    });
+  }
+  async #quoteShadowOnce(side, mintAddress, rawAmount, options = {}) {
     if (!["BUY", "SELL"].includes(side) || BigInt(rawAmount) <= 0n) throw Error("Invalid shadow quote");
     const startedAtMs = Date.now();
     const mint = new PublicKey(mintAddress);
     // Do not cache pre-migration classification for a later exit.
     const market = await this.#loadMarket(mint, side === "BUY" ? options.venueHint : null);
-    if (!this.pumpParameters || Date.now() - this.pumpParameters.fetchedAtMs > 60000) await this._refreshPumpParameters();
+    const context=this.shadowQuoteContext.getStore();
+    if (options.minContextSlot!==undefined || !this.pumpParameters) {
+      const [global,feeConfig]=await Promise.all([this.pump.fetchGlobal(),this.pump.fetchFeeConfig()]);
+      context.parameters={global,feeConfig};
+    } else context.parameters=this.pumpParameters;
     if (side === "BUY") {
       const minimum = minimumTargetTokenOutRaw(rawAmount, market.tokenDecimals,
         options.targetAveragePriceSol, options.maxEntryDriftBps);
@@ -424,7 +458,7 @@ export class PumpExecutor {
       // has none: fetchBuyState reads the same curve without inventing an ATA.
       const s = await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram);
       if (!s.quoteMint.equals(NATIVE_MINT) || isBondingCurveMigrated(s.bondingCurve)) throw Error("Curve unavailable or migrated");
-      amount = getSellSolAmountFromTokenAmount({ ...this.pumpParameters,
+      amount = getSellSolAmountFromTokenAmount({ ...context.parameters,
         mintSupply: market.mintSupply, bondingCurve: s.bondingCurve,
         amount: new BN(rawAmount), quoteTransferFee: s.quoteTransferFee });
       gross = new BN(rawAmount).mul(s.bondingCurve.virtualQuoteReserves)
@@ -643,7 +677,7 @@ export class PumpExecutor {
       };
     }
 
-    const parameters = this.pumpParameters ?? await this._refreshPumpParameters();
+    const parameters = this.shadowQuoteContext.getStore()?.parameters ?? this.pumpParameters ?? await this._refreshPumpParameters();
     const state = side === "BUY"
       ? await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram)
       : await this.pump.fetchSellState(mint, this.wallet.publicKey, market.tokenProgram);

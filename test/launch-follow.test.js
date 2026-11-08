@@ -5,15 +5,15 @@ import { LaunchFollow, launchSignals } from "../src/launch-follow.js";
 import { readOnlyBudgetFetch } from "../src/shadow-rpc-budget.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/launch-follow.json", import.meta.url)));
-const signal = { mint: "mint", signature: "buy", observedAtMs: 1000, averagePriceSol: .000005 };
+const signal = { mint: "mint", signature: "buy", slot:1, observedAtMs: 1000, averagePriceSol: .000005 };
 function setup(overrides = {}) {
   let time = 1000, saved;
   const events = [], timers = [], calls = [];
   const engine = new LaunchFollow({ now:()=>time, save:s=>{saved=structuredClone(s);},
     emit:r=>events.push(r), schedule:(f,ms)=>timers.push({f,ms}),
     quote:async(side,...args)=>{calls.push([side,...args]); return side==="BUY"
-      ? {expectedTokenOutRaw:"1000000000",tokenDecimals:6}
-      : {expectedSolOutRaw:"6000000"};}, ...overrides });
+      ? {expectedTokenOutRaw:"1000000000",tokenDecimals:6,marketContextSlot:1}
+      : {expectedSolOutRaw:"6000000",marketContextSlot:1};}, ...overrides });
   return { engine, events, timers, calls, setTime:t=>{time=t;}, saved:()=>saved };
 }
 test("real archived CREATE+BUY: target is creation user and same-mint buyer",()=>{
@@ -55,7 +55,7 @@ test("creator SELL while BUY quote is pending cancels the entry",async()=>{
   const pending=Promise.withResolvers();const h=setup({quote:()=>pending.promise});
   const task=h.engine.launch(signal);
   h.engine.creatorSell({mint:"mint",signature:"sell",observedAtMs:1050});
-  pending.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6});await task;
+  pending.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6,marketContextSlot:1});await task;
   assert.equal(h.engine.state.launches.mint.reason,"creator_sold_during_preparation");
   assert.equal(h.timers.length,0);
 });
@@ -85,10 +85,10 @@ test("price protection and stale signals remain enforced",async()=>{
   assert.equal(h.engine.state.launches.stale.reason,"stale_signal");assert.equal(h.calls.length,1);
 });
 test("independent mint prepares while first mint is blocked",async()=>{
-  const pending=Promise.withResolvers();const h=setup({quote:(_s,m)=>m==="mint"?pending.promise:Promise.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6})});
+  const pending=Promise.withResolvers();const h=setup({quote:(_s,m)=>m==="mint"?pending.promise:Promise.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6,marketContextSlot:1})});
   const a=h.engine.launch(signal);await h.engine.launch({...signal,mint:"other",signature:"other"});
   assert.equal(h.engine.state.launches.other.status,"OPEN");
-  pending.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6});await a;
+  pending.resolve({expectedTokenOutRaw:"1000000000",tokenDecimals:6,marketContextSlot:1});await a;
 });
 test("request budget refuses writes, fanout overflow and retries after 429",async()=>{
   let count=0,time=0;

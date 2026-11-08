@@ -48,3 +48,14 @@ test("hypothetical SELL cannot quote more than actual real reserves",async()=>{
   const {executor,mint,curve}=fixture();curve.realQuoteReserves=new BN(1);
   await assert.rejects(executor.quoteShadow("SELL",mint.toBase58(),"1000000000"),/Insufficient real/);
 });
+test("shadow RPC enforces source minContextSlot and rejects an older returned bank",async()=>{
+  const requests=[];
+  const executor=new PumpExecutor({rpcHttpUrl:"https://rpc.invalid",liveSendRoute:"rpc",liveTipSol:0,
+    shadowReadOnlyFetch:async(_url,options)=>{
+      const body=JSON.parse(options.body);requests.push(body);
+      return new Response(JSON.stringify({jsonrpc:"2.0",id:body.id,result:{context:{slot:99},value:null}}),{status:200});
+    }},{publicKey:new PublicKey(LAUNCH_TARGET)});
+  await assert.rejects(executor.quoteShadow("BUY","Pw9Nvk8rMoZF4dYuhzdJeMAuFm3f3CSUy3nQhcUpump","5000000",{minContextSlot:100}),/slot_unproven/);
+  assert.ok(requests.length>0);
+  for(const r of requests)assert.equal(r.params[1].minContextSlot,100);
+});

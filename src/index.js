@@ -2,7 +2,7 @@ import path from "node:path";
 import { ExecutionLanes, ExecutionTimings } from "./execution-lanes.js";
 import { Worker } from "node:worker_threads";
 import { config } from "./config.js";
-import { LAUNCH_TARGET } from "./launch-follow.js";
+import { LAUNCH_TARGET, LaunchFollowSupervisor } from "./launch-follow.js";
 import { compareFastTrades } from "./fast-verifier.js";
 import { assessTargetHealth } from "./health.js";
 import { IngestionState } from "./ingestion-state.js";
@@ -30,7 +30,7 @@ const rpc = new SolanaRpc(
 let launchWorker;
 function launchPost(target, message) {
   if (!launchWorker || target.wallet !== LAUNCH_TARGET) return;
-  try { launchWorker.postMessage(message); }
+  try { launchWorker.post(message); }
   catch (error) { log("launch_follow_error", { message: error.message }); }
 }
 function traderStateFile(file, wallet, index) {
@@ -304,7 +304,7 @@ async function processConfirmedSignature(target, signature, source, observedAtMs
   if (target.ingestion.has(signature)) return false;
   const tx = await rpc.getTransactionWithRetry(signature);
   if (!tx) throw new Error(`Transaction unavailable after retries: ${signature}`);
-  launchPost(target, { kind: "verified", signature, success: !tx.meta?.err });
+  launchPost(target, { kind: "confirmed", signature, tx });
 
   const confirmedSignal = parseConfirmedPumpLogSignal(
     tx, target.wallet, signature, { observedAtMs }
@@ -394,7 +394,7 @@ async function auditFastTrade(target, signature, trades, observedAtMs) {
   try {
     const tx = await rpc.getTransactionWithRetry(signature);
     if (!tx) throw new Error("confirmed transaction unavailable");
-    launchPost(target, { kind: "verified", signature, success: !tx.meta?.err });
+    launchPost(target, { kind: "confirmed", signature, tx });
     const confirmedSignal = parseConfirmedPumpLogSignal(
       tx, target.wallet, signature, { observedAtMs }
     );
@@ -432,6 +432,7 @@ async function auditFastTrade(target, signature, trades, observedAtMs) {
     }
   } catch (error) {
     fastMetrics.verificationErrors += 1;
+    launchPost(target, {kind:"rpc_error",message:error.message});
     log("fast_verification_error", {
       signature,
       sourceWallet: target.wallet,
@@ -674,6 +675,7 @@ async function pollTargetBackfill(target, forceLog = false) {
   target.pollRunning = true;
   try {
     const signatures = await rpc.getSignaturesSince(target.wallet, target.ingestion.cursor);
+    launchPost(target, {kind:"catalog",signatures});
     let processed = 0;
     let quarantined = 0;
     for (const item of signatures.toReversed()) {
@@ -723,6 +725,7 @@ async function pollTargetBackfill(target, forceLog = false) {
     log("backfill_error", {
       sourceWallet: target.wallet, sourceName: target.name, message: error.message
     });
+    launchPost(target,{kind:"rpc_error",message:error.message});
     return false;
   } finally {
     target.pollRunning = false;
@@ -741,6 +744,11 @@ function scheduleReconnect(channel) {
   channel.connected = false;
   channel.subscriptions = 0;
   channel.socket = null;
+  if(launchWorker) {
+    log("launch_follow_warning",{reason:"ws_channel_lost",channel:channel.name});
+    launchWorker.post({kind:"ws_error",channel:channel.name});
+    if(!websocketChannels.some(c=>c.connected&&c.subscriptions>0)) launchWorker.post({kind:"gap",reason:"ws_unavailable"});
+  }
   const delayMs = Math.min(30_000, 1_000 * 2 ** channel.reconnectAttempt++);
   log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs });
   const timer = setTimeout(() => connect(channel), delayMs);
@@ -841,7 +849,7 @@ function stop() {
   if (stopped) return;
   stopped = true;
   manualOrders?.stop();
-  launchWorker?.terminate();
+  launchWorker?.stop();
   for (const channel of websocketChannels) channel.socket?.close();
   log("stopped");
   process.exit(0);
@@ -908,12 +916,14 @@ try {
     ].includes(key)));
     const publicKey = trader.wallet?.publicKey?.toBase58() || config.liveWalletAddress;
     if (!publicKey) throw Error("Launch-follow requires the existing wallet public address");
-    launchWorker = new Worker(new URL("./launch-follow-worker.js", import.meta.url), {
-      workerData: { config: options, publicKey, directory: path.join(path.dirname(config.stateFile), "sniper-launch-follow") }
-    });
-    launchWorker.on("message", message => log("launch_follow_ready", { ...message, mode: "shadow", signedTransactions: false }));
-    launchWorker.on("error", error => { log("launch_follow_error", { message: error.message }); launchWorker = null; });
-    launchWorker.on("exit", code => { log("launch_follow_stopped", { code }); launchWorker = null; });
+    launchWorker = new LaunchFollowSupervisor({config:options,publicKey,
+      directory:path.join(path.dirname(config.stateFile),"sniper-launch-follow")},log);
+    setInterval(()=>{
+      const target=targetRuntimes.find(t=>t.wallet===LAUNCH_TARGET);
+      launchWorker.post({kind:"coverage",coverage:{
+        wsAvailable:websocketChannels.some(c=>c.connected&&c.subscriptions===targetRuntimes.length),
+        lastPollAtMs:target?.lastSuccessfulPollAt??null}});
+    },1000).unref();
   }
   await initializeIngestions();
   if (!(await pollBackfill(true))) throw new Error("Initial HTTP backfill check failed");
@@ -933,6 +943,7 @@ try {
     } = assessTargetHealth(targetRuntimes, config.maxRpcSilenceMs);
     log("health", {
       rpcSilenceMs,
+      launchFollow:launchWorker?.health()??null,
       targetHealth,
       tradingMode: config.tradingMode,
       openPositions: trader.positions.size,

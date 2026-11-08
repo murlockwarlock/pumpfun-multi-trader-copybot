@@ -8,41 +8,81 @@ import { parsePumpLogSignal } from "./parser.js";
 import { readOnlyBudgetFetch } from "./shadow-rpc-budget.js";
 
 const { config, publicKey, directory } = workerData;
-fs.mkdirSync(directory, { recursive: true });
-const stateFile = path.join(directory, "state.json");
-const journal = path.join(directory, "events.jsonl");
-const emit = row => fs.appendFileSync(journal, JSON.stringify(row) + "\n");
-const save = state => {
-  const tmp = stateFile + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify(state), { flush: true });
-  fs.renameSync(tmp, stateFile);
+const fatal = error => {
+  parentPort.postMessage({type:"fatal",message:error.message,atMs:Date.now()});
+  process.exit(1);
 };
-const executor = new PumpExecutor({ ...config, rpcWsUrl: undefined, rpcFallbackHttpUrl: "",
-  shadowReadOnlyFetch: readOnlyBudgetFetch() }, { publicKey: new PublicKey(publicKey) }, { enableFallback: false });
-// No keyfile, wallet secret, initialize(), prepare() or send capability is used.
-const engine = new LaunchFollow({
-  quote: (...args) => executor.quoteShadow(...args), emit, save,
-  state: fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf8")) : {},
-  maxAgeMs: config.fastMaxSignalAgeMs, maxDriftBps: config.fastMaxEntryDriftBps,
-  slippageBps: config.liveSlippageBps, prioritySol: config.livePriorityFeeSol, tipSol: config.liveTipSol
-});
-parentPort.on("message", message => {
-  try {
-    if (message.kind === "verified") {
-      for (const p of Object.values(engine.state.launches)) {
-        if (p.signature === message.signature) p.confirmed = message.success;
+process.on("uncaughtException",fatal);
+process.on("unhandledRejection",fatal);
+try {
+  fs.mkdirSync(directory,{recursive:true});
+  const stateFile=path.join(directory,"state.json"), journal=path.join(directory,"events.jsonl");
+  const emit=row=>fs.appendFileSync(journal,JSON.stringify(row)+"\n",{flush:true});
+  const renameWait = new Int32Array(new SharedArrayBuffer(4));
+  const save=state=>{
+    fs.writeFileSync(stateFile+".tmp",JSON.stringify(state),{flush:true});
+    for (let attempt=0;;attempt++) {
+      try { fs.renameSync(stateFile+".tmp",stateFile); break; }
+      catch (error) {
+        // Windows readers can briefly hold the old snapshot open.
+        if (process.platform!=="win32" || !["EPERM","EBUSY","EACCES"].includes(error.code) || attempt===5) throw error;
+        Atomics.wait(renameWait,0,0,10);
       }
-      engine.record("VERIFICATION", { signature: message.signature, success: message.success });
-      return;
     }
-    if (message.kind === "resolvedSell") { engine.creatorSell(message.trade); return; }
-    const { value, slot, observedAtMs } = message;
-    if (value.err) return;
-    const decodeStartedAtMs = Date.now();
-    const { trades } = parsePumpLogSignal(value.logs, LAUNCH_TARGET, value.signature, { slot, observedAtMs });
-    for (const t of trades) if (t.side === "SELL" && t.mint) engine.creatorSell(t);
-    for (const s of launchSignals(value, slot, observedAtMs)) void engine.launch({ ...s,
-      workerQueueMs: decodeStartedAtMs - observedAtMs, decodeMs: Date.now() - decodeStartedAtMs });
-  } catch(e) { emit({ type: "ERROR", atMs: Date.now(), message: e.message }); }
-});
-parentPort.postMessage({ ready: true, recovered: Object.keys(engine.state.launches).length });
+  };
+  const rpcFetch=readOnlyBudgetFetch();
+  const executor=new PumpExecutor({...config,rpcWsUrl:undefined,rpcFallbackHttpUrl:"",shadowReadOnlyFetch:rpcFetch},
+    {publicKey:new PublicKey(publicKey)},{enableFallback:false});
+  let quote=(...args)=>executor.quoteShadow(...args);
+  let rpcStats=rpcFetch.stats;
+  // Deterministic quotes are available only inside the isolated node test runner.
+  if(workerData.fixtureModule) {
+    if(!process.env.NODE_TEST_CONTEXT) throw Error("Test quote injection outside node --test");
+    const fixture=await import(workerData.fixtureModule);
+    quote=fixture.quote; rpcStats=fixture.rpcStats??rpcStats;
+  }
+  const state=fs.existsSync(stateFile)?JSON.parse(fs.readFileSync(stateFile,"utf8")):{};
+  if(Boolean(state.testData)!==Boolean(workerData.fixtureModule)&&Object.keys(state).length) throw Error("Mixed fixture/production state");
+  state.testData=Boolean(workerData.fixtureModule);
+  const engine=new LaunchFollow({quote,emit,save,state,maxAgeMs:config.fastMaxSignalAgeMs,
+    maxDriftBps:config.fastMaxEntryDriftBps,slippageBps:config.liveSlippageBps,
+    prioritySol:config.livePriorityFeeSol,tipSol:config.liveTipSol});
+  let coverage={}, lastId=0;
+  const heartbeat=()=>parentPort.postMessage({type:"heartbeat",...engine.heartbeat(coverage,rpcStats()),lastId});
+  parentPort.on("message",message=>{
+    try {
+      if(message.kind==="coverage") coverage=message.coverage;
+      else if(message.kind==="gap") engine.gap(message.reason,message.startMs,message.endMs);
+      else if(message.kind==="confirmed") engine.confirm(message.tx,message.signature);
+      else if(message.kind==="rpc_error") {
+        const o=engine.state.observation;o.counters.backfillErrors=(o.counters.backfillErrors??0)+1;
+        engine.record("RPC_ERROR",{message:message.message});
+      }
+      else if(message.kind==="ws_error") {
+        const o=engine.state.observation;o.counters.wsErrors=(o.counters.wsErrors??0)+1;
+        engine.record("WS_ERROR",{channel:message.channel});
+      }
+      else if(message.kind==="catalog") {
+        const o=engine.state.observation;
+        o.lastCatalogAtMs=Date.now(); o.catalog??={};
+        for(const s of message.signatures) if(s.blockTime*1000>=o.startedAtMs-1000) o.catalog[s.signature]??={slot:s.slot,err:s.err??null,atMs:Date.now()};
+        engine.record("BACKFILL",{signatures:message.signatures.length});
+      } else if(message.kind==="resolvedSell") engine.creatorSell(message.trade);
+      else if(message.value) {
+        const {value,slot,observedAtMs}=message;
+        engine.observeWs(value.signature,observedAtMs);
+        if(!value.err) {
+          const start=Date.now();
+          const {trades}=parsePumpLogSignal(value.logs,LAUNCH_TARGET,value.signature,{slot,observedAtMs});
+          for(const t of trades) if(t.side==="SELL"&&t.mint) engine.creatorSell(t);
+          for(const s of launchSignals(value,slot,observedAtMs)) void engine.launch({...s,
+            workerQueueMs:start-observedAtMs,decodeMs:Date.now()-start}).catch(fatal);
+        }
+      }
+      lastId=message.id??lastId;
+      parentPort.postMessage({type:"ack",id:message.id});
+    } catch(e) {fatal(e);}
+  });
+  parentPort.postMessage({type:"ready",ready:true,recovered:Object.keys(engine.state.launches).length});
+  setInterval(heartbeat,1000);
+} catch(e) {fatal(e);}
