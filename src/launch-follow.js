@@ -7,6 +7,7 @@ export const LAUNCH_TARGET = "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL";
 const PUMP = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 const CREATE = Buffer.from([27,114,169,77,222,235,99,118]);
 export const EXIT_SECONDS = { A: 1, B: 3, C: 5, D: 10, E: 15, F: null };
+export const RESEARCH_PROTOCOL = "launch-follow-confirmed-v1";
 
 export class LaunchFollowSupervisor {
   constructor(workerData, log, { timeoutMs=15000, restartMs=1000 }={}) {
@@ -126,10 +127,17 @@ export function launchSignals(value, slot, observedAtMs) {
 export class LaunchFollow {
   constructor({ quote, save, emit, state = {}, now = Date.now, schedule = setTimeout,
     maxAgeMs = 1500, maxDriftBps = 2500, slippageBps = 1500,
-    prioritySol = .0001, tipSol = .000005 }) {
-    Object.assign(this, { quote, save, emit, now, schedule, maxAgeMs, maxDriftBps, slippageBps });
+    prioritySol = .0001, tipSol = .000005, research = false, archived = () => false }) {
+    Object.assign(this, { quote, save, emit, now, schedule, maxAgeMs, maxDriftBps, slippageBps, research, archived });
     this.fee = { baseSol: .000005, prioritySol, tipSol };
     this.state = { version: 1, launches: {}, sells: {}, ...state };
+    if (this.state.epoch) {
+      const epoch=this.state.epoch;
+      this.maxAgeMs=epoch.maxAgeMs;
+      this.maxDriftBps=epoch.maxDriftBps;
+      this.slippageBps=epoch.slippageBps;
+      this.fee=epoch.fees;
+    }
     const previous = this.state.observation;
     this.state.observation ??= { startedAtMs:now(), ws:{}, confirmed:{}, gaps:[], counters:{}, lastHeartbeatAtMs:now() };
     if (previous) this.gap("worker_restart", previous.lastHeartbeatAtMs, now());
@@ -150,8 +158,8 @@ export class LaunchFollow {
   record(type, details) { this.save(this.state); this.emit({ strategy: "sniper_launch_follow", type, atMs: this.now(), ...details }); }
   gap(reason, startMs = this.now(), endMs = null) {
     const o=this.state.observation;
-    if (!o.gaps.some(g=>g.reason===reason&&g.endMs===null)) o.gaps.push({reason,startMs,endMs});
-    for (const p of Object.values(this.state.launches)) if (p.status==="OPEN"||p.status==="PREPARING") p.dataInvalid=true;
+    if (endMs===null && o.gaps.some(g=>g.reason===reason&&g.endMs===null)) return;
+    o.gaps.push({reason,startMs,endMs,backfillBeforeMs:o.coverage?.lastPollAtMs??null});
     this.record("DATA_GAP", {reason,startMs,endMs});
   }
   observeWs(signature, atMs) {
@@ -164,15 +172,17 @@ export class LaunchFollow {
       this.gap("invalid_transaction_metadata",at,this.now());return;
     }
     const launches=confirmedLaunches(tx,signature,at);
-    o.confirmed[signature]={atMs:this.now(),slot:tx?.slot,successful:tx?.meta?.err===null};
-    for (const s of launches) if (!this.state.launches[s.mint]) {
-      this.state.launches[s.mint]={...s,status:"MISSED",reason:o.ws[signature]===undefined?"missing_ws":"missed_decoder",exits:{},confirmed:true,verification:"matched_create_buy_v2"};
+    o.confirmed[signature]={atMs:this.now(),slot:tx?.slot,blockTime:tx.blockTime,successful:tx?.meta?.err===null};
+    for (const s of launches) if (!this.state.launches[s.mint] && !this.archived(s.mint)) {
+      const sourceAtMs = Number.isFinite(tx.blockTime) ? tx.blockTime * 1000 : null;
+      this.state.launches[s.mint]={...s,sourceAtMs,epochId:this.epochFor(sourceAtMs??at),status:"MISSED",reason:o.ws[signature]===undefined?"missing_ws":"missed_decoder",exits:{},confirmed:true,confirmedAtMs:this.now(),verification:"matched_create_buy_v2"};
       this.gap("missed_opportunity",at,this.now());
     }
     for (const p of Object.values(this.state.launches).filter(p=>p.signature===signature)) {
       const s=launches.find(s=>s.mint===p.mint);
       p.confirmed=Boolean(s && ["user","curve","slot","solAmount","tokenAmount"].every(k=>s[k]===p[k]));
       p.verification=p.confirmed?"matched_create_buy_v2":"source_mismatch";
+      p.confirmedAtMs=this.now();
       if (!p.confirmed) { p.dataInvalid=true; this.gap("source_mismatch",p.observedAtMs,this.now()); }
     }
     this.record("VERIFICATION",{signature,launches:launches.length});
@@ -186,14 +196,26 @@ export class LaunchFollow {
     for (const reason of ["ws_unavailable","backfill_unavailable"]) {
       const open=o.gaps.find(g=>g.reason===reason&&g.endMs===null);
       if (issues.includes(reason) && !open) this.gap(reason);
-      if (!issues.includes(reason) && open) open.endMs=this.now();
+      if (!issues.includes(reason) && open) {
+        open.endMs=this.now();
+        this.record("DATA_GAP_CLOSED",open);
+      }
+    }
+    if (this.research && !this.state.epoch && coverage?.wsAvailable && !issues.length) {
+      const startsAtMs=Math.ceil((this.now()+1)/1000)*1000;
+      this.state.epoch={id:RESEARCH_PROTOCOL+":"+startsAtMs,protocol:RESEARCH_PROTOCOL,startsAtMs,
+        exploratorySize:25,holdoutSize:25,marketCommitment:"confirmed",buySol:.005,
+        slippageBps:this.slippageBps,maxAgeMs:this.maxAgeMs,maxDriftBps:this.maxDriftBps,fees:this.fee};
+      this.record("EPOCH_STARTED",this.state.epoch);
     }
     const unresolved=Object.entries(o.ws).filter(([s,t])=>!o.confirmed[s]&&this.now()-t>60000).map(([s])=>s);
     o.unresolvedBackfill=Object.entries(o.catalog??{}).filter(([s,r])=>!r.err&&!o.confirmed[s]&&this.now()-r.atMs>60000).map(([s])=>s);
     if(o.unresolvedBackfill.length) issues.push("backfill_metadata_missing");
     o.unresolvedWs=unresolved;
     if(unresolved.length) issues.push("unverified_ws");
-    if (unresolved.length && !o.gaps.some(g=>g.reason==="unverified_ws")) this.gap("unverified_ws");
+    if (unresolved.length && !o.gaps.some(g=>g.reason==="unverified_ws"&&g.endMs===null)) {
+      this.gap("unverified_ws",Math.min(...unresolved.map(s=>o.ws[s])));
+    }
     if (!unresolved.length) for (const g of o.gaps) if (g.reason==="unverified_ws"&&g.endMs===null) g.endMs=this.now();
     o.counters={...o.counters,wsSignatures:Object.keys(o.ws).length,confirmedSignatures:Object.keys(o.confirmed).length,
       launches:Object.keys(this.state.launches).length,missed:Object.values(this.state.launches).filter(p=>p.status==="MISSED").length};
@@ -201,10 +223,14 @@ export class LaunchFollow {
     return {...o.counters,issues,unresolvedWs:unresolved.length,lastHeartbeatAtMs:o.lastHeartbeatAtMs,rpc,dataGapCount:o.gaps.length,
       activity:issues.length?"DEGRADED":o.lastWsAtMs&&this.now()-o.lastWsAtMs<60000?"ACTIVE":"IDLE_VERIFIED_BY_BACKFILL"};
   }
+  epochFor(atMs) {
+    const epoch=this.state.epoch;
+    return epoch && atMs>=epoch.startsAtMs ? epoch.id : null;
+  }
   async launch(signal) {
-    if (this.state.launches[signal.mint]) return;
+    if (this.state.launches[signal.mint] || this.archived(signal.mint)) return;
     const p = this.state.launches[signal.mint] = { ...signal, decodedAtMs: this.now(), status: "PREPARING", exits: {},
-      dataInvalid:this.state.observation.gaps.some(g=>g.endMs===null) };
+      epochId:this.epochFor(signal.observedAtMs) };
     this.record("LAUNCH", p);
     const skip = reason => { p.status = "SKIP"; p.reason = reason; p.decisionAtMs=this.now();
       p.quoteElapsedMs=p.quoteStartedAtMs?this.now()-p.quoteStartedAtMs:null; this.record("SKIP", p); };
@@ -213,7 +239,9 @@ export class LaunchFollow {
     if (Object.values(this.state.launches).filter(x => ["PREPARING", "OPEN"].includes(x.status)).length > 2) return skip("shadow_capacity");
     try {
       p.quoteStartedAtMs = this.now();
-      const q = await this.quote("BUY", signal.mint, "5000000", { minContextSlot:signal.slot, targetAveragePriceSol: signal.averagePriceSol, maxEntryDriftBps: this.maxDriftBps, venueHint: "pump-curve" });
+      const q = await this.quote("BUY", signal.mint, "5000000", { marketCommitment:p.epochId?"confirmed":"processed", minContextSlot:signal.slot, targetAveragePriceSol: signal.averagePriceSol, maxEntryDriftBps: this.maxDriftBps, venueHint: "pump-curve" });
+      p.quoteElapsedMs=this.now()-p.quoteStartedAtMs;
+      p.quoteRpcMs=q.rpcMs??null;
       if (!quoteSlotValid(q,signal.slot)) { p.dataInvalid=true; this.gap("stale_market_slot",this.now(),this.now()); return skip("stale_market_slot"); }
       p.preparedAtMs = this.now();
       p.signalToPreparedMs = p.preparedAtMs - signal.observedAtMs;
@@ -241,7 +269,7 @@ export class LaunchFollow {
     } catch (e) { skip(/price limit|drift/.test(e.message) ? "entry_price_limit" : `quote_error:${e.message}`); }
   }
   creatorSell(t) {
-    if (!t.mint) return;
+    if (!t.mint || this.archived(t.mint)) return;
     const sells = this.state.sells[t.mint] ??= [];
     if (sells.some(s => s.signature === t.signature)) return;
     sells.push({ signature: t.signature, observedAtMs: t.observedAtMs, slot: t.slot, tokenAmount: t.tokenAmount, blockTime: t.blockTime });
@@ -260,7 +288,7 @@ export class LaunchFollow {
     try {
       if (start - dueAtMs > 500) throw Error("missed_exit_deadline");
       const requiredSlot=Math.max(p.slot,p.entry.marketContextSlot,...(this.state.sells[mint]??[]).map(s=>s.slot??0));
-      const q = await this.quote("SELL", mint, p.entry.expectedTokenOutRaw, {minContextSlot:requiredSlot});
+      const q = await this.quote("SELL", mint, p.entry.expectedTokenOutRaw, {minContextSlot:requiredSlot,marketCommitment:p.epochId?"confirmed":"processed"});
       if (!quoteSlotValid(q,requiredSlot)) { p.dataInvalid=true; this.gap("stale_market_slot",this.now(),this.now()); throw Error("stale_market_slot"); }
       const end = this.now();
       if (!q.expectedSolOutRaw || end - dueAtMs > 1500) throw Error("exit_quote_missing_or_late");

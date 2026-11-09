@@ -739,18 +739,18 @@ async function pollBackfill(forceLog = false) {
   return results.some(Boolean);
 }
 
-function scheduleReconnect(channel) {
+function scheduleReconnect(channel, close = {}) {
   if (stopped) return;
   channel.connected = false;
   channel.subscriptions = 0;
   channel.socket = null;
   if(launchWorker) {
     log("launch_follow_warning",{reason:"ws_channel_lost",channel:channel.name});
-    launchWorker.post({kind:"ws_error",channel:channel.name});
+    launchWorker.post({kind:"ws_error",channel:channel.name,code:close.code??null,clean:close.wasClean??null});
     if(!websocketChannels.some(c=>c.connected&&c.subscriptions>0)) launchWorker.post({kind:"gap",reason:"ws_unavailable"});
   }
   const delayMs = Math.min(30_000, 1_000 * 2 ** channel.reconnectAttempt++);
-  log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs });
+  log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs, code:close.code??null, clean:close.wasClean??null });
   const timer = setTimeout(() => connect(channel), delayMs);
   timer.unref();
 }
@@ -842,7 +842,7 @@ function connect(channel) {
   });
 
   ws.addEventListener("error", () => ws.close());
-  ws.addEventListener("close", () => scheduleReconnect(channel));
+  ws.addEventListener("close", event => scheduleReconnect(channel,event));
 }
 
 function stop() {

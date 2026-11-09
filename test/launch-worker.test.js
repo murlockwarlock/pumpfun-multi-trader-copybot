@@ -13,12 +13,15 @@ async function until(check,ms=5000){const end=Date.now()+ms;while(Date.now()<end
 const data=directory=>({directory,publicKey:LAUNCH_TARGET,fixtureModule:new URL("./fixtures/launch-market.mjs",import.meta.url).href,
   config:{rpcHttpUrl:"https://never-called.invalid",liveSendRoute:"rpc",liveTipSol:.000005,livePriorityFeeSol:.0001,liveSlippageBps:1000,fastMaxSignalAgeMs:1500,fastMaxEntryDriftBps:2500}});
 const state=dir=>{try{return JSON.parse(fs.readFileSync(path.join(dir,"state.json")));}catch{return null;}};
-function isolated(t){const d=fs.mkdtempSync(path.join(os.tmpdir(),"launch-integrity-"));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));return d;}
+function isolated(){return fs.mkdtempSync(path.join(os.tmpdir(),"launch-integrity-"));}
+function cleanup(t,client,dir){
+  t.after(async()=>{await client.stop();fs.rmSync(dir,{recursive:true,force:true});});
+}
 const coverage={kind:"coverage",coverage:{wsAvailable:true,lastPollAtMs:Date.now()}};
 test("saved real CREATE+BUY → Worker IPC → durable BUY/all six SELL → CSV/JSON/Markdown",{timeout:25000},async t=>{
-  const dir=isolated(t),events=[];
+  const dir=isolated(),events=[];
   const client=new LaunchFollowSupervisor(data(dir),(event,detail)=>events.push({event,...detail}));
-  t.after(()=>client.stop());
+  cleanup(t,client,dir);
   await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   client.post({...coverage,coverage:{...coverage.coverage,lastPollAtMs:Date.now()}});
   client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
@@ -40,8 +43,8 @@ test("saved real CREATE+BUY → Worker IPC → durable BUY/all six SELL → CSV/
   assert.ok(fs.readFileSync(path.join(dir,"events.jsonl"),"utf8").includes('"type":"BUY"'));
 });
 test("worker crash/restart preserves mint dedupe and records DATA_GAP",{timeout:12000},async t=>{
-  const dir=isolated(t),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}));
-  t.after(()=>client.stop());await until(()=>events.some(e=>e.event==="launch_follow_ready"));
+  const dir=isolated(),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}));
+  cleanup(t,client,dir);await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   client.post(coverage);client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
   await until(()=>state(dir)?.launches[fixture.mint]?.accepted);
   await client.worker.terminate();
@@ -53,8 +56,8 @@ test("worker crash/restart preserves mint dedupe and records DATA_GAP",{timeout:
   assert.equal(summarize(state(dir)).verdict,"DATA_INVALID");
 });
 test("disk failure warns parent and terminates instead of silently dropping records",{timeout:10000},async t=>{
-  const dir=isolated(t),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}),{restartMs:5000});
-  t.after(()=>client.stop());await until(()=>events.some(e=>e.event==="launch_follow_ready"));
+  const dir=isolated(),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}),{restartMs:5000});
+  cleanup(t,client,dir);await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   fs.mkdirSync(path.join(dir,"state.json.tmp"));client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
   await until(()=>events.some(e=>e.reason==="worker_fatal"));assert.equal(client.health().state,"DEGRADED");
 });
@@ -79,10 +82,10 @@ test("successful tx with wrong creator/mint/BUY evidence is not confirmation",as
   assert.equal(engine.state.launches[fixture.mint].verification,"source_mismatch");
 });
 test("Worker 429 becomes a counted skip and warning, never a model fill",{timeout:8000},async t=>{
-  const dir=isolated(t),events=[];
+  const dir=isolated(),events=[];
   const options={...data(dir),fixtureModule:new URL("./fixtures/launch-rate-limit.mjs",import.meta.url).href};
   const client=new LaunchFollowSupervisor(options,(event,d)=>events.push({event,...d}));
-  t.after(()=>client.stop());await until(()=>events.some(e=>e.event==="launch_follow_ready"));
+  cleanup(t,client,dir);await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   client.post(coverage);client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
   await until(()=>events.some(e=>e.reason==="quote_rpc_errors"));
   assert.match(state(dir).launches[fixture.mint].reason,/429/);
@@ -96,8 +99,8 @@ test("WS loss and stale backfill distinguish observer failure from inactive targ
   assert.ok(engine.state.observation.gaps.some(g=>g.reason==="ws_unavailable"));
 });
 test("missing worker responses trigger watchdog warning and restart",{timeout:12000},async t=>{
-  const dir=isolated(t),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}),{timeoutMs:3000});
-  t.after(()=>client.stop());await until(()=>events.some(e=>e.event==="launch_follow_ready"));
+  const dir=isolated(),events=[],client=new LaunchFollowSupervisor(data(dir),(event,d)=>events.push({event,...d}),{timeoutMs:3000});
+  cleanup(t,client,dir);await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   // Remove delivery only in the fixture; a running worker becomes unresponsive to the supervisor.
   client.worker.removeAllListeners("message");
   await until(()=>events.some(e=>e.reason==="worker_unresponsive"),6000);

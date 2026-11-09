@@ -55,7 +55,10 @@ test("shadow RPC enforces source minContextSlot and rejects an older returned ba
       const body=JSON.parse(options.body);requests.push(body);
       return new Response(JSON.stringify({jsonrpc:"2.0",id:body.id,result:{context:{slot:99},value:null}}),{status:200});
     }},{publicKey:new PublicKey(LAUNCH_TARGET)});
-  await assert.rejects(executor.quoteShadow("BUY","Pw9Nvk8rMoZF4dYuhzdJeMAuFm3f3CSUy3nQhcUpump","5000000",{minContextSlot:100}),/slot_unproven/);
+  await assert.rejects(executor.quoteShadow("BUY","Pw9Nvk8rMoZF4dYuhzdJeMAuFm3f3CSUy3nQhcUpump","5000000",{minContextSlot:100,marketCommitment:"confirmed"}),/slot_unproven/);
   assert.ok(requests.length>0);
-  for(const r of requests)assert.equal(r.params[1].minContextSlot,100);
+  for(const r of requests){
+    assert.equal(r.params[1].minContextSlot,100);
+    assert.equal(r.params[1].commitment,"confirmed");
+  }
 });

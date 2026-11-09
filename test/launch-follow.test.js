@@ -6,6 +6,21 @@ import { readOnlyBudgetFetch } from "../src/shadow-rpc-budget.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/launch-follow.json", import.meta.url)));
 const signal = { mint: "mint", signature: "buy", slot:1, observedAtMs: 1000, averagePriceSol: .000005 };
+test("epoch starts on healthy coverage and preserves the preregistered limits across restart",()=>{
+  let now=1234;
+  const options={research:true,now:()=>now,quote(){},save(){},emit(){},maxAgeMs:1500,maxDriftBps:2500};
+  const first=new LaunchFollow(options);
+  first.heartbeat({wsAvailable:false,lastPollAtMs:now},{});
+  assert.equal(first.state.epoch,undefined);
+  first.heartbeat({wsAvailable:true,lastPollAtMs:now},{});
+  assert.equal(first.state.epoch.startsAtMs,2000);
+  assert.equal(first.epochFor(1999),null);
+  now=4000;
+  const restored=new LaunchFollow({...options,state:structuredClone(first.state),maxAgeMs:9000,maxDriftBps:9999});
+  assert.equal(restored.state.epoch.id,first.state.epoch.id);
+  assert.equal(restored.maxAgeMs,1500);
+  assert.equal(restored.maxDriftBps,2500);
+});
 function setup(overrides = {}) {
   let time = 1000, saved;
   const events = [], timers = [], calls = [];

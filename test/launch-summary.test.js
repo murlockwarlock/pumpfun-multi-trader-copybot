@@ -36,3 +36,39 @@ test("DATA_GAP, missing observer and old market quotes are not valid profit evid
   s.observation.gaps=[];s.launches[0].entry.marketContextSlot=0;
   assert.equal(summarize(s,{now:2000}).portfolios.A.closed,49);
 });
+function epochFixture() {
+  const s=fixture(Array(50).fill(.002));
+  s.epoch={id:"fixed",startsAtMs:50};
+  for(const p of Object.values(s.launches)){
+    p.epochId=s.epoch.id;
+    Object.assign(p.entry,{marketCommitment:"confirmed",contextVerified:true});
+    for(const x of Object.values(p.exits))Object.assign(x.quote,{marketCommitment:"confirmed",contextVerified:true});
+  }
+  for(let i=0;i<4;i++)s.launches["old"+i]={mint:"old"+i,signature:"old"+i,slot:0,observedAtMs:10,status:"SKIP",dataInvalid:true,exits:{}};
+  s.observation.gaps.push({reason:"legacy_uninstrumented_state",startMs:null,endMs:40});
+  return s;
+}
+test("four legacy launches and old gaps do not contaminate 25/25 prospective cohorts",()=>{
+  const r=summarize(epochFixture(),{now:2000});
+  assert.equal(r.auditLaunches,54);assert.equal(r.legacyLaunches.length,4);
+  assert.equal(r.exploratory.A.observations,25);assert.equal(r.holdout.A.observations,25);
+  assert.equal(r.verdict,"RESEARCH-GO");
+});
+test("missed and UNKNOWN outcomes stay in place and processed prices do not count",()=>{
+  const s=epochFixture();
+  s.launches[3].status="MISSED";s.launches[3].accepted=false;s.launches[3].exits={};
+  s.launches[20].exits.F={status:"UNKNOWN"};
+  s.launches[26].entry.marketCommitment="processed";
+  const r=summarize(s,{now:2000});
+  assert.equal(r.exploratory.F.unknown,2);assert.equal(r.holdout.A.closed,24);
+  assert.equal(r.selectedRule,null);assert.equal(r.verdict,"DATA_INVALID");
+});
+test("gap intersection is evaluated per exit and reconciled empty gaps do not censor prices",()=>{
+  const s=epochFixture();
+  s.observation.gaps.push({reason:"ws_unavailable",startMs:1010,endMs:1015,backfillBeforeMs:990});
+  let r=summarize(s,{now:2000});
+  assert.equal(r.portfolios.A.closed,10);
+  s.observation.coverage={lastPollAtMs:5000};
+  r=summarize(s,{now:5000});
+  assert.equal(r.portfolios.A.closed,50);assert.equal(r.observation.gaps.at(-1).reconciledEmpty,true);
+});

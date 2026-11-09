@@ -116,7 +116,7 @@ export class PumpExecutor {
         let body=context ? JSON.parse(options.body) : null;
         const contextual=body && ["getAccountInfo","getMultipleAccounts"].includes(body.method);
         if (contextual) {
-          body.params[1]={...body.params[1],minContextSlot:context.minSlot,commitment:"processed"};
+          body.params[1]={...body.params[1],minContextSlot:context.minSlot,commitment:context.commitment};
           options={...options,body:JSON.stringify(body)};
         }
         const started=performance.now();
@@ -400,11 +400,12 @@ export class PumpExecutor {
   // Read-only shadow capability. Never calls prepare(), initialize(), sender,
   // blockhash, simulation or signing. A public key alone is sufficient.
   async quoteShadow(side, mintAddress, rawAmount, options = {}) {
-    return this.shadowQuoteContext.run({minSlot:options.minContextSlot??0,slots:[],rpcCalls:0,rpcMs:0},async()=>{
+    const commitment=options.marketCommitment==="confirmed"?"confirmed":"processed";
+    return this.shadowQuoteContext.run({minSlot:options.minContextSlot??0,commitment,slots:[],rpcCalls:0,rpcMs:0},async()=>{
       const q=await this.#quoteShadowOnce(side,mintAddress,rawAmount,options);
       const c=this.shadowQuoteContext.getStore();
       return {...q,marketContextSlot:c.slots.length?Math.min(...c.slots):null,
-        requiredContextSlot:c.minSlot,marketCommitment:"processed",contextVerified:c.slots.length>0,
+        requiredContextSlot:c.minSlot,marketCommitment:c.commitment,contextVerified:c.slots.length>0,
         marketContextMaxSlot:c.slots.length?Math.max(...c.slots):null,rpcCalls:c.rpcCalls,rpcMs:c.rpcMs,
         quoteMs:Date.now()-q.startedAtMs};
     });
