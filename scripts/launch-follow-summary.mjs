@@ -8,7 +8,7 @@ const sum=(a,f)=>a.reduce((n,x)=>n+f(x),0);
 const verified=p=>p.confirmed===true&&p.verification==="matched_create_buy_v2"&&!p.dataInvalid&&quoteSlotValid(p.entry,p.slot);
 const completeQuote=q=>q?.marketCommitment==="confirmed"&&q.contextVerified===true;
 const overlaps=(g,start,end)=>(g.startMs??-Infinity)<=end&&(g.endMs??Infinity)>=start;
-const flat=p=>p.confirmed===true&&p.status==="SKIP"&&["entry_price_limit","entry_drift","creator_sold_before_entry","creator_sold_during_preparation","shadow_capacity"].includes(p.reason);
+const flat=p=>p.confirmed===true&&p.status==="SKIP"&&["entry_price_limit","entry_drift","creator_sold_before_entry","creator_sold_during_preparation","shadow_capacity","unsupported_non_sol_curve"].includes(p.reason);
 function eligible(p,v,gaps,epoch) {
   const exit=p.exits[v];
   return exit?.status==="QUOTED"&&verified(p)&&quoteSlotValid(exit.quote,Math.max(p.slot,p.entry.marketContextSlot))&&
@@ -108,6 +108,7 @@ export function summarize(state,{now=Date.now()}={}) {
     else if(h.meanLower95>0&&h.slippageFloorNetPnlSol>0&&(!epoch||h.adverseNetPnlSol>0)&&h.wins>=15&&h.maxDrawdownSol<h.netPnlSol)verdict="RESEARCH-GO";
   }
   const entries=launches.map(p=>({mint:p.mint,signature:p.signature,slot:p.slot,status:p.status,reason:p.reason??null,
+    quoteMint:p.quoteMint??null,tokenAmountRaw:p.tokenAmountRaw??null,sourceBlockTime:p.blockTime??null,auditRecovered:p.auditRecovered??false,
     observedAtMs:p.observedAtMs,confirmed:p.confirmed??false,verification:p.verification??"pending",dataInvalid:p.dataInvalid??false,
     admitted:p.accepted??false,creatorSol:p.solAmount,creatorPriceSol:p.averagePriceSol,entryPriceSol:p.entryPriceSol??null,
     entryDriftBps:p.entryDriftBps??null,marketContextSlot:p.entry?.marketContextSlot??null,workerQueueMs:p.workerQueueMs??null,

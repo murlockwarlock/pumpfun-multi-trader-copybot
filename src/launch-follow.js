@@ -73,15 +73,41 @@ export function confirmedLaunches(tx, signature, observedAtMs) {
   const keys = tx.transaction.message.accountKeys ?? [];
   const key = x => typeof x === "number" ? key(keys[x]) : typeof x === "string" ? x : x?.pubkey;
   if (!keys.some(k => key(k) === LAUNCH_TARGET && k.signer === true)) return [];
-  const instructions = [...(tx.transaction.message.instructions ?? []), ...(tx.meta.innerInstructions ?? []).flatMap(g=>g.instructions)];
-  return launchSignals({signature, logs:tx.meta.logMessages}, tx.slot, observedAtMs).filter(s => instructions.some(i => {
-    if (key(i.programId ?? i.programIdIndex) !== PUMP || !i.data) return false;
+  const inner=new Map((tx.meta.innerInstructions??[]).map(group=>[group.index,group.instructions]));
+  const instructions=(tx.transaction.message.instructions??[]).flatMap((instruction,index)=>[instruction,...(inner.get(index)??[])]);
+  const pumpInstructions=instructions.flatMap(i=>{
+    if (key(i.programId ?? i.programIdIndex) !== PUMP || !i.data) return [];
     try {
       const d=bs58.decode(i.data).subarray(0,8).join(",");
-      const userIndex=d==="214,144,76,236,95,139,49,180"?5:d==="24,30,200,40,5,28,7,119"?7:null;
-      return userIndex!==null && key(i.accounts[0])===s.mint && key(i.accounts[2])===s.curve && key(i.accounts[userIndex])===s.user;
-    } catch { return false; }
-  }));
+      const accounts=i.accounts.map(key);
+      if(d==="214,144,76,236,95,139,49,180"||d==="24,30,200,40,5,28,7,119") {
+        return [{kind:"create",mint:accounts[0],curve:accounts[2],user:accounts[d.startsWith("214")?5:7]}];
+      }
+      if(d==="225,247,80,30,213,179,132,136"||d==="7,5,29,196,245,23,101,80") {
+        return [{kind:"buy_v3",mint:accounts[1],quoteMint:accounts[2],curve:accounts[5],user:accounts[8]}];
+      }
+    } catch { /* Unknown instruction is not evidence. */ }
+    return [];
+  });
+  const sameLaunch=(a,b)=>a.mint===b.mint&&a.curve===b.curve&&a.user===b.user;
+  const logged=launchSignals({signature, logs:tx.meta.logMessages},tx.slot,observedAtMs)
+    .filter(s=>pumpInstructions.some(i=>i.kind==="create"&&sameLaunch(i,s)));
+  const output=[...logged];
+  for(const [index,creation] of pumpInstructions.entries()) {
+    if(creation.kind!=="create"||creation.user!==LAUNCH_TARGET||output.some(s=>s.mint===creation.mint))continue;
+    const buy=pumpInstructions.slice(index+1).find(i=>i.kind==="buy_v3"&&sameLaunch(i,creation)&&
+      i.quoteMint&&!["11111111111111111111111111111111","So11111111111111111111111111111111111111112"].includes(i.quoteMint));
+    if(!buy)continue;
+    const balance=rows=>(rows??[]).filter(r=>r.owner===LAUNCH_TARGET&&r.mint===creation.mint)
+      .reduce((n,r)=>n+BigInt(r.uiTokenAmount.amount),0n);
+    const delta=balance(tx.meta.postTokenBalances)-balance(tx.meta.preTokenBalances);
+    if(delta<=0n)continue;
+    // Preserve observed launches without allowing the SOL pricing path to
+    // interpret a different quote asset or a wallet SOL delta as its price.
+    output.push({...creation,signature,slot:tx.slot,blockTime:tx.blockTime,observedAtMs,quoteMint:buy.quoteMint,
+      tokenAmountRaw:String(delta),unsupportedReason:"unsupported_non_sol_curve",solAmount:null,averagePriceSol:null});
+  }
+  return output;
 }
 
 export function quoteSlotValid(q, slot) {
@@ -131,8 +157,8 @@ export function launchSignals(value, slot, observedAtMs) {
 export class LaunchFollow {
   constructor({ quote, save, emit, state = {}, now = Date.now, schedule = setTimeout,
     maxAgeMs = 1500, maxDriftBps = 2500, slippageBps = 1500,
-    prioritySol = .0001, tipSol = .000005, research = false, archived = () => false }) {
-    Object.assign(this, { quote, save, emit, now, schedule, maxAgeMs, maxDriftBps, slippageBps, research, archived });
+    prioritySol = .0001, tipSol = .000005, research = false, archived = () => false, archivedWsAt = () => undefined }) {
+    Object.assign(this, { quote, save, emit, now, schedule, maxAgeMs, maxDriftBps, slippageBps, research, archived, archivedWsAt });
     this.fee = { baseSol: .000005, prioritySol, tipSol };
     this.state = { version: 1, launches: {}, sells: {}, ...state };
     if (this.state.epoch) {
@@ -172,7 +198,9 @@ export class LaunchFollow {
     this.record("WS",{signature,observedAtMs:atMs});
   }
   confirm(tx, signature) {
-    const o=this.state.observation, at=o.ws[signature] ?? this.now();
+    const o=this.state.observation;
+    const observedAt=o.ws[signature]??this.archivedWsAt(signature);
+    const at=observedAt??this.now();
     if(!tx?.meta||!Object.hasOwn(tx.meta,"err")||!tx.transaction?.signatures?.includes(signature)||!Number.isSafeInteger(tx.slot)) {
       this.gap("invalid_transaction_metadata",at,this.now());return;
     }
@@ -180,14 +208,18 @@ export class LaunchFollow {
     o.confirmed[signature]={atMs:this.now(),slot:tx?.slot,blockTime:tx.blockTime,successful:tx?.meta?.err===null};
     for (const s of launches) if (!this.state.launches[s.mint] && !this.archived(s.mint)) {
       const sourceAtMs = Number.isFinite(tx.blockTime) ? tx.blockTime * 1000 : null;
-      this.state.launches[s.mint]={...s,sourceAtMs,epochId:this.epochFor(sourceAtMs??at),status:"MISSED",reason:o.ws[signature]===undefined?"missing_ws":"missed_decoder",exits:{},confirmed:true,confirmedAtMs:this.now(),verification:"matched_create_buy_v2"};
+      const seen=observedAt!==undefined;
+      this.state.launches[s.mint]={...s,sourceAtMs,epochId:this.epochFor(sourceAtMs??at),
+        status:s.unsupportedReason&&seen?"SKIP":"MISSED",
+        reason:!seen?"missing_ws":s.unsupportedReason??"missed_decoder",exits:{},confirmed:true,confirmedAtMs:this.now(),
+        verification:s.unsupportedReason?"matched_create_buy_instructions":"matched_create_buy_v2"};
       this.registerCohort(this.state.launches[s.mint]);
-      this.gap("missed_opportunity",at,this.now());
+      if(!s.unsupportedReason||!seen)this.gap("missed_opportunity",at,this.now());
     }
     for (const p of Object.values(this.state.launches).filter(p=>p.signature===signature)) {
       const s=launches.find(s=>s.mint===p.mint);
-      p.confirmed=Boolean(s && ["user","curve","slot","solAmount","tokenAmount"].every(k=>s[k]===p[k]));
-      p.verification=p.confirmed?"matched_create_buy_v2":"source_mismatch";
+      p.confirmed=Boolean(s && ["user","curve","slot","solAmount","tokenAmount","quoteMint","tokenAmountRaw"].every(k=>s[k]===p[k]));
+      p.verification=p.confirmed?(s.unsupportedReason?"matched_create_buy_instructions":"matched_create_buy_v2"):"source_mismatch";
       p.confirmedAtMs=this.now();
       if (!p.confirmed) { p.dataInvalid=true; this.gap("source_mismatch",p.observedAtMs,this.now()); }
     }

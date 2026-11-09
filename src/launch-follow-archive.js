@@ -5,8 +5,13 @@ export function openLaunchArchive(file) {
   db.exec("PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS archive (kind TEXT, id TEXT, body TEXT, PRIMARY KEY(kind,id))");
   const write = db.prepare("INSERT OR REPLACE INTO archive VALUES (?, ?, ?)");
   const exists = db.prepare("SELECT 1 FROM archive WHERE kind=? AND id=?");
+  const read = db.prepare("SELECT body FROM archive WHERE kind=? AND id=?");
   return {
     has: (kind, id) => Boolean(exists.get(kind, id)),
+    get: (kind, id) => {
+      const row=read.get(kind,id);
+      return row?JSON.parse(row.body):undefined;
+    },
     compact(state, now, { retentionMs = 7_200_000, maxRows = 8192 } = {}) {
       const cutoff = now - retentionMs;
       const observation = state.observation;

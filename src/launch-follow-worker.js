@@ -71,7 +71,8 @@ try {
   }
   if(Boolean(state.testData)!==Boolean(workerData.fixtureModule)&&Object.keys(state).length) throw Error("Mixed fixture/production state");
   state.testData=Boolean(workerData.fixtureModule);
-  const engine=new LaunchFollow({quote,emit,save,state,research:!fixture||fixture.research===true,archived:mint=>archive.has("launch",mint),maxAgeMs:config.fastMaxSignalAgeMs,
+  const engine=new LaunchFollow({quote,emit,save,state,research:!fixture||fixture.research===true,
+    archived:mint=>archive.has("launch",mint),archivedWsAt:signature=>archive.get("ws",signature),maxAgeMs:config.fastMaxSignalAgeMs,
     maxDriftBps:config.fastMaxEntryDriftBps,slippageBps:config.liveSlippageBps,
     prioritySol:config.livePriorityFeeSol,tipSol:config.liveTipSol});
   if (state.epoch && !state.cohort) {
@@ -81,6 +82,29 @@ try {
     engine.state.cohort={exploratory:[],holdout:[],breaches:0,migrationUncertain:prior.length>=25};
     for(const p of prior) engine.registerCohort(p);
     engine.record("COHORT_MIGRATED",{prior:prior.length});
+  }
+  // Repair the two confirmed observations omitted by the old SOL-only decoder.
+  // The epoch and original WS timestamps must match the saved production audit.
+  if (!fixture && state.epoch?.id==="launch-follow-confirmed-v1:1794212377000" &&
+      !state.nonSolEpochAuditReconciled) {
+    const records=JSON.parse(fs.readFileSync(new URL("../docs/evidence/launch-follow-nonsol-confirmed.json",import.meta.url),"utf8"));
+    let recovered=0;
+    for(const record of records) {
+      const at=engine.state.observation.ws[record.signature]??archive.get("ws",record.signature);
+      if(at!==record.wsAtMs) {
+        engine.gap("audited_ws_evidence_missing",record.wsAtMs,record.wsAtMs);
+        continue;
+      }
+      if(!engine.state.launches[record.mint]&&!archive.has("launch",record.mint)) {
+        engine.confirm(record.tx,record.signature);
+        const launch=engine.state.launches[record.mint];
+        if(!launch?.unsupportedReason)throw Error("Confirmed launch audit evidence did not reconcile");
+        launch.auditRecovered=true;
+        recovered++;
+      }
+    }
+    engine.state.nonSolEpochAuditReconciled=true;
+    engine.record("NON_SOL_EPOCH_RECONCILED",{recovered});
   }
   let coverage={}, lastId=0;
   let lastDiagnosticAt=0;
