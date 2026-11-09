@@ -19,7 +19,7 @@ node scripts/launch-gap-audit.mjs SNAPSHOT FILTERED_JOURNAL OUTPUT_DIR
 
 ## Historical WS audit at the 9 November checkpoint
 
-At 12:35:40 Asia/Qyzylorda, 188 intervals had been recorded. Their aggregate duration was 210.022 seconds. Duration p50/p95/p99 was **1.001/2.325/2.918 seconds**, with a maximum of 2.933 seconds. Both channels closed near every interval and both sniper subscriptions were observed to return. The historical logs omit WebSocket close codes, so the transport cause is unknown. The new release records close code and clean-close status.
+At 12:35:40 Asia/Qyzylorda, 188 intervals had been recorded. Their aggregate duration was 210.022 seconds. Duration p50/p95/p99 was **1.001/2.325/2.918 seconds**, with a maximum of 2.933 seconds. Both channels closed near every interval. Both sniper ACKs occurred inside the recorded interval in **88 of 188** cases. The earlier unbounded lookup could borrow the second ACK from a later interval. The corrected audit records a missing in-window ACK as null and breaks out each target and channel.
 
 There were zero logged sniper backfill successes inside those short intervals. The backfill logger suppresses routine empty polls, so the log does not establish whether a poll ran inside each interval. The reconciliation found zero target signatures in the timestamp margins and zero proven missed launches. With coarse block times and incomplete historical coverage, that is evidence of no observed opportunity in those intervals. It does not prove there were no opportunities. The per-interval audit includes the adjacent logged backfills, reconnection timestamps and signature matches.
 
@@ -28,3 +28,13 @@ The 24-hour window contained **120 verified fast signals**, including **15 BUY a
 The shorter window from the integrity deployment to the same checkpoint contained **88 sniper fast signals** and **14 failed BUY probes**. The 104 count previously shown by health covered all fast traders in that process. It was not a count of sniper BUY attempts.
 
 [Per-interval audit and window breakdown](evidence/launch-follow-ws-audit.json)
+
+## P0 follow-up
+
+In the historical deployment journal, 132 of 166 primary close-to-close intervals fell between 299 and 304 seconds. Median was 301.101 seconds. In the separate two-hour pre-update sample both channels recorded ten clean `1001` closes and median sniper recovery was 1.062 seconds on each. Close-to-close median in that sample was 576 seconds, so five minutes was not a fixed session lifetime. Both configured URLs used the same Helius host. They are separate sessions with shared upstream failure risk. Idle expiry is consistent with the old cluster and [Helius's five-minute inactivity guidance for its earlier service](https://www.helius.dev/es/blog/how-to-monitor-a-raydium-liquidity-pool). The close code alone does not establish the cause.
+
+The new transport sends RFC WebSocket pings every 45 seconds and requires the matching pong within 15 seconds. It records close reason, connection age and pong age, and logs the ACK transition per target and channel. Recovery within an interval requires its own ACK. An empty-gap inference now requires explicit before/after successful sweeps with the same cursor, zero returned signatures on the after sweep, and no nearby timestamped signatures. The audit preserves uncertainty for older gaps.
+
+Cohort membership is durable. Each boundary freezes its 25 mint/signature/slot identities. A late earlier launch remains in the audit and invalidates the boundary evidence without replacing any member. Conflicting source identity and reorg evidence invalidate affected results while retaining the original cohort. The existing research epoch and its timing parameters survive migration.
+
+The research Worker E2E uses a saved mainnet launch with deterministic RPC and decoded account fixtures. It exercises the production RPC context wrapper, unsigned SDK calculations, IPC, timers, and all six exit reports. The controlled load repeats the same notification 80 times in four-message bursts. Its queue, RPC and event-loop measurements are fixture results. On the server the Worker resets its write histogram after an archive rotation. Account readiness diagnostics sample processed and confirmed state after the original decision under their own budget. An observed successful probe provides an upper bound on when the state became readable. It supplies no price to the model.

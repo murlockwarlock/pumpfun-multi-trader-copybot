@@ -1,4 +1,5 @@
 import path from "node:path";
+import WebSocket from "ws";
 import { ExecutionLanes, ExecutionTimings } from "./execution-lanes.js";
 import { Worker } from "node:worker_threads";
 import { config } from "./config.js";
@@ -674,7 +675,9 @@ async function pollTargetBackfill(target, forceLog = false) {
   if (stopped || target.pollRunning) return false;
   target.pollRunning = true;
   try {
-    const signatures = await rpc.getSignaturesSince(target.wallet, target.ingestion.cursor);
+    const cursorBefore=target.ingestion.cursor;
+    const pollStartedAtMs=Date.now();
+    const signatures = await rpc.getSignaturesSince(target.wallet, cursorBefore);
     launchPost(target, {kind:"catalog",signatures});
     let processed = 0;
     let quarantined = 0;
@@ -710,6 +713,8 @@ async function pollTargetBackfill(target, forceLog = false) {
     }
     if (signatures.length > 0) target.ingestion.checkpoint(signatures[0].signature);
     target.lastSuccessfulPollAt = Date.now();
+    launchPost(target,{kind:"backfill_sweep",cursorBefore,cursorAfter:target.ingestion.cursor,
+      startedAtMs:pollStartedAtMs,endedAtMs:target.lastSuccessfulPollAt,signatures:signatures.length,quarantined});
     if (forceLog || signatures.length > 0) {
       log("backfill_ok", {
         sourceWallet: target.wallet,
@@ -739,18 +744,28 @@ async function pollBackfill(forceLog = false) {
   return results.some(Boolean);
 }
 
+function publishWsCoverage(channel) {
+  launchWorker?.post({kind:"ws_coverage",channel:channel.name,atMs:Date.now(),
+    connected:channel.connected,subscriptions:{...channel.targetSubscriptions}});
+}
+
 function scheduleReconnect(channel, close = {}) {
   if (stopped) return;
   channel.connected = false;
   channel.subscriptions = 0;
   channel.socket = null;
+  channel.targetSubscriptions = {};
+  publishWsCoverage(channel);
   if(launchWorker) {
     log("launch_follow_warning",{reason:"ws_channel_lost",channel:channel.name});
     launchWorker.post({kind:"ws_error",channel:channel.name,code:close.code??null,clean:close.wasClean??null});
-    if(!websocketChannels.some(c=>c.connected&&c.subscriptions>0)) launchWorker.post({kind:"gap",reason:"ws_unavailable"});
+    if(!websocketChannels.some(c=>c.targetSubscriptions?.[LAUNCH_TARGET])) launchWorker.post({kind:"gap",reason:"ws_unavailable",startMs:Date.now()});
   }
   const delayMs = Math.min(30_000, 1_000 * 2 ** channel.reconnectAttempt++);
-  log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs, code:close.code??null, clean:close.wasClean??null });
+  log("websocket_closed", { websocketSource: channel.name, reconnectInMs: delayMs, code:close.code??null,
+    clean:close.wasClean??null, reason:(close.reason??"").replace(/(?:https?|wss?):\/\/\S+/g,"[endpoint]").slice(0,160),
+    connectionAgeMs:channel.openedAtMs?Date.now()-channel.openedAtMs:null,
+    lastPongAgeMs:channel.lastPongAtMs?Date.now()-channel.lastPongAtMs:null });
   const timer = setTimeout(() => connect(channel), delayMs);
   timer.unref();
 }
@@ -760,6 +775,7 @@ function connect(channel) {
   let ws;
   const requestTargets = new Map();
   const subscriptionTargets = new Map();
+  let pingTimer, pongTimeout, pendingPing, subscriptionTimeout;
   try {
     ws = new WebSocket(channel.url);
     channel.socket = ws;
@@ -773,6 +789,27 @@ function connect(channel) {
     channel.reconnectAttempt = 0;
     channel.connected = true;
     channel.subscriptions = 0;
+    channel.targetSubscriptions = {};
+    channel.openedAtMs = Date.now();
+    channel.lastPongAtMs = null;
+    publishWsCoverage(channel);
+    subscriptionTimeout=setTimeout(()=>{
+      log("websocket_subscribe_timeout",{websocketSource:channel.name,subscriptions:channel.subscriptions});
+      ws.terminate();
+    },15000);
+    subscriptionTimeout.unref();
+    pingTimer=setInterval(()=>{
+      if(ws.readyState!==WebSocket.OPEN)return;
+      const sentAt=Date.now();
+      pendingPing=String(sentAt);
+      ws.ping(pendingPing);
+      pongTimeout=setTimeout(()=>{
+        log("websocket_heartbeat_timeout",{websocketSource:channel.name});
+        ws.terminate();
+      },15000);
+      pongTimeout.unref();
+    },45000);
+    pingTimer.unref();
     targetRuntimes.forEach((target, index) => {
       const id = index + 1;
       requestTargets.set(id, target);
@@ -809,6 +846,9 @@ function connect(channel) {
     if (requestedTarget && payload.result) {
       subscriptionTargets.set(payload.result, requestedTarget);
       channel.subscriptions = subscriptionTargets.size;
+      if(channel.subscriptions===targetRuntimes.length)clearTimeout(subscriptionTimeout);
+      channel.targetSubscriptions[requestedTarget.wallet]={id:payload.result,atMs:observedAtMs,name:requestedTarget.name};
+      publishWsCoverage(channel);
       log("subscribed", {
         websocketSource: channel.name,
         subscriptionId: payload.result,
@@ -841,8 +881,21 @@ function connect(channel) {
     processWebsocketSignature(target, value, result?.context?.slot ?? null, observedAtMs);
   });
 
-  ws.addEventListener("error", () => ws.close());
-  ws.addEventListener("close", event => scheduleReconnect(channel,event));
+  ws.on("pong", data => {
+    if(data.toString()!==pendingPing)return;
+    const sentAt=Number(pendingPing);
+    pendingPing=null;
+    clearTimeout(pongTimeout);
+    channel.lastPongAtMs=Date.now();
+    log("websocket_heartbeat",{websocketSource:channel.name,rttMs:channel.lastPongAtMs-sentAt});
+  });
+  ws.addEventListener("error", () => ws.terminate());
+  ws.addEventListener("close", event => {
+    clearInterval(pingTimer);
+    clearTimeout(pongTimeout);
+    clearTimeout(subscriptionTimeout);
+    if(channel.socket===ws)scheduleReconnect(channel,event);
+  });
 }
 
 function stop() {
@@ -921,7 +974,7 @@ try {
     setInterval(()=>{
       const target=targetRuntimes.find(t=>t.wallet===LAUNCH_TARGET);
       launchWorker.post({kind:"coverage",coverage:{
-        wsAvailable:websocketChannels.some(c=>c.connected&&c.subscriptions===targetRuntimes.length),
+        wsAvailable:websocketChannels.some(c=>c.connected&&c.targetSubscriptions?.[LAUNCH_TARGET]),
         lastPollAtMs:target?.lastSuccessfulPollAt??null}});
     },1000).unref();
   }

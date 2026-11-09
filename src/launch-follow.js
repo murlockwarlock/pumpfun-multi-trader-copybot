@@ -1,5 +1,6 @@
 import { PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
+import { admitToCohort } from "./launch-cohort.js";
 import { Worker } from "node:worker_threads";
 import { authenticatedProgramData, parsePumpLogSignal } from "./parser.js";
 
@@ -88,6 +89,9 @@ export function quoteSlotValid(q, slot) {
   return Number.isSafeInteger(slot) && Number.isSafeInteger(required) &&
     Number.isSafeInteger(q?.marketContextSlot) && q.marketContextSlot >= required;
 }
+function researchQuoteValid(launch,quote) {
+  return !launch.epochId || (quote.marketCommitment==="confirmed" && quote.contextVerified===true);
+}
 
 // Decode only the stable CreateEvent prefix. Program-stack authentication is
 // shared with the trading parser; a router's forged Program data is not Pump.
@@ -159,7 +163,8 @@ export class LaunchFollow {
   gap(reason, startMs = this.now(), endMs = null) {
     const o=this.state.observation;
     if (endMs===null && o.gaps.some(g=>g.reason===reason&&g.endMs===null)) return;
-    o.gaps.push({reason,startMs,endMs,backfillBeforeMs:o.coverage?.lastPollAtMs??null});
+    o.gaps.push({reason,startMs,endMs,backfillBeforeMs:o.coverage?.lastPollAtMs??null,
+      beforeSweep:o.lastBackfillSweep??null});
     this.record("DATA_GAP", {reason,startMs,endMs});
   }
   observeWs(signature, atMs) {
@@ -176,6 +181,7 @@ export class LaunchFollow {
     for (const s of launches) if (!this.state.launches[s.mint] && !this.archived(s.mint)) {
       const sourceAtMs = Number.isFinite(tx.blockTime) ? tx.blockTime * 1000 : null;
       this.state.launches[s.mint]={...s,sourceAtMs,epochId:this.epochFor(sourceAtMs??at),status:"MISSED",reason:o.ws[signature]===undefined?"missing_ws":"missed_decoder",exits:{},confirmed:true,confirmedAtMs:this.now(),verification:"matched_create_buy_v2"};
+      this.registerCohort(this.state.launches[s.mint]);
       this.gap("missed_opportunity",at,this.now());
     }
     for (const p of Object.values(this.state.launches).filter(p=>p.signature===signature)) {
@@ -227,10 +233,32 @@ export class LaunchFollow {
     const epoch=this.state.epoch;
     return epoch && atMs>=epoch.startsAtMs ? epoch.id : null;
   }
+  registerCohort(launch) {
+    if (!launch.epochId) return;
+    this.state.cohort??={exploratory:[],holdout:[],breaches:0};
+    admitToCohort(this.state.cohort,launch);
+  }
   async launch(signal) {
-    if (this.state.launches[signal.mint] || this.archived(signal.mint)) return;
+    const prior=this.state.launches[signal.mint];
+    if (prior || this.archived(signal.mint)) {
+      const cohort=this.state.cohort;
+      const pinned=cohort&&[...cohort.exploratory,...cohort.holdout].find(p=>p.mint===signal.mint);
+      const identity=pinned??prior;
+      if(identity&&(identity.signature!==signal.signature||identity.slot!==signal.slot)&&!prior?.dataInvalid) {
+        if(prior)prior.dataInvalid=true;
+        if(pinned) {
+          cohort.reorgs??={};
+          if(cohort.reorgs[signal.mint])return;
+          cohort.reorgs[signal.mint]={signature:signal.signature,slot:signal.slot,observedAtMs:signal.observedAtMs};
+          cohort.breaches=(cohort.breaches??0)+1;
+        }
+        this.record("SOURCE_IDENTITY_CONFLICT",{mint:signal.mint,expected:identity.signature,actual:signal.signature});
+      }
+      return;
+    }
     const p = this.state.launches[signal.mint] = { ...signal, decodedAtMs: this.now(), status: "PREPARING", exits: {},
       epochId:this.epochFor(signal.observedAtMs) };
+    this.registerCohort(p);
     this.record("LAUNCH", p);
     const skip = reason => { p.status = "SKIP"; p.reason = reason; p.decisionAtMs=this.now();
       p.quoteElapsedMs=p.quoteStartedAtMs?this.now()-p.quoteStartedAtMs:null; this.record("SKIP", p); };
@@ -242,6 +270,8 @@ export class LaunchFollow {
       const q = await this.quote("BUY", signal.mint, "5000000", { marketCommitment:p.epochId?"confirmed":"processed", minContextSlot:signal.slot, targetAveragePriceSol: signal.averagePriceSol, maxEntryDriftBps: this.maxDriftBps, venueHint: "pump-curve" });
       p.quoteElapsedMs=this.now()-p.quoteStartedAtMs;
       p.quoteRpcMs=q.rpcMs??null;
+      p.quoteTelemetry={firstContextAtMs:q.firstContextAtMs,quoteMs:q.quoteMs,rpcMs:q.rpcMs,marketCommitment:q.marketCommitment};
+      if (!researchQuoteValid(p,q)) return skip("confirmed_quote_unproven");
       if (!quoteSlotValid(q,signal.slot)) { p.dataInvalid=true; this.gap("stale_market_slot",this.now(),this.now()); return skip("stale_market_slot"); }
       p.preparedAtMs = this.now();
       p.signalToPreparedMs = p.preparedAtMs - signal.observedAtMs;
@@ -266,7 +296,10 @@ export class LaunchFollow {
           this.finish(p);
         }
       }, 3600000);
-    } catch (e) { skip(/price limit|drift/.test(e.message) ? "entry_price_limit" : `quote_error:${e.message}`); }
+    } catch (e) {
+      p.quoteTelemetry=e.shadowQuoteTelemetry??null;
+      skip(/price limit|drift/.test(e.message) ? "entry_price_limit" : `quote_error:${e.message}`);
+    }
   }
   creatorSell(t) {
     if (!t.mint || this.archived(t.mint)) return;
@@ -289,6 +322,7 @@ export class LaunchFollow {
       if (start - dueAtMs > 500) throw Error("missed_exit_deadline");
       const requiredSlot=Math.max(p.slot,p.entry.marketContextSlot,...(this.state.sells[mint]??[]).map(s=>s.slot??0));
       const q = await this.quote("SELL", mint, p.entry.expectedTokenOutRaw, {minContextSlot:requiredSlot,marketCommitment:p.epochId?"confirmed":"processed"});
+      if (!researchQuoteValid(p,q)) throw Error("confirmed_quote_unproven");
       if (!quoteSlotValid(q,requiredSlot)) { p.dataInvalid=true; this.gap("stale_market_slot",this.now(),this.now()); throw Error("stale_market_slot"); }
       const end = this.now();
       if (!q.expectedSolOutRaw || end - dueAtMs > 1500) throw Error("exit_quote_missing_or_late");

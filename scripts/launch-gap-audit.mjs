@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { intervalRecoveries } from "../src/launch-ws-audit.js";
 
 const [snapshot, journal, output] = process.argv.slice(2);
 const state = JSON.parse(fs.readFileSync(snapshot, "utf8"));
@@ -20,12 +21,13 @@ const gaps = o.gaps.filter(g=>g.reason==="ws_unavailable"&&g.startMs<=checkpoint
   const closes=events.filter(e=>e.event==="websocket_closed"&&e.atMs>=g.startMs-3000&&e.atMs<=finish);
   const nearby=[...signatures].filter(([,tx])=>tx.blockTime*1000+2000>=g.startMs&&tx.blockTime*1000-1000<=finish);
   const absent=nearby.filter(([sig])=>!(sig in o.ws)).map(([sig])=>sig);
-  const restore=Object.fromEntries(["primary","fallback"].map(channel=>[channel,sniper.find(e=>
-    e.event==="subscribed"&&e.websocketSource===channel&&e.atMs>=g.startMs)?.at??null]));
+  const subscriptions=intervalRecoveries(events,g.startMs,finish,["candidate_4rt","sniper_7ufmve","kaaox"]);
+  const restore=Object.fromEntries(Object.entries(subscriptions).map(([channel,targets])=>
+    [channel,targets.sniper_7ufmve?.at??null]));
   const polls=sniper.filter(e=>e.event==="backfill_ok");
   return {id:index+1,start:new Date(g.startMs).toISOString(),end:g.endMs===null?null:new Date(g.endMs).toISOString(),
     durationMs:g.endMs===null?null:g.endMs-g.startMs,closeChannels:[...new Set(closes.map(e=>e.websocketSource))],
-    closeCodes:[...new Set(closes.map(e=>e.code).filter(x=>x!=null))],restore,
+    closeCodes:[...new Set(closes.map(e=>e.code).filter(x=>x!=null))],restore,subscriptions,
     loggedBackfillBefore:polls.filter(e=>e.atMs<=g.startMs).at(-1)?.at??null,
     loggedBackfillDuring:polls.filter(e=>e.atMs>=g.startMs&&e.atMs<=finish).length,
     loggedBackfillAfter:polls.find(e=>e.atMs>finish)?.at??null,

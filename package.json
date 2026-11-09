@@ -20,7 +20,8 @@
     "@solana/web3.js": "1.98.4",
     "bigint-buffer": "file:vendor/bigint-buffer",
     "bn.js": "5.2.3",
-    "bs58": "6.0.0"
+    "bs58": "6.0.0",
+    "ws": "7.5.13"
   },
   "overrides": {
     "bigint-buffer": "$bigint-buffer",

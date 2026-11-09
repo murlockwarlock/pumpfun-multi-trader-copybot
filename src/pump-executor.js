@@ -128,6 +128,7 @@ export class PumpExecutor {
             const slot=json.result?.context?.slot;
             if (!Number.isSafeInteger(slot)||slot<context.minSlot) throw Error("shadow_market_slot_unproven");
             context.slots.push(slot);
+            context.firstContextAtMs??=Date.now();
           }
         }
         return response;
@@ -402,13 +403,24 @@ export class PumpExecutor {
   async quoteShadow(side, mintAddress, rawAmount, options = {}) {
     const commitment=options.marketCommitment==="confirmed"?"confirmed":"processed";
     return this.shadowQuoteContext.run({minSlot:options.minContextSlot??0,commitment,slots:[],rpcCalls:0,rpcMs:0},async()=>{
-      const q=await this.#quoteShadowOnce(side,mintAddress,rawAmount,options);
       const c=this.shadowQuoteContext.getStore();
+      const started=Date.now();
+      let q;
+      try {q=await this.#quoteShadowOnce(side,mintAddress,rawAmount,options);}
+      catch(error) {
+        error.shadowQuoteTelemetry={marketCommitment:commitment,firstContextAtMs:c.firstContextAtMs??null,
+          rpcMs:c.rpcMs,rpcCalls:c.rpcCalls,quoteMs:Date.now()-started};
+        throw error;
+      }
       return {...q,marketContextSlot:c.slots.length?Math.min(...c.slots):null,
         requiredContextSlot:c.minSlot,marketCommitment:c.commitment,contextVerified:c.slots.length>0,
         marketContextMaxSlot:c.slots.length?Math.max(...c.slots):null,rpcCalls:c.rpcCalls,rpcMs:c.rpcMs,
-        quoteMs:Date.now()-q.startedAtMs};
+        firstContextAtMs:c.firstContextAtMs??null,quoteMs:Date.now()-q.startedAtMs};
     });
+  }
+  async shadowAccountReadiness(mint,curve,slot,commitment) {
+    const result=await this.connection.getMultipleAccountsInfoAndContext([new PublicKey(mint),new PublicKey(curve)],{minContextSlot:slot,commitment});
+    return {slot:result.context.slot,ready:result.context.slot>=slot&&result.value.every(Boolean)};
   }
   async #quoteShadowOnce(side, mintAddress, rawAmount, options = {}) {
     if (!["BUY", "SELL"].includes(side) || BigInt(rawAmount) <= 0n) throw Error("Invalid shadow quote");

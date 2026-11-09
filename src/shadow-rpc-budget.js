@@ -2,6 +2,7 @@
 // into execution. A per-request gate also bounds SDK fan-out, not just quotes.
 export function readOnlyBudgetFetch({ request = fetch, now = Date.now, perSecond = 8, perMinute = 120 } = {}) {
   const calls = [];
+  const latencyMs=[];
   const stats={requests:0,errors:0,rateLimited:0,budgetRejected:0,totalMs:0,methods:{}};
   let coolUntil = 0;
   const guarded = async (url, options) => {
@@ -21,8 +22,13 @@ export function readOnlyBudgetFetch({ request = fetch, now = Date.now, perSecond
       if (response.ok && response.clone) { const j=await response.clone().json(); if(j.error) stats.errors++; }
       return response;
     } catch(e) { stats.errors++; throw e; }
-    finally { stats.totalMs+=now()-time; }
+    finally {
+      const elapsed=now()-time;
+      stats.totalMs+=elapsed;
+      latencyMs.push(elapsed);
+      if(latencyMs.length>256)latencyMs.shift();
+    }
   };
-  guarded.stats=()=>structuredClone(stats);
+  guarded.stats=()=>structuredClone({...stats,latencyMs});
   return guarded;
 }

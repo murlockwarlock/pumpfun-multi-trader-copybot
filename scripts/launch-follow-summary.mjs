@@ -49,8 +49,11 @@ export function auditGaps(o) {
     const evidence=Object.entries(transactions).filter(([,t])=>Number.isFinite(t.blockTime)&&
       overlaps(g,t.blockTime*1000-1000,t.blockTime*1000+2000));
     const unreceived=evidence.filter(([s])=>!(s in (o.ws??{}))).map(([s])=>s);
-    const swept=g.startMs!==null&&g.endMs!==null&&g.backfillBeforeMs!=null&&g.backfillBeforeMs<=g.startMs&&
-      g.startMs-g.backfillBeforeMs<=60000&&(o.coverage?.lastPollAtMs??0)>=g.endMs+2000;
+    const before=g.beforeSweep, after=g.afterSweep;
+    const swept=g.startMs!==null&&g.endMs!==null&&before?.cursorAfter&&before.endedAtMs<=g.startMs&&
+      g.startMs-before.endedAtMs<=60000&&after?.startedAtMs>=g.endMs+2000&&
+      after.cursorBefore===before.cursorAfter&&after.cursorAfter===before.cursorAfter&&
+      after.signatures===0&&after.quarantined===0&&before.quarantined===0;
     return {...g,durationMs:g.endMs!==null&&g.startMs!==null?g.endMs-g.startMs:null,
       candidateSignatures:evidence.map(([s])=>s),unreceived,
       reconciledEmpty:g.reason==="ws_unavailable"&&swept&&evidence.length===0&&
@@ -68,7 +71,16 @@ export function summarize(state,{now=Date.now()}={}) {
   const missingWs=Object.keys(catalog).filter(s=>!catalog[s].err&&!(s in (o.ws??{})));
   const gapAudit=auditGaps(o);
   const start=epoch?.startsAtMs??o.startedAtMs??now;
-  const cohort=launches.slice(0,50);
+  const registry=state.cohort;
+  const byMint=new Map(launches.map(p=>[p.mint,p]));
+  const pinned=keys=>keys.map(key=>{
+    const launch=byMint.get(key.mint);
+    return launch?.signature===key.signature&&launch.slot===key.slot?launch:
+      {...key,status:"UNKNOWN",reason:"cohort_identity_missing_or_reorg",dataInvalid:true,exits:{}};
+  });
+  const exploration=registry?pinned(registry.exploratory):launches.slice(0,25);
+  const validation=registry?pinned(registry.holdout):launches.slice(25,50);
+  const cohort=[...exploration,...validation];
   const end=cohort.length<50?now:Math.max(...cohort.map(p=>{
     const entryAt=p.preparedAtMs??p.observedAtMs;
     if (!p.accepted) return p.decisionAtMs??entryAt;
@@ -76,18 +88,20 @@ export function summarize(state,{now=Date.now()}={}) {
     return Math.max(entryAt,...Object.values(p.exits).map(x=>x.preparedAtMs??x.dueAtMs??entryAt));
   }));
   const gaps=gapAudit.filter(g=>!g.reconciledEmpty&&overlaps(g,start,end));
-  const all=portfolios(launches,gaps,epoch),exploratory=portfolios(launches.slice(0,25),gaps,epoch),holdout=portfolios(launches.slice(25,50),gaps,epoch);
+  const all=portfolios(launches,gaps,epoch),exploratory=portfolios(exploration,gaps,epoch),holdout=portfolios(validation,gaps,epoch);
   const invalid=[];
   if(!o.startedAtMs||!o.lastHeartbeatAtMs||now-o.lastHeartbeatAtMs>15000)invalid.push("observer_missing_or_stale");
   if(gaps.length)invalid.push("DATA_GAP");
+  if(registry?.breaches||registry?.migrationUncertain)invalid.push("cohort_boundary_integrity");
   const inPeriod=t=>t>=start&&t<=end;
   if(missingMetadata.some(s=>inPeriod(catalog[s].blockTime*1000||catalog[s].atMs))||
     (o.unresolvedWs??[]).some(s=>inPeriod(o.ws[s]??0)))invalid.push("incomplete_signature_verification");
   if(cohort.some(p=>p.dataInvalid||p.verification==="source_mismatch"))invalid.push("invalid_source_or_market");
   if([...Object.values(exploratory),...Object.values(holdout)].some(p=>p.unverifiedQuotes))invalid.push("unverified_quotes");
-  const completeExploration=launches.length>=25&&Object.values(exploratory).every(p=>p.resolved===25);
+  const completeExploration=exploration.length===25&&Object.values(exploratory).every(p=>p.resolved===25);
   const selected=completeExploration?Object.keys(exploratory).sort((a,b)=>(exploratory[b].netPnlSol??0)-(exploratory[a].netPnlSol??0)||a.localeCompare(b))[0]:null;
   let verdict=invalid.length?"DATA_INVALID":"UNPROVEN";
+  if(epoch&&launches.length===0)verdict="UNPROVEN";
   const h=selected?holdout[selected]:null;
   if(!invalid.length&&h?.resolved===25&&h.closed>0) {
     if(h.netPnlSol<=0)verdict="NO-GO";
@@ -101,7 +115,7 @@ export function summarize(state,{now=Date.now()}={}) {
     firstCreatorSell:state.sells?.[p.mint]?.[0]??null,exits:p.exits,
     eligibleExits:Object.keys(EXIT_SECONDS).filter(v=>eligible(p,v,gaps,epoch))}));
   return {schemaVersion:2,testData:state.testData===true,generatedAt:new Date(now).toISOString(),verdict,invalidReasons:invalid,
-    epoch,auditLaunches:audit.length,legacyLaunches:audit.filter(p=>epoch&&p.epochId!==epoch.id).map(p=>({mint:p.mint,signature:p.signature,status:p.status,reason:p.reason})),
+    epoch,cohort:registry??null,auditLaunches:audit.length,legacyLaunches:audit.filter(p=>epoch&&p.epochId!==epoch.id).map(p=>({mint:p.mint,signature:p.signature,status:p.status,reason:p.reason})),
     permission:"RESEARCH-GO is research only; never authorization for live transactions",
     observation:{startedAtMs:o.startedAtMs??null,lastHeartbeatAtMs:o.lastHeartbeatAtMs??null,durationMs:o.startedAtMs?now-o.startedAtMs:null,
       coverage:o.coverage??null,gaps:gapAudit,epochGaps:gaps.length,wsSignatures:ws.length,confirmedSignatures:Object.keys(confirmed).length,
@@ -113,6 +127,14 @@ export function summarize(state,{now=Date.now()}={}) {
       exits:Object.fromEntries(Object.entries(all).map(([v,p])=>[v,{quotes:p.closed+p.unverifiedQuotes,valid:p.closed,unknown:p.unknown}])),
       rejectTiming:Object.fromEntries([...new Set(launches.map(p=>p.reason).filter(Boolean))].map(reason=>[reason,metric(launches.filter(p=>p.reason===reason).map(p=>p.quoteElapsedMs??(p.decisionAtMs-p.observedAtMs)))]))},
     writeMs:metric(o.writeSamplesMs??[]),
+    writeAfterRotationAtMs:o.writeAfterRotationAtMs??null,
+    workerQueue:metric(o.workerQueueSamplesMs??[]),
+    workerLoopMs:o.workerLoopMs??null,
+    rpcLatencyMs:metric(o.rpc?.latencyMs??[]),
+    wsChannels:o.wsChannels??{},
+    readiness:launches.filter(p=>p.readinessDiagnostics||p.quoteTelemetry).map(p=>({mint:p.mint,slot:p.slot,checks:p.readinessDiagnostics??[],
+      quoteTelemetry:p.quoteTelemetry,firstConfirmedContextMs:p.quoteTelemetry?.marketCommitment==="confirmed"&&p.quoteTelemetry.firstContextAtMs?
+        p.quoteTelemetry.firstContextAtMs-p.observedAtMs:null})),
     skipReasons:Object.fromEntries([...new Set(launches.map(p=>p.reason).filter(Boolean))].map(r=>[r,launches.filter(p=>p.reason===r).length])),
     timing:Object.fromEntries(["workerQueueMs","decodeMs","rpcMs","quoteMs","signalToPreparedMs","entryDriftBps"].map(k=>[k,metric(entries.map(e=>e[k]))])),
     firstCreatorSellObservedMs:metric(entries.map(p=>p.firstCreatorSell?p.firstCreatorSell.observedAtMs-p.observedAtMs:null)),

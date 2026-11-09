@@ -6,6 +6,21 @@ import { readOnlyBudgetFetch } from "../src/shadow-rpc-budget.js";
 
 const fixture = JSON.parse(fs.readFileSync(new URL("./fixtures/launch-follow.json", import.meta.url)));
 const signal = { mint: "mint", signature: "buy", slot:1, observedAtMs: 1000, averagePriceSol: .000005 };
+test("research rejects processed context and a confirmed quote arriving after the original deadline",async()=>{
+  for(const commitment of ["processed","confirmed"]){
+    let now=1000;
+    const engine=new LaunchFollow({research:true,now:()=>now,save(){},emit(){},schedule(){},quote:async()=>{
+      if(commitment==="confirmed")now+=1501;
+      return {marketCommitment:commitment,contextVerified:true,marketContextSlot:1,expectedTokenOutRaw:"1000000000",tokenDecimals:6};
+    }});
+    engine.heartbeat({wsAvailable:true,lastPollAtMs:now},{});
+    now=engine.state.epoch.startsAtMs;
+    await engine.launch({...signal,observedAtMs:now});
+    const p=engine.state.launches.mint;
+    assert.equal(p.reason,commitment==="processed"?"confirmed_quote_unproven":"quote_too_old");
+    assert.equal(p.entry,undefined);
+  }
+});
 test("epoch starts on healthy coverage and preserves the preregistered limits across restart",()=>{
   let now=1234;
   const options={research:true,now:()=>now,quote(){},save(){},emit(){},maxAgeMs:1500,maxDriftBps:2500};

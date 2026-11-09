@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { summarize } from "../scripts/launch-follow-summary.mjs";
+import { admitToCohort } from "../src/launch-cohort.js";
+import { intervalRecoveries } from "../src/launch-ws-audit.js";
 function fixture(pnls) {
   const launches={};
   for(const [i,pnl] of pnls.entries()) {
@@ -68,7 +70,40 @@ test("gap intersection is evaluated per exit and reconciled empty gaps do not ce
   s.observation.gaps.push({reason:"ws_unavailable",startMs:1010,endMs:1015,backfillBeforeMs:990});
   let r=summarize(s,{now:2000});
   assert.equal(r.portfolios.A.closed,10);
-  s.observation.coverage={lastPollAtMs:5000};
+  s.observation.gaps.at(-1).beforeSweep={endedAtMs:990,cursorAfter:"stable",quarantined:0};
+  s.observation.gaps.at(-1).afterSweep={startedAtMs:4000,cursorBefore:"stable",cursorAfter:"stable",signatures:0,quarantined:0};
   r=summarize(s,{now:5000});
   assert.equal(r.portfolios.A.closed,50);assert.equal(r.observation.gaps.at(-1).reconciledEmpty,true);
+});
+test("late earlier launch after holdout starts stays visible without replacing a frozen member",()=>{
+  const s=epochFixture();
+  s.cohort={exploratory:[],holdout:[],breaches:0};
+  for(let i=0;i<50;i++){
+    s.launches[i].slot=i+10;
+    s.launches[i].entry.marketContextSlot=i+10;
+    for(const x of Object.values(s.launches[i].exits))x.quote.marketContextSlot=i+11;
+    admitToCohort(s.cohort,s.launches[i]);
+  }
+  const pinned=structuredClone(s.cohort.exploratory);
+  const late={mint:"late",signature:"late",slot:2,epochId:s.epoch.id,observedAtMs:700,status:"MISSED",confirmed:true,exits:{}};
+  s.launches.late=late;
+  admitToCohort(s.cohort,late);
+  const r=summarize(s,{now:2000});
+  assert.deepEqual(r.cohort.exploratory,pinned);
+  assert.equal(r.launches,51);
+  assert.equal(r.missed,1);
+  assert.ok(r.invalidReasons.includes("cohort_boundary_integrity"));
+  s.launches[0].slot=100;
+  assert.equal(summarize(s,{now:2000}).exploratory.A.unknown,1);
+});
+test("WS recovery cannot borrow an ACK from another interval or another subscription",()=>{
+  const events=[
+    {event:"websocket_closed",websocketSource:"primary",atMs:1000},
+    {event:"websocket_closed",websocketSource:"fallback",atMs:1001},
+    {event:"subscribed",websocketSource:"primary",sourceName:"sniper",atMs:2000,at:"first"},
+    {event:"subscribed",websocketSource:"fallback",sourceName:"sniper",atMs:3500,at:"later"},
+    {event:"subscribed",websocketSource:"primary",sourceName:"other",atMs:3600,at:"later"}
+  ];
+  assert.deepEqual(intervalRecoveries(events,1001,2100,["sniper","other"]),{
+    primary:{sniper:{at:"first",afterCloseMs:1000},other:null},fallback:{sniper:null,other:null}});
 });

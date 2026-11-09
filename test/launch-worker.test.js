@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import bs58 from "bs58";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { LaunchFollowSupervisor, LaunchFollow, confirmedLaunches, launchSignals, LAUNCH_TARGET } from "../src/launch-follow.js";
 import { summarize, writeReport } from "../scripts/launch-follow-summary.mjs";
 const fixture=JSON.parse(fs.readFileSync(new URL("./fixtures/launch-follow.json",import.meta.url)));
@@ -18,25 +19,43 @@ function cleanup(t,client,dir){
   t.after(async()=>{await client.stop();fs.rmSync(dir,{recursive:true,force:true});});
 }
 const coverage={kind:"coverage",coverage:{wsAvailable:true,lastPollAtMs:Date.now()}};
-test("saved real CREATE+BUY → Worker IPC → durable BUY/all six SELL → CSV/JSON/Markdown",{timeout:25000},async t=>{
+test("research Worker: real CREATE+BUY → confirmed RPC context and SDK → all exits → report",{timeout:30000},async t=>{
   const dir=isolated(),events=[];
-  const client=new LaunchFollowSupervisor(data(dir),(event,detail)=>events.push({event,...detail}));
+  const client=new LaunchFollowSupervisor({...data(dir),fixtureModule:new URL("./fixtures/launch-confirmed-market.mjs",import.meta.url).href},(event,detail)=>events.push({event,...detail}));
   cleanup(t,client,dir);
   await until(()=>events.some(e=>e.event==="launch_follow_ready"));
   client.post({...coverage,coverage:{...coverage.coverage,lastPollAtMs:Date.now()}});
+  await until(()=>state(dir)?.epoch?.startsAtMs<=Date.now());
   client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
   client.post({kind:"confirmed",signature:fixture.signature,tx});
   await until(()=>state(dir)?.launches[fixture.mint]?.accepted || events.some(e=>e.reason==="worker_fatal"))
     .catch(error=>{throw new Error(JSON.stringify({launch:state(dir)?.launches[fixture.mint],events}),{cause:error});});
   assert.equal(state(dir)?.launches[fixture.mint]?.accepted,true,JSON.stringify(events));
   client.post({kind:"resolvedSell",trade:{mint:fixture.mint,signature:"fixture-only-creator-sell",slot:fixture.slot+1,observedAtMs:Date.now(),tokenAmount:100}});
+  const parentLoop=monitorEventLoopDelay({resolution:10});
+  parentLoop.enable();
+  for(let i=0;i<20;i++){
+    for(let n=0;n<4;n++)client.post({value:fixture,slot:fixture.slot,observedAtMs:Date.now()});
+    await sleep(50);
+  }
+  parentLoop.disable();
   await until(()=>state(dir)?.launches[fixture.mint]?.status==="COMPLETE",18000);
   await until(()=>client.health().state==="HEALTHY")
     .catch(error=>{throw new Error(JSON.stringify({health:client.health(),events}),{cause:error});});
   const s=state(dir),p=s.launches[fixture.mint];assert.equal(p.confirmed,true);
-  for(const v of "ABCDEF")assert.equal(p.exits[v].status,"QUOTED");
+  assert.equal(p.entry.marketCommitment,"confirmed");
+  assert.equal(p.entry.contextVerified,true);
+  assert.equal(p.epochId,s.epoch.id);
+  assert.deepEqual(p.readinessDiagnostics.map(x=>[x.commitment,x.ready]),[["processed",true],["confirmed",true]]);
+  for(const v of "ABCDEF"){
+    assert.equal(p.exits[v].status,"QUOTED",JSON.stringify(p.exits[v]));
+    assert.equal(p.exits[v].quote.marketCommitment,"confirmed");
+  }
   const report=summarize(s);assert.equal(report.testData,true);assert.equal(report.verdict,"UNPROVEN");
   assert.equal(report.portfolios.A.closed,1);assert.equal(report.portfolios.F.closed,1);
+  t.diagnostic(JSON.stringify({controlledNotifications:80,workerQueue:report.workerQueue,writeMs:report.writeMs,
+    workerLoopMs:s.observation.workerLoopMs,parentLoopMs:Object.fromEntries([50,95,99].map(x=>["p"+x,parentLoop.percentile(x)/1e6])),
+    rpc:report.rpcLatencyMs,quoteMs:report.timing.quoteMs}));
   writeReport(report,path.join(dir,"report"));
   for(const f of ["report.json","observations.csv","report.md"])assert.ok(fs.statSync(path.join(dir,"report",f)).size>10);
   assert.equal(fs.readFileSync(path.join(dir,"report","observations.csv"),"utf8").trim().split("\n").length,7);
