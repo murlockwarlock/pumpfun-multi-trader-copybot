@@ -1,0 +1,894 @@
+{
+  "start": "2026-11-09T09:16:31.000Z",
+  "end": "2026-11-10T09:16:31.000Z",
+  "commonShadowStart": "2026-11-06T13:42:44.000Z",
+  "wallets": {
+    "candidate_4rt": {
+      "sourceWindow": {
+        "listed": 2,
+        "missing": 0,
+        "failed": 0,
+        "nonSigner": 1,
+        "other": 0,
+        "unknownBasisSales": 0,
+        "buys": 1,
+        "sells": 0,
+        "decodedBuySignals": 1,
+        "decodedSellSignals": 0,
+        "nonSolSignals": 0,
+        "knownSales": 0,
+        "positiveSales": 0,
+        "negativeSales": 0,
+        "conditionalRealizedSol": null,
+        "paidFeeSol": 0.000021955,
+        "failedFeeSol": 0,
+        "solOnlyDirectBuys": 1,
+        "solOnlyDirectSells": 0,
+        "ownLaunches": 0,
+        "venues": {
+          "pumpswap": 1
+        },
+        "remainingMints": 1,
+        "boundaryCovered": true
+      },
+      "logged": {
+        "uniqueSignatures": 68,
+        "buy": 35,
+        "sell": 35
+      },
+      "allShadow": {
+        "buys": 22,
+        "closed": 17,
+        "open": 5,
+        "wins": 5,
+        "losses": 12,
+        "netSol": -0.0013743309999999997,
+        "afterCloseSol": -0.0032443309999999996,
+        "extraSlippageAndCloseSol": -0.004945694813100002,
+        "withoutLargestSol": -0.003961529,
+        "largest": {
+          "pnlSol": 0.002587198,
+          "signature": "4rTzkqYKBnWaFVY4hNan62No5ckv9BSwejBrof3k9KwUoYEXBiDwgdStoPuMQtE3Vt49XYUefSMTSZeS6sa7wFf6",
+          "quoteSource": "curve_post_event"
+        },
+        "sources": {
+          "target_price_penalty": 15,
+          "curve_post_event": 7
+        },
+        "exitSources": {
+          "target_price_penalty": 12,
+          "curve_post_event": 5
+        },
+        "measuredQuotes": 0,
+        "prepareMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "driftBps": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "signalAgeMs": {
+          "n": 22,
+          "p50": 1298,
+          "p95": 1870
+        },
+        "rejectedBuys": {
+          "position_already_open": 6,
+          "target_sol_price_unavailable": 7
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonShadow": {
+        "buys": 11,
+        "closed": 7,
+        "open": 4,
+        "wins": 4,
+        "losses": 3,
+        "netSol": 0.0029121320000000004,
+        "afterCloseSol": 0.0021421320000000006,
+        "extraSlippageAndCloseSol": 0.0013723575731999994,
+        "withoutLargestSol": 0.00032493400000000025,
+        "largest": {
+          "pnlSol": 0.002587198,
+          "signature": "4rTzkqYKBnWaFVY4hNan62No5ckv9BSwejBrof3k9KwUoYEXBiDwgdStoPuMQtE3Vt49XYUefSMTSZeS6sa7wFf6",
+          "quoteSource": "curve_post_event"
+        },
+        "sources": {
+          "target_price_penalty": 6,
+          "curve_post_event": 5
+        },
+        "exitSources": {
+          "target_price_penalty": 3,
+          "curve_post_event": 4
+        },
+        "measuredQuotes": 0,
+        "prepareMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "driftBps": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "signalAgeMs": {
+          "n": 11,
+          "p50": 1407,
+          "p95": 1870
+        },
+        "rejectedBuys": {
+          "target_sol_price_unavailable": 2,
+          "position_already_open": 2
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonLogged": {
+        "buy": 15,
+        "sell": 18
+      }
+    },
+    "kaaox": {
+      "sourceWindow": {
+        "listed": 212,
+        "missing": 0,
+        "failed": 0,
+        "nonSigner": 183,
+        "other": 15,
+        "unknownBasisSales": 0,
+        "buys": 12,
+        "sells": 2,
+        "decodedBuySignals": 17,
+        "decodedSellSignals": 5,
+        "nonSolSignals": 8,
+        "knownSales": 2,
+        "positiveSales": 1,
+        "negativeSales": 1,
+        "conditionalRealizedSol": 1.7138669699999998,
+        "paidFeeSol": 0.180201088,
+        "failedFeeSol": 0,
+        "solOnlyDirectBuys": 1,
+        "solOnlyDirectSells": 1,
+        "ownLaunches": 0,
+        "venues": {
+          "pumpswap": 14
+        },
+        "remainingMints": 2,
+        "boundaryCovered": true
+      },
+      "logged": {
+        "uniqueSignatures": 88,
+        "buy": 52,
+        "sell": 36
+      },
+      "allShadow": {
+        "buys": 17,
+        "closed": 14,
+        "open": 3,
+        "wins": 2,
+        "losses": 12,
+        "netSol": 0.10518392199999999,
+        "afterCloseSol": 0.10364392199999999,
+        "extraSlippageAndCloseSol": 0.10012711595219997,
+        "withoutLargestSol": -0.024715311000000018,
+        "largest": {
+          "pnlSol": 0.129899233,
+          "signature": "5GeXML4WWCbT7AeJCcLdp1GBLCev9ZKZUcu7kAwSVwzbWZer34HxM9tpG5GDk8SjMvJQDhTw6QHSezEYHupz3nwy",
+          "quoteSource": "target_price_penalty"
+        },
+        "sources": {
+          "prepared_at_observation": 17
+        },
+        "exitSources": {
+          "target_price_penalty": 12,
+          "curve_post_event": 2
+        },
+        "measuredQuotes": 17,
+        "prepareMs": {
+          "n": 17,
+          "p50": 198,
+          "p95": 271
+        },
+        "driftBps": {
+          "n": 14,
+          "p50": 21,
+          "p95": 2012
+        },
+        "signalAgeMs": {
+          "n": 17,
+          "p50": 198,
+          "p95": 273
+        },
+        "rejectedBuys": {
+          "unsupported_venue:raydium-cpmm": 3,
+          "position_already_open": 25,
+          "fast_shadow_probe_failed:Only SOL-quoted Pump bonding curves are supported": 7
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonShadow": {
+        "buys": 17,
+        "closed": 14,
+        "open": 3,
+        "wins": 2,
+        "losses": 12,
+        "netSol": 0.10518392199999999,
+        "afterCloseSol": 0.10364392199999999,
+        "extraSlippageAndCloseSol": 0.10012711595219997,
+        "withoutLargestSol": -0.024715311000000018,
+        "largest": {
+          "pnlSol": 0.129899233,
+          "signature": "5GeXML4WWCbT7AeJCcLdp1GBLCev9ZKZUcu7kAwSVwzbWZer34HxM9tpG5GDk8SjMvJQDhTw6QHSezEYHupz3nwy",
+          "quoteSource": "target_price_penalty"
+        },
+        "sources": {
+          "prepared_at_observation": 17
+        },
+        "exitSources": {
+          "target_price_penalty": 12,
+          "curve_post_event": 2
+        },
+        "measuredQuotes": 17,
+        "prepareMs": {
+          "n": 17,
+          "p50": 198,
+          "p95": 271
+        },
+        "driftBps": {
+          "n": 14,
+          "p50": 21,
+          "p95": 2012
+        },
+        "signalAgeMs": {
+          "n": 17,
+          "p50": 198,
+          "p95": 273
+        },
+        "rejectedBuys": {
+          "unsupported_venue:raydium-cpmm": 3,
+          "position_already_open": 25,
+          "fast_shadow_probe_failed:Only SOL-quoted Pump bonding curves are supported": 7
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonLogged": {
+        "buy": 52,
+        "sell": 36
+      }
+    },
+    "sniper_7ufmve": {
+      "sourceWindow": {
+        "listed": 34,
+        "missing": 0,
+        "failed": 2,
+        "nonSigner": 8,
+        "other": 24,
+        "unknownBasisSales": 0,
+        "buys": 0,
+        "sells": 0,
+        "decodedBuySignals": 2,
+        "decodedSellSignals": 14,
+        "nonSolSignals": 16,
+        "knownSales": 0,
+        "positiveSales": 0,
+        "negativeSales": 0,
+        "conditionalRealizedSol": null,
+        "paidFeeSol": 0.004360000000000001,
+        "failedFeeSol": 0.00021,
+        "solOnlyDirectBuys": 0,
+        "solOnlyDirectSells": 0,
+        "ownLaunches": 2,
+        "venues": {},
+        "remainingMints": 0,
+        "boundaryCovered": true
+      },
+      "logged": {
+        "uniqueSignatures": 1824,
+        "buy": 167,
+        "sell": 1659
+      },
+      "allShadow": {
+        "buys": 7,
+        "closed": 6,
+        "open": 1,
+        "wins": 1,
+        "losses": 5,
+        "netSol": -0.0033281509999999997,
+        "afterCloseSol": -0.003988151,
+        "extraSlippageAndCloseSol": -0.0045320547951,
+        "withoutLargestSol": -0.004750568,
+        "largest": {
+          "pnlSol": 0.001422417,
+          "signature": "67nt11GwW632fcxKz5cHqyAo67YtTtLouxBG96yPe277Jhu4mRSbvzwSrbGSvvjsxancLNbp1GYG6N9sy4Lr4ZwZ",
+          "quoteSource": "curve_post_event"
+        },
+        "sources": {
+          "prepared_at_observation": 7
+        },
+        "exitSources": {
+          "curve_post_event": 5,
+          "target_price_penalty": 1
+        },
+        "measuredQuotes": 7,
+        "prepareMs": {
+          "n": 7,
+          "p50": 100,
+          "p95": 209
+        },
+        "driftBps": {
+          "n": 6,
+          "p50": 78,
+          "p95": 1346
+        },
+        "signalAgeMs": {
+          "n": 7,
+          "p50": 101,
+          "p95": 210
+        },
+        "rejectedBuys": {
+          "fast_shadow_probe_failed:Only SOL-quoted Pump bonding curves are supported": 42,
+          "fast_entry_price_drift_BPS": 4,
+          "fast_shadow_probe_failed:Pump quote exceeds the target-relative entry price limit": 60,
+          "fast_shadow_probe_failed:Mint account not found": 48,
+          "fast_shadow_probe_failed:Bonding curve account not found for mint": 4,
+          "fast_shadow_probe_failed:shadow probe stale": 2
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonShadow": {
+        "buys": 1,
+        "closed": 0,
+        "open": 1,
+        "wins": 0,
+        "losses": 0,
+        "netSol": null,
+        "afterCloseSol": null,
+        "extraSlippageAndCloseSol": null,
+        "withoutLargestSol": null,
+        "largest": null,
+        "sources": {
+          "prepared_at_observation": 1
+        },
+        "exitSources": {},
+        "measuredQuotes": 1,
+        "prepareMs": {
+          "n": 1,
+          "p50": 203,
+          "p95": 203
+        },
+        "driftBps": {
+          "n": 0,
+          "p50": null,
+          "p95": null
+        },
+        "signalAgeMs": {
+          "n": 1,
+          "p50": 207,
+          "p95": 207
+        },
+        "rejectedBuys": {
+          "fast_shadow_probe_failed:Mint account not found": 23,
+          "fast_shadow_probe_failed:Pump quote exceeds the target-relative entry price limit": 12,
+          "fast_shadow_probe_failed:Only SOL-quoted Pump bonding curves are supported": 20,
+          "fast_shadow_probe_failed:shadow probe stale": 2,
+          "fast_shadow_probe_failed:Bonding curve account not found for mint": 3
+        },
+        "twoSidedMeasured": 0,
+        "expectedNetSol": null
+      },
+      "commonLogged": {
+        "buy": 61,
+        "sell": 539
+      }
+    }
+  },
+  "routes": {
+    "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": {
+      "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+      "solToQuote": {
+        "atMs": 1794302340321,
+        "rttMs": 175,
+        "inAmount": "5000000",
+        "outAmount": "5735987",
+        "otherAmountThreshold": "5678628",
+        "priceImpactPct": "0.0001723593726473702758639936",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "3nLR2KnqC4ZHmPbjJgZCmfKazPjyxZEeqQv77sctcs4P",
+              "label": "PancakeSwap",
+              "inputMint": "So11111111111111111111111111111111111111112",
+              "outputMint": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+              "inAmount": "5000000",
+              "outAmount": "20283",
+              "updateContextSlot": "467667402"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "5mHTXRU1bgBDo9vUoHKkCidbFRc2mLHSgTTdQyZBjMfg",
+              "label": "GoonFi V2",
+              "inputMint": "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "20283",
+              "outAmount": "426975",
+              "updateContextSlot": "467667463"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8TDBxPXyGvxcaoHZoY5D4X2vePuhMYekKpTEhEhaQX5b",
+              "label": "GoonFi V2",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "inAmount": "426975",
+              "outAmount": "5735987",
+              "updateContextSlot": "467667464"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667464
+      },
+      "solToBase": {
+        "atMs": 1794302341747,
+        "rttMs": 45,
+        "inAmount": "5000000",
+        "outAmount": "137154691580",
+        "otherAmountThreshold": "135783144665",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "GMCJvYGf5Ex2ARiMquaBDqU6iKM8uiEQkB8jCnoNfHpC",
+              "label": "GoonFi V2",
+              "inputMint": "So11111111111111111111111111111111111111112",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "5000000",
+              "outAmount": "426985",
+              "updateContextSlot": "467667469"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8TDBxPXyGvxcaoHZoY5D4X2vePuhMYekKpTEhEhaQX5b",
+              "label": "GoonFi V2",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "inAmount": "426985",
+              "outAmount": "5735392",
+              "updateContextSlot": "467667470"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+              "label": "Pump.fun",
+              "inputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "outputMint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+              "inAmount": "5735392",
+              "outAmount": "137154691580",
+              "updateContextSlot": "467659007"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667470
+      },
+      "quoteToSol": {
+        "atMs": 1794302343042,
+        "rttMs": 182,
+        "inAmount": "5735987",
+        "outAmount": "5001510",
+        "otherAmountThreshold": "4951495",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "3kd4ZE6iPm67nr4mofw3dU8G9Bo7GJMsPykYMgZWreDx",
+              "label": "Whirlpool",
+              "inputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "outputMint": "3ZLekZYq2qkZiSpnSvabjit34tUkjSwD1JFuW9as9wBG",
+              "inAmount": "5735987",
+              "outAmount": "117930199",
+              "updateContextSlot": "467667105"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "9yE49sMheNg9Jia9eokPiEgG7suBgD1crLJoN4tn2Y8u",
+              "label": "GoonFi V2",
+              "inputMint": "3ZLekZYq2qkZiSpnSvabjit34tUkjSwD1JFuW9as9wBG",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "117930199",
+              "outAmount": "427184",
+              "updateContextSlot": "467667475"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "9GTj99g9tbz9U6UYDsX6YeRTgUnkYG6GTnHv3qLa5aXq",
+              "label": "Byreal",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "So11111111111111111111111111111111111111112",
+              "inAmount": "427184",
+              "outAmount": "5001510",
+              "updateContextSlot": "467667472"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667476
+      },
+      "quoteToBase": {
+        "atMs": 1794302344474,
+        "rttMs": 35,
+        "inAmount": "5735987",
+        "outAmount": "137168902600",
+        "otherAmountThreshold": "135797213574",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+              "label": "Pump.fun",
+              "inputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "outputMint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+              "inAmount": "5735987",
+              "outAmount": "137168902600",
+              "updateContextSlot": "467662058"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667483
+      },
+      "baseToQuote": {
+        "atMs": 1794302345759,
+        "rttMs": 34,
+        "inAmount": "137168902600",
+        "outAmount": "5592922",
+        "otherAmountThreshold": "5536993",
+        "priceImpactPct": "0.031659616631983511768901217",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+              "label": "Pump.fun",
+              "inputMint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+              "outputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "inAmount": "137168902600",
+              "outAmount": "5592922",
+              "updateContextSlot": "467660131"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667489
+      },
+      "fullExitToSol": {
+        "atMs": 1794302347043,
+        "http": 429,
+        "errorCode": null
+      },
+      "baseToSol": {
+        "atMs": 1794302348329,
+        "http": 429,
+        "errorCode": null
+      }
+    },
+    "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": {
+      "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+      "solToQuote": {
+        "atMs": 1794302349613,
+        "http": 429,
+        "errorCode": null
+      },
+      "solToBase": {
+        "atMs": 1794302350896,
+        "rttMs": 86,
+        "inAmount": "5000000",
+        "outAmount": "141578913983",
+        "otherAmountThreshold": "140163124844",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "83v8iPyZihDEjDdY8RdZddyZNyUtXngz69Lgo9Kt5d6d",
+              "label": "Whirlpool",
+              "inputMint": "So11111111111111111111111111111111111111112",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "5000000",
+              "outAmount": "427008",
+              "updateContextSlot": "467667506"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "HyA4ct7i4XvZsVrLyb5VJhcTP1EZVDZoF9fFGym16zcj",
+              "label": "Whirlpool",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "inAmount": "427008",
+              "outAmount": "120521243",
+              "updateContextSlot": "467667303"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+              "label": "Pump.fun",
+              "inputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "outputMint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+              "inAmount": "120521243",
+              "outAmount": "141578913983",
+              "updateContextSlot": "467667303"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667514
+      },
+      "baseToSol": {
+        "atMs": 1794302352233,
+        "rttMs": 82,
+        "inAmount": "141578913983",
+        "outAmount": "4875931",
+        "otherAmountThreshold": "4827172",
+        "priceImpactPct": "0.0493986115923481172741037089",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+              "label": "Pump.fun",
+              "inputMint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+              "outputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "inAmount": "141578913983",
+              "outAmount": "117514392",
+              "updateContextSlot": "467667303"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "HmgoG6HhVen7T9YkeTWGjSFgSC5UjR9gfyVMUzSTstGh",
+              "label": "ZeroFi",
+              "inputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "117514392",
+              "outAmount": "416420",
+              "updateContextSlot": "467667520"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+              "label": "BisonFi",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "So11111111111111111111111111111111111111112",
+              "inAmount": "416420",
+              "outAmount": "4875931",
+              "updateContextSlot": "467667521"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467667521
+      }
+    }
+  },
+  "additionalQuoteSnapshots": {
+    "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": {
+      "solToBase": {
+        "atMs": 1794302498184,
+        "rttMs": 72,
+        "inAmount": "5000000",
+        "outAmount": "137246445856",
+        "otherAmountThreshold": "135873981398",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "Esvfxt3jMDdtTZqLF1fqRhDjzM8Bpr7fZxJMrK69PB7e",
+              "label": "Whirlpool",
+              "inputMint": "So11111111111111111111111111111111111111112",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "5000000",
+              "outAmount": "426554",
+              "updateContextSlot": "467668203"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8TDBxPXyGvxcaoHZoY5D4X2vePuhMYekKpTEhEhaQX5b",
+              "label": "GoonFi V2",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "inAmount": "426554",
+              "outAmount": "5739230",
+              "updateContextSlot": "467668203"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+              "label": "Pump.fun",
+              "inputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "outputMint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+              "inAmount": "5739230",
+              "outAmount": "137246445856",
+              "updateContextSlot": "467659007"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467668203
+      },
+      "baseToSol": {
+        "atMs": 1794302499756,
+        "rttMs": 43,
+        "inAmount": "137246445856",
+        "outAmount": "4874537",
+        "otherAmountThreshold": "4825792",
+        "priceImpactPct": "0.0331363323401579817916732199",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+              "label": "Pump.fun",
+              "inputMint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+              "outputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "inAmount": "137246445856",
+              "outAmount": "5596084",
+              "updateContextSlot": "467661241"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8TDBxPXyGvxcaoHZoY5D4X2vePuhMYekKpTEhEhaQX5b",
+              "label": "GoonFi V2",
+              "inputMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "5596084",
+              "outAmount": "415804",
+              "updateContextSlot": "467668210"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "8FnX3xo2yYw3EUE6w3nQA4GfXGS9wpK6oj3veJpbFzLo",
+              "label": "BisonFi",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "So11111111111111111111111111111111111111112",
+              "inAmount": "415804",
+              "outAmount": "4874537",
+              "updateContextSlot": "467668211"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467668211
+      }
+    },
+    "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": {
+      "solToQuote": {
+        "atMs": 1794302501299,
+        "rttMs": 208,
+        "inAmount": "5000000",
+        "outAmount": "120592875",
+        "otherAmountThreshold": "119386947",
+        "priceImpactPct": "0",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "5hCDEXRCn5YsyP1ydgbnaXT3QN6AAkfshfRkXRQypzr6",
+              "label": "Whirlpool",
+              "inputMint": "So11111111111111111111111111111111111111112",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "5000000",
+              "outAmount": "426537",
+              "updateContextSlot": "467668218"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "FkGgvNwKBMkDAWStXx7C9CbYiwTCHq2pFrkWHkvS9eJg",
+              "label": "GoonFi V2",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "inAmount": "426537",
+              "outAmount": "120592875",
+              "updateContextSlot": "467668219"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467668219
+      },
+      "quoteToSol": {
+        "atMs": 1794302503008,
+        "rttMs": 183,
+        "inAmount": "120592875",
+        "outAmount": "5000163",
+        "otherAmountThreshold": "4950162",
+        "priceImpactPct": "0.0007268165130162176057563342",
+        "routePlan": [
+          {
+            "swapInfo": {
+              "ammKey": "HmgoG6HhVen7T9YkeTWGjSFgSC5UjR9gfyVMUzSTstGh",
+              "label": "ZeroFi",
+              "inputMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+              "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "inAmount": "120592875",
+              "outAmount": "426465",
+              "updateContextSlot": "467668221"
+            },
+            "percent": null,
+            "bps": 10000
+          },
+          {
+            "swapInfo": {
+              "ammKey": "GMCJvYGf5Ex2ARiMquaBDqU6iKM8uiEQkB8jCnoNfHpC",
+              "label": "GoonFi V2",
+              "inputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+              "outputMint": "So11111111111111111111111111111111111111112",
+              "inAmount": "426465",
+              "outAmount": "5000163",
+              "updateContextSlot": "467668225"
+            },
+            "percent": null,
+            "bps": 10000
+          }
+        ],
+        "contextSlot": 467668226
+      }
+    }
+  }
+}
