@@ -100,7 +100,7 @@ function bnMax(left, right) {
 }
 
 export class PumpExecutor {
-  constructor(config, wallet, { enableFallback = true } = {}) {
+  constructor(config, wallet, { enableFallback = true, quoteOnly = false } = {}) {
     this.config = config;
     this.wallet = wallet;
     this.shadowQuoteContext = new AsyncLocalStorage();
@@ -137,13 +137,13 @@ export class PumpExecutor {
     });
     this.pump = new OnlinePumpSdk(this.connection);
     this.amm = new OnlinePumpAmmSdk(this.connection);
-    this.sender = new TransactionSender(config, this.connection);
+    this.sender = quoteOnly ? null : new TransactionSender(config, this.connection);
     this.marketCache = new Map();
     this.marketRequests = new Map();
     this.latestBlockhash = null;
     this.pumpParameters = null;
     this.rpcSource = enableFallback ? "primary" : "fallback";
-    this.fallbackExecutor = enableFallback && config.rpcFallbackHttpUrl
+    this.fallbackExecutor = !quoteOnly && enableFallback && config.rpcFallbackHttpUrl
       ? new PumpExecutor({
           ...config,
           rpcHttpUrl: config.rpcFallbackHttpUrl,
@@ -624,6 +624,7 @@ export class PumpExecutor {
       }
       let instructions;
       let expectedTokenOutRaw = null;
+      let shadowQuoteDetails;
       if (side === "BUY" && supportsTradeV2(state.pool)) {
         const budget = new BN(rawAmount.toString());
         const quote = quotePumpAmmBuy({
@@ -661,6 +662,14 @@ export class PumpExecutor {
           minBaseOut
         );
         expectedTokenOutRaw = quote.base.toString();
+        if (shadowDetails) {
+          shadowQuoteDetails = {
+            pool: market.pool.toBase58(),
+            reserves: { baseRaw: state.poolBaseAmount.toString(), quoteRaw: state.poolQuoteAmount.toString() },
+            tradingFeeUpperBoundRaw: budget.sub(quote.internalQuoteWithoutFees).toString(),
+            tradingFeeDetail: "Budget minus SDK net quote input, including rounding remainder"
+          };
+        }
       } else if (side === "BUY") {
         if (hardMinimumTokenOut !== null) {
           throw new Error(
@@ -686,6 +695,7 @@ export class PumpExecutor {
         tokenProgram: market.tokenProgram,
         venue: "pumpswap",
         expectedTokenOutRaw,
+        ...(shadowQuoteDetails ? { shadowQuoteDetails } : {}),
         hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }
