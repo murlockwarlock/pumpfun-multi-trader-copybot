@@ -7,6 +7,8 @@ import { PumpExecutor } from "../src/pump-executor.js";
 import { parsePumpLogSignal } from "../src/parser.js";
 import { readOnlyBudgetFetch } from "../src/shadow-rpc-budget.js";
 import { inspectTrade } from "./copy-candidate-trade.mjs";
+import { observerBudget } from "./next-copy-budget.mjs";
+import { quoteFailure } from "./next-copy-reasons.mjs";
 
 const INPUT = 5_000_000n;
 const FIXED_FEE = 110_000n;
@@ -27,14 +29,12 @@ export function modelNet(quote) {
 }
 
 export function timely(quote, sourceSlot, dueAt, now) {
-  return quote.contextVerified === true && quote.marketCommitment === "confirmed" &&
-    Number.isSafeInteger(quote.marketContextSlot) && quote.marketContextSlot >= sourceSlot &&
-    now >= dueAt && now - dueAt <= DEADLINE;
+  return quoteFailure(quote,sourceSlot,dueAt,now,DEADLINE)===null;
 }
 
 function start(file, wallets) {
-  if (!file || !wallets.length || wallets.length > 6 || new Set(wallets).size !== wallets.length) {
-    throw Error("Usage: next-copy-observer.mjs JOURNAL.jsonl WALLET [up to five more]");
+  if (!file || !wallets.length || wallets.length > 5 || new Set(wallets).size !== wallets.length) {
+    throw Error("Usage: next-copy-observer.mjs JOURNAL.jsonl WALLET [up to four more]");
   }
   wallets.forEach(w => new PublicKey(w));
   const http = process.env.COPY_OBSERVER_RPC ?? "https://api.mainnet-beta.solana.com";
@@ -43,31 +43,57 @@ function start(file, wallets) {
   const out = fs.openSync(file, "a");
   const emit = (type, data = {}) => fs.writeSync(out,
     JSON.stringify({run, type, at:Date.now(), ...data}) + "\n");
-  const quoteFetch = readOnlyBudgetFetch({perSecond:8,perMinute:45});
+  const marketBudget=observerBudget({wallets,limit:45,unit:9,maxActive:1,phaseReserves:{BUY:9,SELL:9}});
+  const verifyBudget=observerBudget({wallets,limit:18,unit:1,phaseReserves:{SOURCE:1,FINALITY:3}});
+  let providerCooldown=0;
+  function checkProvider() {
+    if (Date.now()<providerCooldown) throw Error("rpc_provider_cooldown");
+  }
+  async function request(url, options) {
+    checkProvider();
+    const response=await fetch(url,options);
+    if (response.status===429) providerCooldown=Date.now()+30000;
+    return response;
+  }
+  const quoteFetch = readOnlyBudgetFetch({perSecond:8,perMinute:45,request});
+  const marketFetch=(url,options)=>{
+    checkProvider();
+    const body=JSON.parse(options.body);
+    marketBudget.consume(Array.isArray(body)?body.length:1);
+    return quoteFetch(url,options);
+  };
   // A public, unfunded placeholder is used for PDA derivation only. No keypair is loaded.
   const executor = new PumpExecutor({rpcHttpUrl:http, rpcTimeoutMs:1900, liveSlippageBps:SLIPPAGE_BPS,
-    shadowReadOnlyFetch:quoteFetch}, {publicKey:new PublicKey("11111111111111111111111111111111")},
+    shadowReadOnlyFetch:marketFetch}, {publicKey:new PublicKey("11111111111111111111111111111111")},
     {enableFallback:false,quoteOnly:true});
   const tracked = new Map(), seen = new Map(), timers = new Set(), finality = new Map(), ingress = new Map();
-  let closed = false, generation = 0, verifyTimes = [], verifyCooldown = 0;
+  let closed = false, generation = 0, verifyTimes = [];
+  const verification={requests:0,errors:0,rateLimited:0};
   let socket, reconnectTimer, heartbeat, activeSubs = new Map(), lastPong = 0;
   const later = (fn, ms) => {
     const timer = setTimeout(() => {timers.delete(timer); fn();},Math.max(0,ms));
     timers.add(timer);
   };
-  async function readRpc(method, params) {
+  async function readRpc(method, params, wallet) {
     const now = Date.now();
-    verifyTimes = verifyTimes.filter(t => t > now - 60000);
-    if (now < verifyCooldown || verifyTimes.length >= 18 || verifyTimes.filter(t=>t>now-1000).length >= 3) throw Error("verification_budget");
-    verifyTimes.push(now);
-    const response = await fetch(http,{method:"POST",headers:{"content-type":"application/json"},
-      body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),
-      signal:AbortSignal.timeout(1900)});
-    if (response.status === 429) verifyCooldown = Date.now() + 30000;
-    if (!response.ok) throw Error("verification_http_" + response.status);
-    const body = await response.json();
-    if (body.error || !body.result) throw Error("verification_unavailable");
-    return body.result;
+    verifyTimes = verifyTimes.filter(t => t > now - 1000);
+    if (verifyTimes.length>=3) throw Error("verification_budget");
+    checkProvider();
+    return verifyBudget.run(wallet,wallet?"SOURCE":"FINALITY",async()=>{
+      verifyBudget.consume();
+      verifyTimes.push(now);
+      verification.requests++;
+      try {
+        const response = await request(http,{method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({jsonrpc:"2.0",id:1,method,params}),signal:AbortSignal.timeout(1900)});
+        if (response.status===429) verification.rateLimited++;
+        if (!response.ok) throw Error("verification_http_" + response.status);
+        const body = await response.json();
+        if (body.error) throw Error("verification_rpc_error_"+body.error.code);
+        if (!body.result) throw Error("source_transaction_missing");
+        return body.result;
+      } catch(error) { verification.errors++;throw error; }
+    });
   }
   const unknown = (phase, data, reason) => emit("UNKNOWN",{phase,...data,reason});
   const errorCode = error => String(error.message).replace(/https?:\/\/[^ ]+/g,"[endpoint]").slice(0,240);
@@ -94,10 +120,12 @@ function start(file, wallets) {
     const data = {...pos.ids,kind,dueAt,minSlot,exitSignature:signature,exitSlot,quantityRaw:pos.quantity.toString()};
     if (closed || Date.now()-dueAt > DEADLINE) return unknown("SELL",data,"deadline_before_quote");
     try {
-      const quote = await executor.quoteShadow("SELL",pos.ids.mint,pos.quantity.toString(),{
-        marketCommitment:"confirmed",minContextSlot:minSlot});
+      const quote = await marketBudget.run(pos.ids.wallet,"SELL",()=>executor.quoteShadow("SELL",pos.ids.mint,pos.quantity.toString(),{
+        marketCommitment:"confirmed",minContextSlot:minSlot}));
       const ended = Date.now();
-      if (!timely(quote,minSlot,dueAt,ended)) return unknown("SELL",data,"late_or_unproven_context");
+      const failure=quoteFailure(quote,minSlot,dueAt,ended,DEADLINE);
+      if (failure) return unknown("SELL",{...data,latencyMs:ended-dueAt,
+        marketContextSlot:quote.marketContextSlot,marketCommitment:quote.marketCommitment},failure);
       emit("SELL_QUOTE",{...data,quote,latencyMs:ended-dueAt,
         minOutRaw:discount(BigInt(quote.expectedSolOutRaw)).toString(),netLamports:modelNet(quote).toString(),
         netIfRentNotRecoveredLamports:(modelNet(quote)-pos.rent).toString(),
@@ -111,7 +139,7 @@ function start(file, wallets) {
       if (Date.now()-observedAt>DEADLINE) throw Error("verification_queue_deadline");
       const tx = await readRpc("getTransaction",[signature,{
         encoding:"jsonParsed",commitment:"confirmed",maxSupportedTransactionVersion:0
-      }]);
+      }],wallet);
       if (tx.slot !== slot || tx.transaction.signatures?.[0] !== signature) throw Error("source_transaction_mismatch");
       verified = inspectTrade(tx,wallet,signature);
     } catch (error) { return unknown("SOURCE",base,errorCode(error)); }
@@ -152,11 +180,13 @@ function start(file, wallets) {
     p.entry = (async () => {
       if (Date.now()-observedAt > DEADLINE) return unknown("BUY",ids,"verification_deadline");
       try {
-        const quote = await executor.quoteShadow("BUY",t.mint,INPUT.toString(),{
+        const quote = await marketBudget.run(wallet,"BUY",()=>executor.quoteShadow("BUY",t.mint,INPUT.toString(),{
           marketCommitment:"confirmed",minContextSlot:slot,venueHint:t.venue,
-          targetAveragePriceSol:t.averagePriceSol,maxEntryDriftBps:2500});
+          targetAveragePriceSol:t.averagePriceSol,maxEntryDriftBps:2500}));
         const ended = Date.now();
-        if (!timely(quote,slot,observedAt,ended)) return unknown("BUY",ids,"late_or_unproven_context");
+        const failure=quoteFailure(quote,slot,observedAt,ended,DEADLINE);
+        if (failure) return unknown("BUY",{...ids,latencyMs:ended-observedAt,
+          marketContextSlot:quote.marketContextSlot,marketCommitment:quote.marketCommitment},failure);
         const quantity = modelBuyQuantity(quote);
         if (quantity <= 0n || quantity > BigInt(quote.expectedTokenOutRaw)) return unknown("BUY",ids,"invalid_minimum");
         if (!Number.isFinite(quote.rentSol) || quote.rentSol<0) return unknown("BUY",ids,"rent_unknown");
@@ -232,7 +262,8 @@ function start(file, wallets) {
         if (Date.now()-lastPong>45000) socket.terminate();
         else socket.ping();
       }
-      emit("HEALTH",{subscriptions:activeSubs?.size??0,open:tracked.size,rpc:quoteFetch.stats()});
+      emit("HEALTH",{gen:generation,subscriptions:activeSubs.size,subscribedWallets:[...activeSubs.values()],
+        lastPong,open:tracked.size,rpc:quoteFetch.stats(),verification});
       void checkFinality();
     },20000);
     // Heartbeat reads the state of the currently connected socket.
@@ -251,7 +282,7 @@ function start(file, wallets) {
   process.on("SIGINT",shutdown);
   process.on("SIGTERM",shutdown);
   emit("START",{wallets,commitment:"confirmed",deadlineMs:DEADLINE,horizons:HORIZONS,holdLimitSeconds:HOLD_LIMIT,
-    slippageBps:SLIPPAGE_BPS,networkFeeComponentsLamports:{base:5000,priority:100000,tip:5000}});
+    slippageBps:SLIPPAGE_BPS,budgetVersion:2,networkFeeComponentsLamports:{base:5000,priority:100000,tip:5000}});
   setTimeout(shutdown,48*3600*1000);
   connect();
 }
