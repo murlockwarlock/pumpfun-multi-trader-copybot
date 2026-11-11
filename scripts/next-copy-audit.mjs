@@ -65,14 +65,16 @@ export function coverage(rows,wallet,start,end) {
 
 function count(map,key) { map[key]=(map[key]??0)+1; }
 
-export function auditRun(rows,{start,end,wallets}) {
+export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSeconds=900}) {
   const out={};
   const legacy=rows.find(r=>r.type==="START")?.budgetVersion!==2;
   for (const wallet of wallets) {
     const own=rows.filter(r=>r.wallet===wallet&&r.at>=start&&r.at<=end);
     const counts={BUY:{},SOURCE:{},SELL:{}};
     const signal=new Set(), knownBuy=new Set(), eligible=new Set(), buys=new Map(), resolved=new Set();
-    const finalized=new Map(rows.filter(r=>r.type==="FINALIZED"&&r.at<=end).map(r=>[r.signature,r.slot]));
+    const finalized=new Map(rows.filter(r=>r.type==="FINALIZED"&&r.at<=finalityEnd).map(r=>[r.signature,r.slot]));
+    const completedExits=new Set(own.filter(r=>r.kind&&(r.type==="SELL_QUOTE"||r.phase==="SELL"))
+      .map(r=>r.kind+":"+r.signature));
     for (const r of own) {
       if (r.type==="SIGNAL") {
         signal.add(r.signature);
@@ -114,7 +116,11 @@ export function auditRun(rows,{start,end,wallets}) {
       const total=nets.reduce((a,b)=>a+b,0n);
       const best=nets.reduce((a,b)=>a===null||b>a?b:a,null);
       const rent=exits.map(r=>r.netIfRentNotRecoveredLamports);
+      const seconds=kind==="target"?exitLimitSeconds:parseInt(kind,10);
+      const pendingAtCutoff=[...buys.values()].filter(b=>Number.isFinite(b.observedAt)&&
+        b.observedAt+seconds*1000>end&&!completedExits.has(kind+":"+b.signature)).length;
       horizons[kind]={pairs:pairs.size,unknown:eligible.size-pairs.size,finalityUnknown,
+        pendingAtCutoff,
         netLamports:pairs.size?String(total):null,withoutBestLamports:pairs.size>1?String(total-best):null,
         netWithoutRentRecoveryLamports:rent.length&&rent.every(v=>v!==undefined)?String(rent.reduce((a,b)=>a+BigInt(b),0n)):null};
     }

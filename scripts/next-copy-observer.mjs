@@ -9,6 +9,7 @@ import { readOnlyBudgetFetch } from "../src/shadow-rpc-budget.js";
 import { inspectTrade } from "./copy-candidate-trade.mjs";
 import { observerBudget } from "./next-copy-budget.mjs";
 import { quoteFailure } from "./next-copy-reasons.mjs";
+import { wsDiagnostics } from "./next-copy-ws-diagnostics.mjs";
 
 const INPUT = 5_000_000n;
 const FIXED_FEE = 110_000n;
@@ -67,6 +68,7 @@ function start(file, wallets) {
     shadowReadOnlyFetch:marketFetch}, {publicKey:new PublicKey("11111111111111111111111111111111")},
     {enableFallback:false,quoteOnly:true});
   const tracked = new Map(), seen = new Map(), timers = new Set(), finality = new Map(), ingress = new Map();
+  const wsTrace=wsDiagnostics();
   let closed = false, generation = 0, verifyTimes = [];
   const verification={requests:0,errors:0,rateLimited:0};
   let socket, reconnectTimer, heartbeat, activeSubs = new Map(), lastPong = 0;
@@ -231,13 +233,17 @@ function start(file, wallets) {
         subs.set(msg.result,wallets[msg.id-1]);
         emit("SUBSCRIBED",{wallet:wallets[msg.id-1],gen});
       }
+      if (msg.method!=="logsNotification") return;
       const wallet=subs.get(msg.params?.subscription), result=msg.params?.result;
+      const filtered=wsTrace.receive(wallet);
       const value=result?.value, slot=result?.context?.slot;
-      if (!wallet || !value || value.err || !Number.isSafeInteger(slot)) return;
+      if (!wallet) return;
+      if (!value||!Number.isSafeInteger(slot)) return filtered("invalid_notification",value,slot);
+      if (value.err) return filtered("transaction_error",value,slot);
       const parsed=parsePumpLogSignal(value.logs,wallet,value.signature,{slot,observedAtMs:observedAt});
-      if (!parsed.targetEventCount) return;
+      if (!parsed.targetEventCount) return filtered("no_target_event",value,slot);
       const key=wallet+":"+value.signature;
-      if (seen.has(key)) return;
+      if (seen.has(key)) return filtered("duplicate",value,slot);
       seen.set(key,observedAt);
       if (seen.size>8192) seen.delete(seen.keys().next().value);
       const base={wallet,signature:value.signature,slot,observedAt};
@@ -263,7 +269,7 @@ function start(file, wallets) {
         else socket.ping();
       }
       emit("HEALTH",{gen:generation,subscriptions:activeSubs.size,subscribedWallets:[...activeSubs.values()],
-        lastPong,open:tracked.size,rpc:quoteFetch.stats(),verification});
+        lastPong,open:tracked.size,rpc:quoteFetch.stats(),verification,ws:wsTrace.flush()});
       void checkFinality();
     },20000);
     // Heartbeat reads the state of the currently connected socket.
@@ -275,7 +281,7 @@ function start(file, wallets) {
     clearInterval(heartbeat);
     clearTimeout(reconnectTimer);
     for (const t of timers) clearTimeout(t);
-    emit("STOP",{open:tracked.size});
+    emit("STOP",{open:tracked.size,ws:wsTrace.flush()});
     socket?.terminate();
     process.exit(0);
   };

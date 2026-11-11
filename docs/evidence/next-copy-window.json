@@ -1,6 +1,8 @@
 {
   "start": "2026-11-11T11:47:00+05:00",
   "end": "2026-11-13T11:47:00+05:00",
+  "observerExpectedStop": "2026-11-13T11:53:21.276+05:00",
+  "priorAudit": "next-copy-window-interim.json",
   "wallets": [
     "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm",
     "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
