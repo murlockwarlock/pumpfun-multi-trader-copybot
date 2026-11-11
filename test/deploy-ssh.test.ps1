@@ -30,6 +30,7 @@ $fake = {
     $probe.Calls++
     Assert-Equal $Arguments[-1] 'timeout 20s bash -s -- 2026-11-11T06:47:00Z'
     if (!$InputText.Contains($start) -or !$InputText.Contains($end)) { throw 'Missing remote status markers' }
+    if (!$InputText.EndsWith("`nexit`n")) { throw 'The remote payload needs an LF-terminated exit' }
     if ($probe.Calls -eq 1) {
         return @{ ExitCode = 255; Lines = @('ssh: connect to host private port 22: Connection timed out') }
     }

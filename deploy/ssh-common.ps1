@@ -48,7 +48,10 @@ function Invoke-DeployReadOnlySsh {
     # Separate an exit from the remote script from OpenSSH's own exit 255.
     $marker = '__COPYBOT_STATUS_STARTED__'
     $endMarker = '__COPYBOT_STATUS_FINISHED__'
-    $inputText = "printf '%s\n' '$marker'`ntrap 'echo $endMarker' EXIT`n" + $Command.Replace("`r", '')
+    # Windows PowerShell can append CRLF to native stdin. End the Bash
+    # payload on a complete LF line and exit before any appended CR.
+    $inputText = "printf '%s\n' '$marker'`ntrap 'echo $endMarker' EXIT`n" +
+        $Command.Replace("`r", '') + "`nexit`n"
     $arguments = @($Options) + @('-T', $Destination, "timeout 20s bash -s -- $RemoteArguments")
     for ($attempt = 1; $attempt -le 2; $attempt++) {
         $result = & $RunSsh $arguments $inputText
