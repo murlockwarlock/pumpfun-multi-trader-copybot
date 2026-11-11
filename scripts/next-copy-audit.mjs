@@ -1,4 +1,5 @@
 import { observationReason } from "./next-copy-reasons.mjs";
+import { runInput, sameSizePair } from "./next-copy-economics.mjs";
 
 const EXITS=["10s","30s","120s","target"];
 const CONFIRMED_HEARTBEAT_MAX_MS=45000;
@@ -65,9 +66,11 @@ export function coverage(rows,wallet,start,end) {
 
 function count(map,key) { map[key]=(map[key]??0)+1; }
 
-export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSeconds=900}) {
+export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSeconds=900,includePairs=false}) {
   const out={};
-  const legacy=rows.find(r=>r.type==="START")?.budgetVersion!==2;
+  const init=rows.find(r=>r.type==="START");
+  const legacy=init?.budgetVersion!==2;
+  const input=runInput(init);
   for (const wallet of wallets) {
     const own=rows.filter(r=>r.wallet===wallet&&r.at>=start&&r.at<=end);
     const counts={BUY:{},SOURCE:{},SELL:{}};
@@ -90,7 +93,7 @@ export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSecond
         knownBuy.add(r.signature);
         eligible.add(r.signature);
       }
-      if (r.type==="BUY_QUOTE" && eligible.has(r.signature)) buys.set(r.signature,r);
+      if (r.type==="BUY_QUOTE" && eligible.has(r.signature) && sameSizePair(r,r,input)) buys.set(r.signature,r);
       if (r.type==="UNKNOWN" && counts[r.phase]) {
         const category=observationReason(r.reason);
         count(counts[r.phase],legacy&&category==="OWN_RPC_BUDGET"?"OWN_BUDGET_OR_COOLDOWN":category);
@@ -103,7 +106,7 @@ export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSecond
       for (const r of own) {
         if (r.type!=="SELL_QUOTE"||r.kind!==kind||pairs.has(r.signature)) continue;
         const b=buys.get(r.signature);
-        if (!b||b.quantityRaw!==r.quantityRaw) continue;
+        if (!b||!sameSizePair(b,r,input)) continue;
         if (finalized.get(b.signature)!==b.slot ||
             (kind==="target"&&(!r.exitSignature||finalized.get(r.exitSignature)!==r.exitSlot))) {
           finalityUnknown++;
@@ -122,7 +125,21 @@ export function auditRun(rows,{start,end,wallets,finalityEnd=end,exitLimitSecond
       horizons[kind]={pairs:pairs.size,unknown:eligible.size-pairs.size,finalityUnknown,
         pendingAtCutoff,
         netLamports:pairs.size?String(total):null,withoutBestLamports:pairs.size>1?String(total-best):null,
-        netWithoutRentRecoveryLamports:rent.length&&rent.every(v=>v!==undefined)?String(rent.reduce((a,b)=>a+BigInt(b),0n)):null};
+        netWithoutRentRecoveryLamports:rent.length&&rent.every(v=>v!==undefined)?String(rent.reduce((a,b)=>a+BigInt(b),0n)):null,
+        ...(includePairs?{observations:exits.map(s=>{
+          const b=buys.get(s.signature);
+          return {signature:s.signature,sourceSlot:b.slot,exitSignature:s.exitSignature??null,exitSlot:s.exitSlot??null,
+            dueAt:s.dueAt,buySlot:b.quote?.marketContextSlot,sellSlot:s.quote?.marketContextSlot,
+            buyMaxSlot:b.quote?.marketContextMaxSlot,sellMaxSlot:s.quote?.marketContextMaxSlot,
+            buyStartedAt:b.quote?.startedAtMs,sellStartedAt:s.quote?.startedAtMs,
+            buyVenue:b.quote?.venue,sellVenue:s.quote?.venue,
+            buyAt:b.at,sellAt:s.at,quantityRaw:b.quantityRaw,netLamports:s.netLamports,
+            entryDriftBps:b.entryDriftBps,buyLatencyMs:b.latencyMs,sellLatencyMs:s.latencyMs,
+            buyImpactBps:b.quote?.priceImpactBps,sellImpactBps:s.quote?.priceImpactBps,
+            buyReserves:b.quote?.reserves,sellReserves:s.quote?.reserves,
+            rentLamports:Number.isFinite(b.quote?.rentSol)?Math.round(b.quote.rentSol*1e9):null,
+            netWithoutRentRecoveryLamports:s.netIfRentNotRecoveredLamports};
+        })}:{})};
     }
     const span=coverage(rows,wallet,start,end);
     const rents=[...buys.values()].map(r=>Math.round(r.quote?.rentSol*1e9)).filter(Number.isSafeInteger);

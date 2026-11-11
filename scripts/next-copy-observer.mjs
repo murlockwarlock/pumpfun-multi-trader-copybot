@@ -10,14 +10,12 @@ import { inspectTrade } from "./copy-candidate-trade.mjs";
 import { observerBudget } from "./next-copy-budget.mjs";
 import { quoteFailure } from "./next-copy-reasons.mjs";
 import { wsDiagnostics } from "./next-copy-ws-diagnostics.mjs";
+import { CONTROL_INPUT, FIXED_FEE, SLIPPAGE_BPS, discount, modelNet, parseSizeSol } from "./next-copy-economics.mjs";
 
-const INPUT = 5_000_000n;
-const FIXED_FEE = 110_000n;
-const SLIPPAGE_BPS = 100;
+export { modelNet };
 const DEADLINE = 2500;
 const HORIZONS = [10, 30, 120];
 const HOLD_LIMIT = 900;
-const discount = amount => amount * BigInt(10_000 - SLIPPAGE_BPS) / 10_000n;
 
 export function modelBuyQuantity(quote) {
   const expected = BigInt(quote.expectedTokenOutRaw);
@@ -25,21 +23,18 @@ export function modelBuyQuantity(quote) {
   return discount(expected) > floor ? discount(expected) : floor;
 }
 
-export function modelNet(quote) {
-  return discount(BigInt(quote.expectedSolOutRaw)) - INPUT - 3n * FIXED_FEE;
-}
-
 export function timely(quote, sourceSlot, dueAt, now) {
   return quoteFailure(quote,sourceSlot,dueAt,now,DEADLINE)===null;
 }
 
-function start(file, wallets) {
+function start(file, wallets, input) {
   if (!file || !wallets.length || wallets.length > 5 || new Set(wallets).size !== wallets.length) {
-    throw Error("Usage: next-copy-observer.mjs JOURNAL.jsonl WALLET [up to four more]");
+    throw Error("Usage: next-copy-observer.mjs JOURNAL.jsonl WALLET [up to four more] [--size-sol=0.06]");
   }
   wallets.forEach(w => new PublicKey(w));
   const http = process.env.COPY_OBSERVER_RPC ?? "https://api.mainnet-beta.solana.com";
   const ws = process.env.COPY_OBSERVER_WS ?? "wss://api.mainnet-beta.solana.com";
+  const study = process.env.COPY_OBSERVER_STUDY ? JSON.parse(process.env.COPY_OBSERVER_STUDY) : undefined;
   const run = randomUUID();
   const out = fs.openSync(file, "a");
   const emit = (type, data = {}) => fs.writeSync(out,
@@ -119,7 +114,8 @@ function start(file, wallets) {
     } catch(error) {emit("FINALITY_POLL_ERROR",{reason:errorCode(error)});}
   }
   async function quoteSell(pos, kind, dueAt, minSlot, signature = null, exitSlot = null) {
-    const data = {...pos.ids,kind,dueAt,minSlot,exitSignature:signature,exitSlot,quantityRaw:pos.quantity.toString()};
+    const data = {...pos.ids,kind,dueAt,minSlot,exitSignature:signature,exitSlot,quantityRaw:pos.quantity.toString(),
+      inputLamports:input.toString()};
     if (closed || Date.now()-dueAt > DEADLINE) return unknown("SELL",data,"deadline_before_quote");
     try {
       const quote = await marketBudget.run(pos.ids.wallet,"SELL",()=>executor.quoteShadow("SELL",pos.ids.mint,pos.quantity.toString(),{
@@ -129,8 +125,8 @@ function start(file, wallets) {
       if (failure) return unknown("SELL",{...data,latencyMs:ended-dueAt,
         marketContextSlot:quote.marketContextSlot,marketCommitment:quote.marketCommitment},failure);
       emit("SELL_QUOTE",{...data,quote,latencyMs:ended-dueAt,
-        minOutRaw:discount(BigInt(quote.expectedSolOutRaw)).toString(),netLamports:modelNet(quote).toString(),
-        netIfRentNotRecoveredLamports:(modelNet(quote)-pos.rent).toString(),
+        minOutRaw:discount(BigInt(quote.expectedSolOutRaw)).toString(),netLamports:modelNet(quote,input).toString(),
+        netIfRentNotRecoveredLamports:modelNet(quote,input,pos.rent).toString(),
         networkFeeLamports:FIXED_FEE.toString(),closeFeeLamports:FIXED_FEE.toString()});
     } catch (error) { unknown("SELL",data,errorCode(error)); }
   }
@@ -182,7 +178,7 @@ function start(file, wallets) {
     p.entry = (async () => {
       if (Date.now()-observedAt > DEADLINE) return unknown("BUY",ids,"verification_deadline");
       try {
-        const quote = await marketBudget.run(wallet,"BUY",()=>executor.quoteShadow("BUY",t.mint,INPUT.toString(),{
+        const quote = await marketBudget.run(wallet,"BUY",()=>executor.quoteShadow("BUY",t.mint,input.toString(),{
           marketCommitment:"confirmed",minContextSlot:slot,venueHint:t.venue,
           targetAveragePriceSol:t.averagePriceSol,maxEntryDriftBps:2500}));
         const ended = Date.now();
@@ -195,7 +191,9 @@ function start(file, wallets) {
         p.rent = BigInt(Math.round(quote.rentSol*1e9));
         p.quantity = quantity;
         p.marketSlot = quote.marketContextMaxSlot ?? quote.marketContextSlot;
-        emit("BUY_QUOTE",{...ids,quote,inputLamports:INPUT.toString(),quantityRaw:p.quantity.toString(),
+        emit("BUY_QUOTE",{...ids,quote,inputLamports:input.toString(),quantityRaw:p.quantity.toString(),
+          entryDriftBps:(Number(input)/1e9/(Number(quote.expectedTokenOutRaw)/10**quote.tokenDecimals)/
+            t.averagePriceSol-1)*10000,
           minOutRaw:p.quantity.toString(),latencyMs:ended-observedAt,networkFeeLamports:FIXED_FEE.toString(),
           closeFeeLamports:FIXED_FEE.toString()});
         for (const horizon of HORIZONS) {
@@ -288,8 +286,15 @@ function start(file, wallets) {
   process.on("SIGINT",shutdown);
   process.on("SIGTERM",shutdown);
   emit("START",{wallets,commitment:"confirmed",deadlineMs:DEADLINE,horizons:HORIZONS,holdLimitSeconds:HOLD_LIMIT,
-    slippageBps:SLIPPAGE_BPS,budgetVersion:2,networkFeeComponentsLamports:{base:5000,priority:100000,tip:5000}});
+    slippageBps:SLIPPAGE_BPS,inputLamports:input.toString(),budgetVersion:2,study,
+    networkFeeComponentsLamports:{base:5000,priority:100000,tip:5000}});
   setTimeout(shutdown,48*3600*1000);
   connect();
 }
-if (process.argv[1] && import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href) start(process.argv[2],process.argv.slice(3));
+if (process.argv[1] && import.meta.url===pathToFileURL(fs.realpathSync(process.argv[1])).href) {
+  const [file,...args]=process.argv.slice(2);
+  const sizes=args.filter(arg=>arg.startsWith("--size-sol="));
+  if (sizes.length>1) throw Error("Specify only one size per run");
+  const input=sizes.length?parseSizeSol(sizes[0].slice("--size-sol=".length)):CONTROL_INPUT;
+  start(file,args.filter(arg=>!arg.startsWith("--size-sol=")),input);
+}

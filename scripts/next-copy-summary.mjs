@@ -1,9 +1,13 @@
 import fs from "node:fs";
 import { pathToFileURL } from "node:url";
+import { runInput, sameSizePair } from "./next-copy-economics.mjs";
 
 export function summarize(rows) {
   const result = {};
   const runs = new Map();
+  const sizes=new Map(rows.filter(r=>r.type==="START").map(r=>[r.run,runInput(r)]));
+  const input=runInput({inputLamports:sizes.values().next().value});
+  if ([...sizes.values()].some(size=>size!==input)) throw Error("Summarize one input size at a time or use next-copy-size-compare.mjs");
   const walletData = wallet => result[wallet] ??= {
     signals:0,eligibleBuy:0,eligibleSell:0,buyQuotes:0,buyRate:null,ineligible:0,unknown:{},exits:{}
   };
@@ -18,7 +22,7 @@ export function summarize(rows) {
     if (r.type === "SIGNAL") w.signals++;
     if (r.type === "INELIGIBLE") w.ineligible++;
     if (r.type === "ELIGIBLE") w[r.side==="BUY"?"eligibleBuy":"eligibleSell"]++;
-    if (r.type === "BUY_QUOTE") {w.buyQuotes++;run.buys.set(key,r);}
+    if (r.type === "BUY_QUOTE" && sameSizePair(r,r,input)) {w.buyQuotes++;run.buys.set(key,r);}
     if (r.type === "SELL_QUOTE") run.exits.push(r);
     if (r.type === "UNKNOWN") w.unknown[r.phase] = (w.unknown[r.phase]??0)+1;
   }
@@ -29,7 +33,7 @@ export function summarize(rows) {
       const id = key+":"+sell.kind;
       if (used.has(id)) continue;
       const buy = run.buys.get(key);
-      if (!buy || buy.quantityRaw !== sell.quantityRaw) continue;
+      if (!buy || !sameSizePair(buy,sell,input)) continue;
       used.add(id);
       const exits = walletData(sell.wallet).exits;
       const tally = exits[sell.kind] ??= {quoted:0,finalityUnknown:0,nets:[]};

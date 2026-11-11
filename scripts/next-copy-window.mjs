@@ -3,6 +3,7 @@ import {setTimeout as wait} from "node:timers/promises";
 import {auditRun} from "./next-copy-audit.mjs";
 import {reconcile} from "./next-copy-reconcile.mjs";
 import path from "node:path";
+import { breakEven, runInput } from "./next-copy-economics.mjs";
 
 const args=process.argv.slice(2);
 const shouldWait=args.includes("--wait");
@@ -55,7 +56,7 @@ for (const [id,all] of rows) {
   const data=auditRun(list,{start:runStart,end:cutoff,finalityEnd,wallets:init.wallets,
     exitLimitSeconds:init.holdLimitSeconds});
   const health=list.filter(r=>r.type==="HEALTH"&&r.at<=cutoff).at(-1);
-  runs[id]={startedAt:init.at,lastAt:last.at,lastHealthAt:health?.at??null,rpc:health?.rpc??null,
+  runs[id]={startedAt:init.at,inputLamports:runInput(init).toString(),lastAt:last.at,lastHealthAt:health?.at??null,rpc:health?.rpc??null,
     stopAt:stopped<0?null:list[stopped].at,ignoredAfterStop:afterStop,
     verificationRpc:health?.verification??null,wallets:data};
   for (const r of list) if (r.type==="SIGNAL"&&r.at>=start&&r.at<=cutoff) {
@@ -84,8 +85,6 @@ const lines=["# Итоговое окно prospective shadow","",
   "Окно по Кызылорде "+fmt(start)+" – "+fmt(end)+". Срез "+fmt(cutoff)+". "+
   (cutoff<end?"IN PROGRESS.":"Экспериментальное окно завершено. Финальность источников учитывается до "+fmt(finalityEnd)+
     ". Котировки с timestamp после границы исключены."),"",
-  "Минимальный выход до безубыточности после проскальзывания — 0,005330000 SOL. Это +6,60% к вложенным 0,005 SOL. "+
-  "До SELL haircut 100 bps требуется минимум 5 383 839 lamports (+7,67678%) на моделируемое количество после BUY haircut. "+
   "Влияние потери rent приведено отдельным net. Не менее 50 валидных пар на основном горизонте и достаточное покрытие нужны для оценки. "+
   "Независимая сверка использует finalized историю, без восстановления котировок. [Solana RPC](https://solana.com/docs/rpc/http/getsignaturesforaddress)",""];
 const coverageByWallet={};
@@ -128,7 +127,10 @@ for (const wallet of manifest.wallets) {
   for (const [id,r] of Object.entries(runs)) {
     const w=r.wallets[wallet];
     if (!w) continue;
+    const input=BigInt(r.inputLamports),threshold=breakEven(input);
     lines.push("### Run `"+id+"`","",
+      "Размер "+fmtSol(input)+" SOL. Для безубыточности нужно "+fmtSol(threshold.minOut)+
+      " SOL после SELL haircut или "+fmtSol(threshold.sellQuote)+" SOL до него (после торговой комиссии SDK).","",
       "Начат "+fmt(r.startedAt)+", последняя запись "+fmt(r.lastAt)+". Зафиксировано "+
       w.signals+" сигналов, "+w.observedBuy+" BUY по логам или подтверждённым телам, "+w.eligibleBuy+
       " допустимых BUY, "+w.timelyBuy+" своевременных котировок"+
@@ -142,7 +144,7 @@ for (const wallet of manifest.wallets) {
       (r.verificationRpc?" Проверки: "+JSON.stringify(r.verificationRpc)+".":" Для проверок доступны только журналированные отказы."),"",
       ...(w.rentRangeLamports?["Оценка rent по BUY "+fmtSol(w.rentRangeLamports[0])+"–"+
         fmtSol(w.rentRangeLamports[1])+" SOL. При невозврате максимального наблюдавшегося rent для безубыточности "+
-        "нужно получить "+fmtSol(5330000+w.rentRangeLamports[1])+" SOL после SELL haircut.",""]:[]),
+        "нужно получить "+fmtSol(breakEven(input,BigInt(w.rentRangeLamports[1])).minOut)+" SOL после SELL haircut.",""]:[]),
       "| Выход | Пары | UNKNOWN | Из них не наступил срок | Из них финальность UNKNOWN | Net, SOL | Без лучшей | Без возврата rent |",
       "|---|---:|---:|---:|---:|---:|---:|---:|",
       ...Object.entries(w.horizons).map(([kind,h])=>"| "+kind+" | "+h.pairs+" | "+h.unknown+" | "+h.pendingAtCutoff+

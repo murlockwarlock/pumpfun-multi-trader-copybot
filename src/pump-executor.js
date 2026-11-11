@@ -663,9 +663,13 @@ export class PumpExecutor {
         );
         expectedTokenOutRaw = quote.base.toString();
         if (shadowDetails) {
+          const spot=Number(state.poolQuoteAmount.add(state.pool.virtualQuoteReserves ?? new BN(0)).toString())/
+            Number(state.poolBaseAmount.toString());
+          const average=Number(quote.internalQuoteWithoutFees.toString())/Number(expectedTokenOutRaw);
           shadowQuoteDetails = {
             pool: market.pool.toBase58(),
             reserves: { baseRaw: state.poolBaseAmount.toString(), quoteRaw: state.poolQuoteAmount.toString() },
+            priceImpactBps: (average/spot-1)*10000,
             tradingFeeUpperBoundRaw: budget.sub(quote.internalQuoteWithoutFees).toString(),
             tradingFeeDetail: "Budget minus SDK net quote input, including rounding remainder"
           };
