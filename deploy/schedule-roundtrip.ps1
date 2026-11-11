@@ -31,14 +31,9 @@ if (-not $ServerConfigPath) {
 }
 $server = Read-EnvFile $ServerConfigPath
 $destination = "$($server.DEPLOY_USER)@$($server.DEPLOY_HOST)"
-$sshArgs = @(
-    '-i', $server.DEPLOY_KEY,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-p', $server.DEPLOY_PORT,
-    $destination
-)
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $server.DEPLOY_KEY -Port $server.DEPLOY_PORT)
+$sshArgs = $sshOptions + @($destination)
 $remoteCommand = "node_path=`$(sudo readlink -f /proc/`$(systemctl show -p MainPID --value '$ServiceName')/exe) && cd '$RemoteAppDir/current' && sudo -u ubuntu env MANUAL_ORDER_DIR='$RemoteAppDir/shared/data/manual-orders' `"`$node_path`" deploy/schedule-roundtrip.mjs '$Mint' '$HoldMinutes'"
 & ssh @sshArgs $remoteCommand
 if ($LASTEXITCODE -ne 0) { throw 'Unable to schedule manual round-trip' }

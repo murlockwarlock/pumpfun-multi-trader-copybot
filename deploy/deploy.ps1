@@ -172,21 +172,10 @@ $remoteBundle = "/tmp/pr6spr-paper-copybot-$releaseId.tar.gz"
 $remoteEnv = "/tmp/pr6spr-paper-copybot-$releaseId.env"
 $remoteScript = "/tmp/pr6spr-paper-copybot-$releaseId-deploy.sh"
 $destination = "$userName@$hostName"
-$sshArgs = @(
-    '-i', $keyPath,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-p', $port,
-    $destination
-)
-$scpArgs = @(
-    '-i', $keyPath,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-P', $port
-)
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $keyPath -Port $port)
+$sshArgs = $sshOptions + @($destination)
+$scpArgs = @(Get-DeploySshOptions -Key $keyPath -Port $port -Scp)
 
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 try {

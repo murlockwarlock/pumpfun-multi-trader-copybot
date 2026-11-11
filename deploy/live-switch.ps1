@@ -18,14 +18,9 @@ Get-Content -LiteralPath $ServerConfigPath | ForEach-Object {
         $server[$key.Trim()] = $value.Trim().Trim('"').Trim("'")
     }
 }
-$sshArgs = @(
-    '-i', $server['DEPLOY_KEY'],
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-p', $server['DEPLOY_PORT'],
-    "$($server['DEPLOY_USER'])@$($server['DEPLOY_HOST'])"
-)
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $server['DEPLOY_KEY'] -Port $server['DEPLOY_PORT'])
+$sshArgs = $sshOptions + @("$($server['DEPLOY_USER'])@$($server['DEPLOY_HOST'])")
 $killFile = '/opt/pr6spr-paper-copybot/shared/data/STOP_LIVE'
 $remote = switch ($Action) {
     'stop' { "sudo install -o ubuntu -g ubuntu -m 0600 /dev/null '$killFile' && echo live=stopped" }
