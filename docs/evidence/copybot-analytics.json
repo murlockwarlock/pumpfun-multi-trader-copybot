@@ -1,0 +1,1114 @@
+{
+  "generatedAt": "2026-11-12T10:22:05.658Z",
+  "status": "INVALID",
+  "observerRuns": [
+    "15915ccb-07c5-4e38-813f-56dceb361511"
+  ],
+  "observer": {
+    "start": 1794380001276,
+    "end": 1794421479505,
+    "wallets": [
+      "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+      "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+      "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+    ],
+    "rows": 18606,
+    "currentRun": "15915ccb-07c5-4e38-813f-56dceb361511"
+  },
+  "funnel": {
+    "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+      "allTime": {
+        "status": "UNPROVEN",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 0,
+          "parsedSignal": 0,
+          "confirmed": 0,
+          "eligibleBuy": 0,
+          "buyQuote": 0,
+          "sellQuote": 0,
+          "closed": 0
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 0,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 0,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {},
+        "latencies": {
+          "signalToPrepared": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "buyQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "sellQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "PROVEN"
+        }
+      },
+      "currentRun": {
+        "status": "UNPROVEN",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 0,
+          "parsedSignal": 0,
+          "confirmed": 0,
+          "eligibleBuy": 0,
+          "buyQuote": 0,
+          "sellQuote": 0,
+          "closed": 0
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 0,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 0,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {},
+        "latencies": {
+          "signalToPrepared": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "buyQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "sellQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "PROVEN"
+        }
+      },
+      "last24h": {
+        "status": "UNPROVEN",
+        "start": 1794392525658,
+        "end": 1794478925658,
+        "counts": {
+          "wsNotification": 0,
+          "parsedSignal": 0,
+          "confirmed": 0,
+          "eligibleBuy": 0,
+          "buyQuote": 0,
+          "sellQuote": 0,
+          "closed": 0
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 0,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 0,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {},
+        "latencies": {
+          "signalToPrepared": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "buyQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "sellQuote": {
+            "count": 0,
+            "p50": null,
+            "p95": null,
+            "p99": null
+          },
+          "rpc": {
+            "count": 370688,
+            "p50": 205,
+            "p95": 813,
+            "p99": 1657
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "PROVEN"
+        }
+      }
+    },
+    "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+      "allTime": {
+        "status": "INVALID",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 2421,
+          "parsedSignal": 3882,
+          "confirmed": 2206,
+          "eligibleBuy": 2219,
+          "buyQuote": 426,
+          "sellQuote": 412,
+          "closed": 412
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 1676,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 1793,
+          "buyQuoteToSellQuote": 14,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 135,
+          "REPEAT_OPEN_POSITION": 1432,
+          "OWN_RPC_BUDGET": 606,
+          "RPC_ERROR": 217,
+          "TARGET_SELL_NOT_SEEN": 93,
+          "DEADLINE": 1,
+          "POSITION_CAP": 141,
+          "WS_GAP": 78,
+          "OTHER": 4,
+          "VERIFICATION_QUEUE": 5,
+          "PRICE_LIMIT": 2
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 426,
+            "p50": 1855,
+            "p95": 2350,
+            "p99": 2459
+          },
+          "buyQuote": {
+            "count": 426,
+            "p50": 1417,
+            "p95": 1816,
+            "p99": 2040
+          },
+          "sellQuote": {
+            "count": 1087,
+            "p50": 1449,
+            "p95": 2040,
+            "p99": 2386
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      },
+      "currentRun": {
+        "status": "INVALID",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 2421,
+          "parsedSignal": 3882,
+          "confirmed": 2206,
+          "eligibleBuy": 2219,
+          "buyQuote": 426,
+          "sellQuote": 412,
+          "closed": 412
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 1676,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 1793,
+          "buyQuoteToSellQuote": 14,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 135,
+          "REPEAT_OPEN_POSITION": 1432,
+          "OWN_RPC_BUDGET": 606,
+          "RPC_ERROR": 217,
+          "TARGET_SELL_NOT_SEEN": 93,
+          "DEADLINE": 1,
+          "POSITION_CAP": 141,
+          "WS_GAP": 78,
+          "OTHER": 4,
+          "VERIFICATION_QUEUE": 5,
+          "PRICE_LIMIT": 2
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 426,
+            "p50": 1855,
+            "p95": 2350,
+            "p99": 2459
+          },
+          "buyQuote": {
+            "count": 426,
+            "p50": 1417,
+            "p95": 1816,
+            "p99": 2040
+          },
+          "sellQuote": {
+            "count": 1087,
+            "p50": 1449,
+            "p95": 2040,
+            "p99": 2386
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      },
+      "last24h": {
+        "status": "INVALID",
+        "start": 1794392525658,
+        "end": 1794478925658,
+        "counts": {
+          "wsNotification": 1601,
+          "parsedSignal": 2587,
+          "confirmed": 1441,
+          "eligibleBuy": 1451,
+          "buyQuote": 294,
+          "sellQuote": 284,
+          "closed": 284
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 1146,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 1157,
+          "buyQuoteToSellQuote": 10,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "REPEAT_OPEN_POSITION": 886,
+          "RPC_ERROR": 174,
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 87,
+          "OWN_RPC_BUDGET": 408,
+          "TARGET_SELL_NOT_SEEN": 70,
+          "POSITION_CAP": 117,
+          "WS_GAP": 75,
+          "OTHER": 4,
+          "VERIFICATION_QUEUE": 5,
+          "PRICE_LIMIT": 2
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 294,
+            "p50": 1830,
+            "p95": 2338,
+            "p99": 2459
+          },
+          "buyQuote": {
+            "count": 294,
+            "p50": 1417,
+            "p95": 1785,
+            "p99": 1982
+          },
+          "sellQuote": {
+            "count": 741,
+            "p50": 1452,
+            "p95": 2032,
+            "p99": 2369
+          },
+          "rpc": {
+            "count": 370688,
+            "p50": 205,
+            "p95": 813,
+            "p99": 1657
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      }
+    },
+    "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+      "allTime": {
+        "status": "INVALID",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 57,
+          "parsedSignal": 104,
+          "confirmed": 47,
+          "eligibleBuy": 47,
+          "buyQuote": 17,
+          "sellQuote": 17,
+          "closed": 17
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 57,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 30,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "MARKET_OR_LIQUIDITY": 7,
+          "OTHER": 12,
+          "TARGET_SELL_NOT_SEEN": 17,
+          "RPC_ERROR": 5,
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 3,
+          "OWN_RPC_BUDGET": 11,
+          "POSITION_CAP": 14
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 17,
+            "p50": 1632,
+            "p95": 2315,
+            "p99": 2315
+          },
+          "buyQuote": {
+            "count": 17,
+            "p50": 1197,
+            "p95": 2093,
+            "p99": 2093
+          },
+          "sellQuote": {
+            "count": 47,
+            "p50": 1348,
+            "p95": 1668,
+            "p99": 2005
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      },
+      "currentRun": {
+        "status": "INVALID",
+        "start": null,
+        "end": null,
+        "counts": {
+          "wsNotification": 57,
+          "parsedSignal": 104,
+          "confirmed": 47,
+          "eligibleBuy": 47,
+          "buyQuote": 17,
+          "sellQuote": 17,
+          "closed": 17
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 57,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 30,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "MARKET_OR_LIQUIDITY": 7,
+          "OTHER": 12,
+          "TARGET_SELL_NOT_SEEN": 17,
+          "RPC_ERROR": 5,
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 3,
+          "OWN_RPC_BUDGET": 11,
+          "POSITION_CAP": 14
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 17,
+            "p50": 1632,
+            "p95": 2315,
+            "p99": 2315
+          },
+          "buyQuote": {
+            "count": 17,
+            "p50": 1197,
+            "p95": 2093,
+            "p99": 2093
+          },
+          "sellQuote": {
+            "count": 47,
+            "p50": 1348,
+            "p95": 1668,
+            "p99": 2005
+          },
+          "rpc": {
+            "count": 526215,
+            "p50": 205,
+            "p95": 793,
+            "p99": 1698
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      },
+      "last24h": {
+        "status": "INVALID",
+        "start": 1794392525658,
+        "end": 1794478925658,
+        "counts": {
+          "wsNotification": 51,
+          "parsedSignal": 83,
+          "confirmed": 41,
+          "eligibleBuy": 41,
+          "buyQuote": 15,
+          "sellQuote": 15,
+          "closed": 15
+        },
+        "missing": {
+          "wsNotificationToParsedSignal": 0,
+          "parsedSignalToConfirmed": 42,
+          "confirmedToEligibleBuy": 0,
+          "eligibleBuyToBuyQuote": 26,
+          "buyQuoteToSellQuote": 0,
+          "sellQuoteToClosed": 0
+        },
+        "reasons": {
+          "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 3,
+          "RPC_ERROR": 4,
+          "MARKET_OR_LIQUIDITY": 4,
+          "OWN_RPC_BUDGET": 11,
+          "POSITION_CAP": 14,
+          "TARGET_SELL_NOT_SEEN": 15,
+          "OTHER": 11
+        },
+        "latencies": {
+          "signalToPrepared": {
+            "count": 15,
+            "p50": 1637,
+            "p95": 2315,
+            "p99": 2315
+          },
+          "buyQuote": {
+            "count": 15,
+            "p50": 1197,
+            "p95": 2093,
+            "p99": 2093
+          },
+          "sellQuote": {
+            "count": 41,
+            "p50": 1348,
+            "p95": 1668,
+            "p99": 2005
+          },
+          "rpc": {
+            "count": 370688,
+            "p50": 205,
+            "p95": 813,
+            "p99": 1657
+          }
+        },
+        "ws": {
+          "gaps": 0,
+          "gapMs": 0,
+          "errors": 0
+        },
+        "finalized": {
+          "available": 3644,
+          "coverage": "INCOMPLETE"
+        }
+      }
+    }
+  },
+  "shadow": {
+    "allTime": {
+      "label": "allTime",
+      "trades": 56,
+      "wins": 8,
+      "losses": 48,
+      "netSol": 0.043805838999999985,
+      "sourceSignatures": [
+        "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"
+      ],
+      "firstAt": "2026-10-30T20:25:59.783Z",
+      "lastAt": "2026-11-10T08:56:57.256Z"
+    },
+    "last24h": {
+      "label": "last24h",
+      "trades": 0,
+      "wins": 0,
+      "losses": 0,
+      "netSol": null,
+      "sourceSignatures": [],
+      "firstAt": null,
+      "lastAt": null
+    },
+    "currentService": {
+      "status": "UNKNOWN",
+      "reason": "shadow journal has no service-start/run-id marker"
+    },
+    "bySource": {
+      "moonfishappeali": {
+        "label": "moonfishappeali",
+        "trades": 19,
+        "wins": 0,
+        "losses": 19,
+        "netSol": -0.056675601000000006,
+        "sourceSignatures": [
+          "34cVG54sc3m9ZPdNE7GZ144kwfUZtG77LxS5z6Ppep94qF7RuRnr5GbxGPW2n7pAWm5muVTXVV5rJiCcTp5zkei7",
+          "4VEk35kexZJuqgQk2mEKtrnXGeGR8d5bLSEvwPK4v3tsPUEhw9NNAUuLMonnJsf4UpnXoj68GAYEBoEccyAGj6Wc",
+          "59ARb1EY83bEgvQKbK9xVd3N5gWUwnPg9E4h9S12Ryo6sM56VxD6jxeXHViCTyM8cmdnomCZBK91wEt1hKnbcq5n",
+          "3cesVt8uLZKQrraZrrCzgJF2aNzS7GHfdvCidje8DVy4qdH1s5f9VQJ8NCeYJNoctftuCd9figzCbWpoRUzzQCNt",
+          "3W3zY38hHAGXujmxx8EWQ3ovD2PrmBLALuiBV8tk3gwbtLVKSdBdhyCDEdS4ac26w3jffqb3Uaanrok9rqkUz3pb",
+          "SmnXch5FL1dSc7m51EezuuSAKA5ibBWwtcUkqxQTuBg5UbNTGotmTKmGXKbFwJ286XewTNVLsNQzptnrsJMHUke",
+          "5YNV1Ne8ikmRdfjcaJreEQ7XaHu2xgQysFSNZJYEfK69A2tM28DTdTx5GaY46a3nkHNDHsxx2z58pCPV6odfTNYd",
+          "3z8rJqxZotpU7tBV7ANwnW1LQXGs7Pf9K4xkBXQHMR8kEDvmmnabpVxjiC9pmgq8ajvLb6YNm759kJfjsH1vaibV",
+          "2kjvDYe3hS4z56rckG4hCWdvqHkMCAYFaydwaPZHAuzqfFs58Z8EHkTpnWEooFm1KtNfbbeHN4KJrVKbwTaFsmJh",
+          "64NnzgCdAoD821dZXp2dVVBDYeECkjvpDiKbwR6oRFYzmfeSuxC4XctAWtwpexDV1CWUKmRatMcaYUx1VzmpVGkU",
+          "5ddZZuLzNb7TGDocuCPNea7zzzgYdebQcMdpZzdMCv79p5MN5JfQUTj4QyDD1iH3D1bGdmkYk1hGXPKAkar2qgMG",
+          "44o7X2kyemX2hw1t1FPpoV6r5CgK8cCXf7wtC5dHAUnioUXthBSK4kwji9ZNrU3pavd3wW8NUfi1JpvFUqQUXUqY",
+          "4V3CvSmWhCZKm9cWiwnVbLWpThsyVtg3chEmNgbKJdwCNMtv93R6Zwan52eBNLuawGeTcapw7G66HzbcyciWfanC",
+          "38UodZGDHjVf7Vsjoe6yKf296K9SjxVwitK4mTVDP8DZuVzUhfeFBKhyhjWjXxUFbUD9kBVA7YY2P5qcwoA7QwiM",
+          "4QdTNismGRgkETiJTtSBf7PqXDvd259VaD8vAwnQcNoaRVeZoqJzf4u1NoXATX63GLDmSvEZi2YLUwT1QXt2kyVc",
+          "2gDUu8rrdpUmFEQaJukN1KCaEtpyCSore4zssDx87fdbQSWAy3GHEnqnnvkhrz4U5rqZkMCnZhpvgRfm4DRutpMr",
+          "54iQ454NGPzVrDQAHFXguFajyf7YaVpiz16iaMmdvcsNVtJ6VGJQTCGuMnCnBsvyJjwoxdfWDXcoPL7nDzaVVekR",
+          "5RuH8tebx3xzoEBbxkCG9FHMdAH7hu5QTiKFU15fJ3DMpwX9At5m52AZcf3FJTi43bB2cGib9UKMFDGYTfDPFfYV",
+          "5B1iuGXHvBt6F1w1FTDwbu8B5xLwpmtVwEQpRVW3CSYvVGUjFPBhuxMZ8d6MB616a3s1wYT8ceyZWVnjmbq1fF3d"
+        ],
+        "firstAt": "2026-10-30T20:25:59.783Z",
+        "lastAt": "2026-11-01T05:57:33.982Z"
+      },
+      "sniper_7ufmve": {
+        "label": "sniper_7ufmve",
+        "trades": 6,
+        "wins": 1,
+        "losses": 5,
+        "netSol": -0.0033281509999999997,
+        "sourceSignatures": [
+          "3FvNvw6tFG9LnyjBae4kGruKDt7LDuqQpYAmrHnd43FHmpLPU7eUMbodLNgyaaHPCWhVJqp9jsYVZ1XNuyMpbaje",
+          "67nt11GwW632fcxKz5cHqyAo67YtTtLouxBG96yPe277Jhu4mRSbvzwSrbGSvvjsxancLNbp1GYG6N9sy4Lr4ZwZ",
+          "5y2UMLx6NzV2sZgzyVqzxLygNvMNFs7MNdEUiZiMyd6eZWofmfz1wVadKdp2cKF1dY4U9pmm2ZKPAppV5oJDCevt",
+          "56wdFgNwe8DoiP11vgd15ZyomUD9ckGq3kz1zn3UoaCyk7jd7kgEwk3cAgfuMeFapYH6mv7Lia7iqAjm9h79g69n",
+          "62uKfB4yzNp9Upnv5gGwz5sZmeMVMqNb6e3mcNLKBs5Ab2RWjNbrufFRCGeoHMtHKH1e7z6J14g5z2pgYBdZbPmZ",
+          "2aZwahAoQdrEdrwzdzSTeW66u8VikcY8iA38sUeQWP4bs57WbrS31aJXqURjQuSwVScBtWeshKQtbMMUAsHkYx8k"
+        ],
+        "firstAt": "2026-11-02T15:42:32.783Z",
+        "lastAt": "2026-11-04T16:06:06.336Z"
+      },
+      "candidate_4rt": {
+        "label": "candidate_4rt",
+        "trades": 17,
+        "wins": 5,
+        "losses": 12,
+        "netSol": -0.0013743309999999997,
+        "sourceSignatures": [
+          "567o3jZwxJLHc2HRZ124nbE9Nkb4aSPiTSJPDJSh22jecqqh7Pbou2QfNA1s5zVYCvXv1n4M6G39mRRMmLHfDf8X",
+          "2eGYJ3kRkt45F7mr5GyWj1g7JKpvKDGgLXRp6UH5VH75YZmgBMN7vcUijvgYqy8tBJSWMCp4m6Dqm9TLxev5zCBr",
+          "3iUXtWo4YwoPjCvk4Gs97qRpYg8zfS8AR8nkhF31qqNjbMBSbB5Ww2AAe8XDN8c1mJtgcD5561pFVg9cyGgpHQnA",
+          "mURv6tnrjQAS7dwQ68NbFPux3MWn2qvD7ATjnYfGBpxyg99UJZPasU7ocYtEbmD4DrnmSyty2bGAq4p81MLE3GX",
+          "4BKiFcUsLVxeiBoQiE46REmuEDttkHjE75rRBSkdKtpEYLdu5MWBYQnCk9cST7XwpP7gYgrTXTFS5pemz1GJDBbU",
+          "5YjYYRSLDuDHiJGADNsrstFiodMBpmJ2vcMVbiTSUsjCokx3rYQ95CpGG1NkJLbNxYVYtpzzSWvTFE9wSC6ueZhF",
+          "2vBX4wN4xAaDoznUr4QQhkJuwGswj1cacW4zeaix2UrnrYW7ZGQz54WhnmEjzb3QWDrKV91pyPus3G4zAtgnBsuq",
+          "2D2TEfG1ZLBqbnJZk6Bq715J9CrgwzYJqC3H6KhJpk1XDMJp4nK2SoijztTLuh5CRscRkNwxVt4ocYwQ6LFVK8Vk",
+          "3iNgC3LUmXy7KmHAw5tTgDZjka9xmhutYQ7xr7x3W17kURHeQBocazhLW2kpjNcu3nxMP3h25VYeFynW7hSy8nit",
+          "5TwsYCmja2ZMQwZzeHPJyttfSEBefogbSbaqEPXoHfWCfEnhE9mksU9Lp9xVS7jovhsiMQAbmzw49ZBXcsdfsab3",
+          "5D2PuLAnSPX3VSqrDyr9xrZXoJGTSRnxSWAwBGuJa7wbTFEy2sp6CB7BgMU5qKCGKSKLQWS81bYnFxfTYhUknqYq",
+          "4rTzkqYKBnWaFVY4hNan62No5ckv9BSwejBrof3k9KwUoYEXBiDwgdStoPuMQtE3Vt49XYUefSMTSZeS6sa7wFf6",
+          "nTgvEam37HPkRaJYDJNfWXMk6Zb7aF3mYB6LQfEJb1m8ZDNhShdQhf3XSWSVWzRWehcqLdi8cURFjuH623iEAvq",
+          "2Wfpqpg6rki1z3Wcm1KHmenLsrf6myiFn26QBWHxpC1wSAT2diUTpjaHWyb4sCeo8ck3z53sBBsLNVZ6BgyZ7sB5",
+          "66AWfjPNp3WQ91phsTJQRXqh4TmntVhjHGy6F9U6XtuCbPDorEgNNWV4EDBxH7wg68MVdQ9WzF9QCKf9njNedDwB",
+          "2y1Q1QGhBLMK3ew5WPea2YnZ2QgodkdkmCy1A43KJJzh7RN9pYL4Ak59ybkrBLBm7kbtj7JBq7oWt7qTzk4SwDUY",
+          "2Y4hwdtPUWVSyCPeqFdbxupUuoRw6aVJBsvHtAC2CsdkwepaxfTkNieRJNcVwj2kZrzeFmpoT9hPXXQKgeTkDmB5"
+        ],
+        "firstAt": "2026-11-03T21:28:19.515Z",
+        "lastAt": "2026-11-08T00:57:44.314Z"
+      },
+      "kaaox": {
+        "label": "kaaox",
+        "trades": 14,
+        "wins": 2,
+        "losses": 12,
+        "netSol": 0.10518392199999999,
+        "sourceSignatures": [
+          "5nic9aqbka6HnZpy1wSAADoMLpmGsef6virfDUFpmxegjKiwvJQEqeWkXSvHHaogkysbZ47BdV3BExKcyHXRL6Tv",
+          "3HbbMuyTkfQ5QeBMJkwWew2ohMaMLemZgFrzY5pN18Kb3SkZDT15ddyp8AUFsuQTqUiwedzeyeSFX8yULNyxEGfJ",
+          "4rnCdhVVm9yYL93Y3ohp4pVdCLKUncHvQkemLYXyNbXfVA64B44skN8Q35QRFzycJ8ShTt3jfdKYcEVHvjiYaYzG",
+          "3UDWvCJXZuaqQ5RredjMRDsnMyz32nvuc4DhX7qrqi9py5Ngv2wk7WWUqU8WDA9GqCKvx6jCdZUWki6qscNHPzMf",
+          "32dGiPui6z638wAZFi3WV6ZsmxB8YLnLieY8rWinSxFNUQRT7EfFJsWYMEGcRC2Ze36P2amVDWn3kHzY3qmeChXK",
+          "5GeXML4WWCbT7AeJCcLdp1GBLCev9ZKZUcu7kAwSVwzbWZer34HxM9tpG5GDk8SjMvJQDhTw6QHSezEYHupz3nwy",
+          "3JJrR2U2d1WSekQiBbX77NVFGW3u7mjiXothFzdbJ7hQshrKZhFtGpEcL8cuhjst72Y1nKBcKWwbDymF6ZH9asbV",
+          "6ng3VkN38CWgxmAZzpYgs7oRSy6n37gpRRhVLLTFx6sePkGJAjci52uVKX6bdAgJxsXsUpuuw48SUvcuLGKvpq8",
+          "wkVXES3TCmbFqS8f6V5MPQVdLMHYpxisJBmWjhRGUf2Qp83h7u398NriWETXXdfF1ytjn87Rz8MNzAqBxJbNLRa",
+          "4gMJpWeWRJ5jk1wdP9jBgajENi1ZBaLxAtzMSuGXWXw2ntbc1KzkbHwf9bWszoRigQmrYj9Ra9LSA8U3Y3SZK8jV",
+          "5BrUBpczswNwSt33Dp8EKvLY6pLSuPbCnMTytyCkN9GDaBTj17iGa6jwMBeiZBtExRFpBQD7ky26njbH3XC1rDdk",
+          "5J3BcYkiQpqxNafLbe75rZVxoxzwrC88ohQZc1Bh4xM6LQBDfwrDBNqnhS3zdwoE45nRhccXzw3Pwfv1xPCtUG3u",
+          "2vy35UoVFNa5W4DqwfaWi25giweLni3JQUXqfqwJZF8cyhkzbRz7RuyBwAWsD4p2Nbxs2PxszvqSBijcqfZNAPHS",
+          "2h3anUchtoRXn3DZ9WNFE3BadXKBhAvuWL5p4QAJt6qy2yDmNLHac4wYHaHsMftiDGYPe2TN2yZusW7uQWsVBeC8"
+        ],
+        "firstAt": "2026-11-06T15:08:40.891Z",
+        "lastAt": "2026-11-10T08:56:57.256Z"
+      },
+      "sniper_launch_follow": {
+        "label": "sniper_launch_follow",
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "netSol": null,
+        "sourceSignatures": [],
+        "firstAt": null,
+        "lastAt": null
+      },
+      "ordinary_copy_shadow": {
+        "label": "ordinary_copy_shadow",
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "netSol": null,
+        "sourceSignatures": [],
+        "firstAt": null,
+        "lastAt": null
+      },
+      "independent_prospective_observer": {
+        "label": "independent_prospective_observer",
+        "trades": 0,
+        "wins": 0,
+        "losses": 0,
+        "netSol": null,
+        "sourceSignatures": [],
+        "firstAt": null,
+        "lastAt": null
+      }
+    },
+    "duplicates": [],
+    "repeatedHistoricalSnapshot": true,
+    "sourceRows": 2131,
+    "uniqueRows": 56
+  },
+  "sizeStudy": {
+    "status": "UNPROVEN",
+    "reason": "single-mint smoke, no common prospective source signature and no paired trader exits",
+    "fx": {
+      "source": "https://api.exchange.coinbase.com/products/SOL-USD/ticker",
+      "usdPerSol": "84.03",
+      "tradeAt": "2026-11-11T15:12:19.925090499Z",
+      "observedAt": "2026-11-11T15:12:23.566Z"
+    },
+    "scenarios": [
+      {
+        "id": "control",
+        "inputLamports": "5000000",
+        "venue": "pumpswap",
+        "marketContextSlot": 468169158,
+        "commitment": "confirmed",
+        "contextVerified": true,
+        "rpcCalls": 15,
+        "buyRpcCalls": 8,
+        "sellRpcCalls": 7,
+        "rpcMs": 1272.6218999999999,
+        "quoteMs": 964,
+        "sellQuoteMs": 689,
+        "priceImpactBps": 0.7073067059426563,
+        "sellImpactBps": 0.6986131479769231,
+        "rentSol": 0.00151384,
+        "netSol": -0.000551174,
+        "netWithoutRentSol": -0.002065014,
+        "sellAvailable": true,
+        "independent": true
+      },
+      {
+        "id": "usd5",
+        "inputLamports": "59502558",
+        "venue": "pumpswap",
+        "marketContextSlot": 468169267,
+        "commitment": "confirmed",
+        "contextVerified": true,
+        "rpcCalls": 14,
+        "buyRpcCalls": 7,
+        "sellRpcCalls": 7,
+        "rpcMs": 918.7941000000028,
+        "quoteMs": 678,
+        "sellQuoteMs": 649,
+        "priceImpactBps": 8.393380227911251,
+        "sellImpactBps": 8.295584283395385,
+        "rentSol": 0.00151384,
+        "netSol": -0.003048911,
+        "netWithoutRentSol": -0.004562751,
+        "sellAvailable": true,
+        "independent": true
+      },
+      {
+        "id": "usd10",
+        "inputLamports": "119005117",
+        "venue": "pumpswap",
+        "marketContextSlot": 468169378,
+        "commitment": "confirmed",
+        "contextVerified": true,
+        "rpcCalls": 14,
+        "buyRpcCalls": 7,
+        "sellRpcCalls": 7,
+        "rpcMs": 849.569800000012,
+        "quoteMs": 623,
+        "sellQuoteMs": 599,
+        "priceImpactBps": 16.78650543467386,
+        "sellImpactBps": 16.563297642794296,
+        "rentSol": 0.00151384,
+        "netSol": -0.005956871,
+        "netWithoutRentSol": -0.007470711,
+        "sellAvailable": true,
+        "independent": true
+      },
+      {
+        "id": "usd20",
+        "inputLamports": "238010234",
+        "venue": "pumpswap",
+        "marketContextSlot": 468169494,
+        "commitment": "confirmed",
+        "contextVerified": true,
+        "rpcCalls": 14,
+        "buyRpcCalls": 7,
+        "sellRpcCalls": 7,
+        "rpcMs": 842.5318000000116,
+        "quoteMs": 618,
+        "sellQuoteMs": 606,
+        "priceImpactBps": 33.57288352236587,
+        "sellImpactBps": 33.0165602101018,
+        "rentSol": 0.00151384,
+        "netSol": -0.012336189,
+        "netWithoutRentSol": -0.013850029,
+        "sellAvailable": true,
+        "independent": true
+      },
+      {
+        "id": "usd30",
+        "inputLamports": "357015351",
+        "venue": "pumpswap",
+        "marketContextSlot": 468169607,
+        "commitment": "confirmed",
+        "contextVerified": true,
+        "rpcCalls": 14,
+        "buyRpcCalls": 7,
+        "sellRpcCalls": 7,
+        "rpcMs": 905.1238000000012,
+        "quoteMs": 678,
+        "sellQuoteMs": 658,
+        "priceImpactBps": 50.6460944531395,
+        "sellImpactBps": 49.63932517643044,
+        "rentSol": 0.00151384,
+        "netSol": -0.019479585,
+        "netWithoutRentSol": -0.020993425,
+        "sellAvailable": true,
+        "independent": true
+      }
+    ],
+    "comparableProspectivePairs": 0,
+    "rpcCalls": 71,
+    "rpcBudget": {
+      "oneBuyPlusOneSell": 71,
+      "oneBuyPlusFourSells": 176,
+      "perObserverAccountBudgetPerMinute": 45,
+      "verificationBudgetPerMinute": 18,
+      "conclusion": "single observer budget is insufficient for five sizes at one signal; shared WS can reduce duplicate verification but quote reads still need a separate pool or a staged research run"
+    },
+    "requiredBudgetNote": "five independent quotes use separate account reads; this smoke has one BUY and one SELL only, so no 10s/30s/120s/target comparison exists"
+  },
+  "candidates": {
+    "target": 100,
+    "cachedFiles": 36,
+    "screenedCandidates": 36,
+    "authenticatedSigners": 39,
+    "missingToTarget": 61,
+    "status": "UNPROVEN_INSUFFICIENT_CACHED_ADDRESSES",
+    "excludedForInsufficientCoverage": [
+      "3CdG3mgaumweQsUpkMgp5b5wHFgd3nJwh2aDw1ktZA5i",
+      "5rFYLMVFDGWfwSpz6eZENwyNPYPxPfJJJSShGj9QmuZZ",
+      "Ah5bQDFT3s3NUtgcU81AeSgw7EJW871Y9YwrvyVFbBc4",
+      "BtFRspyDDBRjSXyTmMsm9tYRouuaZZdpB9Kmh5mSkrWu",
+      "BtkFpES41nrkA9bqXpQ8yiYUKinVFcysrNF5MWfogKip",
+      "CpzqSPJgFLYFYn6auiyp5aR6rxh67EzWLuJ7AZ5c1YbB",
+      "EXaEiYhku3ggMVK9QtxUkRXFXuAmoR2gaxPvDF5HtMAK",
+      "9tH2zRYdS3X7PEcsPno3GST1EHe8GX8CSNih1pKpamAp",
+      "Gau71FxKMomuyHrKQyifWEYhdmU2kcc4cHbEjJhBi1Xk",
+      "GgDAijkjPdaXNdiPQyqKZuTDE6DeTXSYxrfvCjBorZst",
+      "EwJYY4q2rcrdEH26doRbYX9JxbpYPSNZvRLgzhPKi418",
+      "i5t7PczfEQWvsnpMa5bSiSQLFGz8u6CRmcmPWtQ4RRN"
+    ],
+    "top": [
+      {
+        "name": "cand_j45",
+        "wallet": "J45JdaaqLniscYrf5QRLSbhumkyos5de8j5veoddeHCx",
+        "listed": 3215,
+        "trades": 2100,
+        "buys": 901,
+        "sells": 1199,
+        "eligibleBuy": 901,
+        "eligibleSell": 1199,
+        "unsupported": 0,
+        "nonSol": 0,
+        "venues": {
+          "undefined": 2100
+        },
+        "score": 5101
+      },
+      {
+        "name": "cand_7ufmve",
+        "wallet": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+        "listed": 2569,
+        "trades": 1467,
+        "buys": 153,
+        "sells": 1314,
+        "eligibleBuy": 153,
+        "eligibleSell": 1314,
+        "unsupported": 0,
+        "nonSol": 0,
+        "venues": {
+          "undefined": 1467
+        },
+        "score": 3087
+      },
+      {
+        "name": "cand_2jxpmu",
+        "wallet": "2JxPmU9UU5KhSQ7h5v8PfhgbxPQhHNyBqNrhPAjPiWCu",
+        "listed": 1997,
+        "trades": 1299,
+        "buys": 431,
+        "sells": 868,
+        "eligibleBuy": 431,
+        "eligibleSell": 868,
+        "unsupported": 0,
+        "nonSol": 0,
+        "venues": {
+          "undefined": 1299
+        },
+        "score": 3029
+      },
+      {
+        "name": "cand_grok1r",
+        "wallet": "grok1r9rhYXqniD79L3eeBB6bBLd8ytGrhDRa6kgRNt",
+        "listed": 12000,
+        "trades": 895,
+        "buys": 157,
+        "sells": 738,
+        "eligibleBuy": 157,
+        "eligibleSell": 738,
+        "unsupported": 0,
+        "nonSol": 0,
+        "venues": {
+          "undefined": 895
+        },
+        "score": 1947
+      },
+      {
+        "name": "cand_8zp",
+        "wallet": "8zpZdVXdBcybJCNwxhgTqMTA2tNo9FqLm5VM8N6E1ixx",
+        "listed": 736,
+        "trades": 665,
+        "buys": 497,
+        "sells": 168,
+        "eligibleBuy": 497,
+        "eligibleSell": 168,
+        "unsupported": 0,
+        "nonSol": 0,
+        "venues": {
+          "undefined": 665
+        },
+        "score": 1827
+      }
+    ],
+    "overlapWithRawSigners": 0
+  },
+  "serverStatus": {
+    "checkedAt": "2026-11-12T10:20:14.300Z",
+    "source": "deploy/status.ps1 read-only SSH check",
+    "systemd": "active",
+    "stopLive": true,
+    "liveTraderWallets": "none",
+    "runningLiveTraderWallets": "none",
+    "liveDispatchOrSettlement24h": {
+      "LIVE_SUBMITTED": 0,
+      "LIVE_SUBMIT_UNKNOWN": 0,
+      "LIVE_BUY": 0,
+      "LIVE_SELL": 0,
+      "LIVE_CLOSE": 0
+    },
+    "systemdJournalSubmitOrAmbiguous24h": 0,
+    "websocketChannels": {
+      "primary": {
+        "connected": true,
+        "subscriptions": 3
+      },
+      "fallback": {
+        "connected": true,
+        "subscriptions": 3
+      }
+    },
+    "fastMetrics": {
+      "detected": 219,
+      "verified": 219,
+      "mismatches": 0,
+      "verificationErrors": 0
+    },
+    "shadowProbeCoverage": {
+      "kaaox": {
+        "requested": 47,
+        "completed": 39,
+        "failed": 8
+      },
+      "sniper_7ufmve": {
+        "requested": 24,
+        "completed": 1,
+        "failed": 23
+      }
+    },
+    "note": "No server restart, bot restart, deployment, or real transaction was performed by this check."
+  },
+  "decisions": {
+    "sniper_7ufmve": "UNPROVEN_HISTORICAL_ONLY",
+    "fiveSize": "UNPROVEN_NO_COMMON_PROSPECTIVE_PAIRS",
+    "candidateSearch": "UNPROVEN_INSUFFICIENT_CACHE"
+  },
+  "limitations": [
+    "shadow PnL is modelled and is not real profit",
+    "current service run-id is absent from archived shadow-trades.jsonl",
+    "finalized backfill validates signal coverage only and never supplies a quote price",
+    "the five-size smoke uses one mint and cannot select a strategy winner"
+  ]
+}

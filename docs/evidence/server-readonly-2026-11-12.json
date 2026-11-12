@@ -1,0 +1,31 @@
+{
+  "checkedAt": "2026-11-12T10:20:14.300Z",
+  "source": "deploy/status.ps1 read-only SSH check",
+  "systemd": "active",
+  "stopLive": true,
+  "liveTraderWallets": "none",
+  "runningLiveTraderWallets": "none",
+  "liveDispatchOrSettlement24h": {
+    "LIVE_SUBMITTED": 0,
+    "LIVE_SUBMIT_UNKNOWN": 0,
+    "LIVE_BUY": 0,
+    "LIVE_SELL": 0,
+    "LIVE_CLOSE": 0
+  },
+  "systemdJournalSubmitOrAmbiguous24h": 0,
+  "websocketChannels": {
+    "primary": { "connected": true, "subscriptions": 3 },
+    "fallback": { "connected": true, "subscriptions": 3 }
+  },
+  "fastMetrics": {
+    "detected": 219,
+    "verified": 219,
+    "mismatches": 0,
+    "verificationErrors": 0
+  },
+  "shadowProbeCoverage": {
+    "kaaox": { "requested": 47, "completed": 39, "failed": 8 },
+    "sniper_7ufmve": { "requested": 24, "completed": 1, "failed": 23 }
+  },
+  "note": "No server restart, bot restart, deployment, or real transaction was performed by this check."
+}
