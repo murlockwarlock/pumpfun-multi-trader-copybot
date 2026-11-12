@@ -1,0 +1,1354 @@
+{
+  "auditAt": "2026-11-09T16:04:06.559Z",
+  "epochStartedAt": "2026-11-09T08:19:37.000Z",
+  "backfill": {
+    "endpointHost": "mainnet.helius-rpc.com",
+    "fallbackUsed": true,
+    "sameHttpHost": true,
+    "boundaryCovered": true,
+    "pageRows": 100,
+    "requests": 32,
+    "errors": {},
+    "listed": 31,
+    "wsMissingFromBackfill": [],
+    "successfulBackfillOnly": []
+  },
+  "classes": {
+    "OTHER": 12,
+    "CREATE+BUY": 2,
+    "SELL": 14,
+    "BUY": 1
+  },
+  "entries": [
+    {
+      "signature": "2LW8brVep5mGe9UV3gbg9sjtsGVKetjgYwwEcfnKfrGU2jdfKNATQhLnnsem3Kg3U6FiT6Ydi6VQ7o8HNP3RVygt",
+      "wsAtMs": 1794220080324,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467283856,
+      "blockTime": 1794220080,
+      "classification": "OTHER",
+      "signer": false,
+      "solDeltaLamports": 46593406957,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "11111111111111111111111111111111",
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "transfer",
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+        "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "bZ1CoKLrsJ6YH6JJCvtTQMrdv7gyzAt7wuiSA5XvMCspKaZVAp7vwsBwuYwWDMu4NwXq4z3UXNnsDCJtoL3NNkA",
+      "wsAtMs": 1794220094621,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467283923,
+      "blockTime": 1794220094,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -15000505000,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2ULZVghhB7v3SoTXC1esa92Heqo467MAzsB7Xy1PPed848qvPHrwoepcgEVMsT5p9RYBAvpC9nNMmiCq5jQX3dNf",
+      "wsAtMs": 1794220096676,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467283931,
+      "blockTime": 1794220096,
+      "classification": "OTHER",
+      "signer": false,
+      "solDeltaLamports": 1,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2qRoFsRVFVg8QjLAWog6rnGNvQTJxqeoPnVxcAVmQFaaMrGZN5f4m6fjBjcN5CQdKxNKKMcpNopJzMfpNnw1KRL9",
+      "wsAtMs": 1794220106184,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467283976,
+      "blockTime": 1794220106,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -15000505000,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "jyFzACXg1JFGTBfN6DBkzEZVJi7rL7LU6iN5BokhoHRVCAqz1ViDQRTXcQfgfiL1idDgi71hf1VCjEwfK1VRuMo",
+      "wsAtMs": 1794220149969,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467284182,
+      "blockTime": 1794220149,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -14923900808,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "338N12eoCJK9BiBGBBVbcwnWpeAzj7huG2V8nKUxBAXBz7UmBrhYs3knbjJB6ZG3HL7jkQS1jo9CjHEJXXXNBhUk",
+      "wsAtMs": 1794220170725,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467284279,
+      "blockTime": 1794220170,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -9949501374,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "ZkTr1fmT2r7TLFhTaDpnmcNB5eGUYkmQYuzPcY31Gv493Q6c64yqqU4nxuCTinjvea4Jj8Er7yKiAqk4Uq6hCta",
+      "wsAtMs": 1794220198585,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467284410,
+      "blockTime": 1794220198,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -11939249280,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "5Cwrc4UNPEwUUGRcyrnKpYb1Q1BQei5wejbBJ2QC5aJBr74B1dj3eC2MseFXEAn3uS4W3528bow8rGrvJ5D9eigc",
+      "wsAtMs": 1794235111130,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467353977,
+      "blockTime": 1794235111,
+      "classification": "CREATE+BUY",
+      "signer": true,
+      "solDeltaLamports": -3511130760,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "89926288216972"
+      },
+      "programs": [
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "11111111111111111111111111111111",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "createIdempotent",
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [
+        {
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g",
+          "buyInstruction": "buy_exact_quote_in_v3",
+          "tokenDeltaRaw": "89926288216972"
+        }
+      ],
+      "pumpInstructions": [
+        {
+          "name": "create_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": null
+        },
+        {
+          "name": "buy_exact_quote_in_v3",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "BUY"
+      ],
+      "confirmedLaunches": [
+        {
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "reason": "unsupported_non_sol_curve"
+        }
+      ],
+      "confirmedDecoderMatches": true,
+      "reason": "unsupported_non_sol_curve"
+    },
+    {
+      "signature": "RPaTiPhxXekKHJJUr6uweRByy3j12gzwxtELUwZsNgzqRfGK3pjZF1mpCXpk35MTf6r4KjnrJjUvvin3Lf9fDVP",
+      "wsAtMs": 1794235112133,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467353981,
+      "blockTime": 1794235112,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -31060000,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "psXKPZ2Lf3KpVY3fjGSNYosWUn1LcAeys7EFroooHc9WVKSYf7HeWcdgJjuSZfCzCJ1wUAE2ztTd56ihdBVazkd",
+      "wsAtMs": 1794235113313,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467353987,
+      "blockTime": 1794235113,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 294530168,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-4496314410848"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2Fbene2YZs3ApNnG3ayVBxUwA2993xsA7mNEdBXK7D7hU5KqoJf2cdA5kHErodusxim8g4c9kq5HMWpR3oArfWX2",
+      "wsAtMs": 1794235114421,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467353992,
+      "blockTime": 1794235114,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 296243193,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-4271498690306"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "3RYwoQgQLAZzdC5ZknC3FLgzdJK4ZPsDP4bfZARyKgmE8RFpbAhsD87mmbTfCagZ4ww5XHz9v4ezasQae2s5uBnE",
+      "wsAtMs": 1794235115253,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467353996,
+      "blockTime": 1794235115,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 304466813,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-4057923755790"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "ryPzJWLWuHz4z81pVZ2bmJnjiUsfr8xyaGUSi7r9ncjfxocvfzRrpj1QxBpwAZUnnjt5XWMV9XMLkQ6JwtvC6VK",
+      "wsAtMs": 1794235117320,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354006,
+      "blockTime": 1794235117,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 495079577,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-7710055136002"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "PHnDExZPNuqtz37UdZ2paFqgpDycRUx57v1sFUNWCY28bGFC3RQjw3s2XPyQkzsKp1sx2oy2C4mEwjYHYyCdpiL",
+      "wsAtMs": 1794235119374,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354016,
+      "blockTime": 1794235119,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 1438535666,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-17347624056006"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2ucRqwuJFyfCrdMhGJAm7Qkibn1cAeRDRH69XgNZBwC4GXCVGvRCPCDWFDmimLbcfeuyauEBtRNie5Hnjfjx7mfV",
+      "wsAtMs": 1794235121281,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354023,
+      "blockTime": 1794235121,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 2088565759,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-26021436084010"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2pASupc56qoSybnmAFppfX7V9KPbzTXm7kTamYKJpKPc7mZjxgPAmNBEWhSbBmNW22X7aD4bTsWmaFYuzVZL6hqH",
+      "wsAtMs": 1794235123303,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354031,
+      "blockTime": 1794235123,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 1915469743,
+      "tokenDeltasRaw": {
+        "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump": "-26021436084010"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "YSinbJQAbupssTtcqEixxUwtQkbkjkWnsJmMNMepump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "4dTLwjfQxxs5SLhff1cS3Zs7cyvc4qR48JrQtBDvb4iE",
+          "quoteMint": "98sMhvDwXj1RQi5c5Mndm3vPe9cBqPrbLaufMXFNMh5g"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "3Mf3hyPVigGfouKoBthVi1we32DAYvhL5dRvRuriS4tqwrJFrziNuDQ8duGAKhQp3cQWTKHWdp6etrTKYhzkcHVb",
+      "wsAtMs": 1794235149653,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354155,
+      "blockTime": 1794235150,
+      "classification": "OTHER",
+      "signer": false,
+      "solDeltaLamports": 0,
+      "tokenDeltasRaw": {
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "100"
+      },
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "createIdempotent",
+        "transferChecked"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "UVWYuBVDhSBc2P3Rj91kAmLgBXS2j7nHjGshW12myQxm6r5nyqVdfbzHu5boXfXQDph1DapSrMVwKGFKqjpsoj6",
+      "wsAtMs": 1794235155792,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354184,
+      "blockTime": 1794235155,
+      "classification": "OTHER",
+      "signer": false,
+      "solDeltaLamports": 1000,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "PWfLcDyhUF2SnbBEQR3HapwuWRKcViWy7Xwg2Z4YFNFinXrwmCfGRVngN23z5vosmPLLTddQCsmnwueB7mJ32Lw",
+      "wsAtMs": 1794235906640,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357688,
+      "blockTime": 1794235906,
+      "classification": "BUY",
+      "signer": true,
+      "solDeltaLamports": -3501025000,
+      "tokenDeltasRaw": {
+        "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn": "225047701361"
+      },
+      "programs": [
+        "11111111111111111111111111111111",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "topLevel": [
+        "transfer",
+        "transfer",
+        "transfer",
+        "transfer",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": "non_pump_swap"
+    },
+    {
+      "signature": "26B5v8Uutg8YAxWNyG7gGeAqWnn8VYZadNzeh8fw4Gg3wU8YanB9cAmUcjV3pqLmCXTitHHKBFC9mBBa4jKeRxc8",
+      "wsAtMs": 1794235906643,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357688,
+      "blockTime": 1794235906,
+      "classification": "CREATE+BUY",
+      "signer": true,
+      "solDeltaLamports": -17358840,
+      "tokenDeltasRaw": {
+        "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn": "-225047701361",
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "89010641862581"
+      },
+      "programs": [
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "11111111111111111111111111111111",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd"
+      ],
+      "topLevel": [
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [
+        {
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn",
+          "buyInstruction": "buy_exact_quote_in_v3",
+          "tokenDeltaRaw": "89010641862581"
+        }
+      ],
+      "pumpInstructions": [
+        {
+          "name": "create_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": null
+        },
+        {
+          "name": "buy_exact_quote_in_v3",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "BUY"
+      ],
+      "confirmedLaunches": [
+        {
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "reason": "unsupported_non_sol_curve"
+        }
+      ],
+      "confirmedDecoderMatches": true,
+      "reason": "unsupported_non_sol_curve"
+    },
+    {
+      "signature": "44rtLmjtURnUEzmq8XpjWfvwqbZnTd8mAYWCwRW3prh5WAoaLFcYPKjaBwnwv1atwHgFRmGdmx7vZAeCDVCw9Tyu",
+      "wsAtMs": 1794235907006,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357690,
+      "blockTime": 1794235906,
+      "classification": "OTHER",
+      "signer": true,
+      "solDeltaLamports": -31060000,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "11111111111111111111111111111111"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "ComputeBudget111111111111111111111111111111",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "4dJ2g6iu4vCcidkDZ2xdjmn3DTne2D35SqDieqbzJ7Z7t2hhSeMqJYkpUoWFAdsENYNCQJ7P9d8BS5p8abnyaQJf",
+      "wsAtMs": 1794235908734,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357697,
+      "blockTime": 1794235908,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 288973319,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-4450532093129"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "3Ho1cLxgVRibhxkyrVufpPBtZfbCHosEubXt4QwqGP7RspVUVbLLTm1i3HJQfxBp3sD2HDSBxpx49yvUUSEE8n9Z",
+      "wsAtMs": 1794235909747,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357702,
+      "blockTime": 1794235909,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 300545890,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-4228005488472"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "3grnY9DN4ujas8yVc6EQsBmbtPqwyvXPLs3CxJ7hwHcxbUGgkuyZtWGig1YsMoLvdhXUx9q4zF7Sed1GfQx4eh6u",
+      "wsAtMs": 1794235910832,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357706,
+      "blockTime": 1794235910,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 300303822,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-4016605214049"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "2c3TZUiNk2k4hEE2AQaCrXF1GSGUkLeCQQLvcp6fuX66hcsKwQuAkjDv2XMVYHY1uLgNAaSxhYqPFaEdSSQyhX57",
+      "wsAtMs": 1794235912793,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357716,
+      "blockTime": 1794235912,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 478217388,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-7631549906693"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "yXmt8wQX3QrApwJaZ823opQEpz3qm6s7SSGRYDwxw5r9YqktmfLjg9G6HL7JcqnudYRRBgMc6Dhi2szMT23ANZo",
+      "wsAtMs": 1794235914740,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357725,
+      "blockTime": 1794235914,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 1224722390,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-17170987290059"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "5d1iKsGxkjQW75Jm6Lx2foT89zvVRvTJUSCUjp5nTM682yjXYPe1feKVKdcMPgur1BdidWLakg1GewrPNw6vmiE6",
+      "wsAtMs": 1794235916661,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357735,
+      "blockTime": 1794235916,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 1739896768,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-25756480935089"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "dB6HzCsaY3hM9k4M27NrC4Vx591ZkQ63Qc3oMHutNui7YoZNVYcPHvhc2HADKojnMRa7N9bUdceTUPMroGa8mde",
+      "wsAtMs": 1794235918829,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357744,
+      "blockTime": 1794235918,
+      "classification": "SELL",
+      "signer": true,
+      "solDeltaLamports": 1609036632,
+      "tokenDeltasRaw": {
+        "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump": "-25756480935090"
+      },
+      "programs": [
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "11111111111111111111111111111111",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+        "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo"
+      ],
+      "topLevel": [
+        "createIdempotent",
+        "J7pourVwqP1VtRNBiFNqbdGxwkx7ta2LHAURURRRJqmd",
+        "transfer"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [
+        {
+          "name": "sell_v2",
+          "mint": "58cewsceTBooPGTAFpfRSdAZYmXLKAH6qAPgJCwjpump",
+          "user": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
+          "curve": "EH2kzvX3mjGWWCeFBoEjYpGcGVEBwANPnVQRHKi5Sop6",
+          "quoteMint": "pumpCmXqMfrsAkQ5r49WcJnRayYRqmXz6ae8H7H9Dfn"
+        }
+      ],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [
+        "SELL"
+      ],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    },
+    {
+      "signature": "597HBwUQwSAs2CQu7MgCs19HQFcTzZJVUFgoD7DaKqTV1sjsQF5VQyBxfveSh3EJHqFMBxMRVNX4kGqiLepLVfqd",
+      "wsAtMs": 1794236519442,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467360534,
+      "blockTime": 1794236519,
+      "classification": "OTHER",
+      "signer": false,
+      "solDeltaLamports": 0,
+      "tokenDeltasRaw": {},
+      "programs": [
+        "ComputeBudget111111111111111111111111111111",
+        "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        "11111111111111111111111111111111",
+        "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+        "pfeeUxB6jkeY1Hxd7CsFCAjcbHA9rWtchMGdZ6VojVZ",
+        "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+      ],
+      "topLevel": [
+        "ComputeBudget111111111111111111111111111111",
+        "create",
+        "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+        "syncNative",
+        "closeAccount"
+      ],
+      "createBuy": [],
+      "pumpInstructions": [],
+      "wsLaunchReplay": 0,
+      "confirmedTradeEvents": 0,
+      "fallbackSides": [],
+      "confirmedLaunches": [],
+      "confirmedDecoderMatches": true,
+      "reason": null
+    }
+  ],
+  "backfillOnly": [
+    {
+      "signature": "3foEtVHSYDbwcVdHYASgs3RnBQ25X4kygr1StULzxT7iGubSF1sRs6TC1eoLx94wViWfx49fswDqottxYrUFxMhG",
+      "wsAtMs": null,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467357753,
+      "blockTime": 1794235920,
+      "classification": "FAILED",
+      "error": {
+        "InstructionError": [
+          1,
+          {
+            "Custom": 6003
+          }
+        ]
+      }
+    },
+    {
+      "signature": "5f4JimCDeZSwtSRkVHoA6chKqa2ArCRbc5Wn8JdctcPNX8EUd9ZuqtFFNWqhMrscXZkUCKm4uaKekehN5zyLX6dG",
+      "wsAtMs": null,
+      "confirmedBackfill": true,
+      "confirmedSlotMatches": true,
+      "slot": 467354040,
+      "blockTime": 1794235125,
+      "classification": "FAILED",
+      "error": {
+        "InstructionError": [
+          1,
+          {
+            "Custom": 6003
+          }
+        ]
+      }
+    }
+  ],
+  "websocket": {
+    "from": "2026-11-09T15:35:18.624Z",
+    "durationMs": 1727935,
+    "coverage": {
+      "candidate_4rt": {
+        "bothMs": 1697203,
+        "partialMs": 29980,
+        "noneMs": 752,
+        "primaryMs": 1727183,
+        "fallbackMs": 1697203
+      },
+      "kaaox": {
+        "bothMs": 1697202,
+        "partialMs": 29979,
+        "noneMs": 754,
+        "primaryMs": 1727181,
+        "fallbackMs": 1697202
+      },
+      "sniper_7ufmve": {
+        "bothMs": 1697202,
+        "partialMs": 29980,
+        "noneMs": 753,
+        "primaryMs": 1727182,
+        "fallbackMs": 1697202
+      }
+    },
+    "recovery": {
+      "primary": {
+        "closeCodes": {},
+        "reconnects": 0,
+        "reconnectsPerHour": 0,
+        "recoveryMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null
+        },
+        "pongRttMs": {
+          "n": 38,
+          "p50": 16,
+          "p95": 17,
+          "p99": 17
+        },
+        "timeouts": 0
+      },
+      "fallback": {
+        "closeCodes": {},
+        "reconnects": 0,
+        "reconnectsPerHour": 0,
+        "recoveryMs": {
+          "n": 0,
+          "p50": null,
+          "p95": null,
+          "p99": null
+        },
+        "pongRttMs": {
+          "n": 37,
+          "p50": 15,
+          "p95": 16,
+          "p99": 16
+        },
+        "timeouts": 0
+      }
+    }
+  },
+  "fast": {
+    "beforeMs": {
+      "n": 11,
+      "p50": 4,
+      "p95": 36,
+      "p99": 36
+    },
+    "afterMs": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "p99": null
+    },
+    "afterVerificationErrors": 0
+  }
+}

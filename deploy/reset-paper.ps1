@@ -18,14 +18,9 @@ Get-Content -LiteralPath $ServerConfigPath | ForEach-Object {
     }
 }
 
-$sshArgs = @(
-    '-i', $server['DEPLOY_KEY'],
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-p', $server['DEPLOY_PORT'],
-    "$($server['DEPLOY_USER'])@$($server['DEPLOY_HOST'])"
-)
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $server['DEPLOY_KEY'] -Port $server['DEPLOY_PORT'])
+$sshArgs = $sshOptions + @("$($server['DEPLOY_USER'])@$($server['DEPLOY_HOST'])")
 $archiveId = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
 $archiveDir = "/opt/pr6spr-paper-copybot/shared/data/archive/$archiveId"
 $remoteCommand = @"

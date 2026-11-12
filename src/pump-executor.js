@@ -1,4 +1,5 @@
 import BN from "bn.js";
+import { AsyncLocalStorage } from "node:async_hooks";
 import bs58 from "bs58";
 import {
   ComputeBudgetProgram,
@@ -9,6 +10,10 @@ import {
 } from "@solana/web3.js";
 import {
   createCloseAccountInstruction,
+  ExtensionType,
+  getAccountLen,
+  getAccountTypeOfMintType,
+  getExtensionTypes,
   getAssociatedTokenAddressSync,
   NATIVE_MINT,
   TOKEN_2022_PROGRAM_ID,
@@ -26,6 +31,7 @@ import {
 } from "@pump-fun/pump-sdk";
 import {
   buyQuoteInput as quotePumpAmmBuy,
+  sellBaseInput as quotePumpAmmSell,
   OnlinePumpAmmSdk,
   PUMP_AMM_SDK,
   supportsTradeV2
@@ -34,6 +40,12 @@ import { priorityMicroLamports, TransactionSender } from "./transaction-sender.j
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const JUPITER_SOL_MINT = NATIVE_MINT.toBase58();
+
+export function transactionMetadataCommitment(commitment) {
+  // Transaction history RPC is confirmed/finalized only; processed metadata
+  // must come from an explicit streaming provider, never this JSON-RPC call.
+  return commitment === "finalized" ? "finalized" : "confirmed";
+}
 
 function isTokenProgram(program) {
   return program.equals(TOKEN_PROGRAM_ID) || program.equals(TOKEN_2022_PROGRAM_ID);
@@ -88,25 +100,50 @@ function bnMax(left, right) {
 }
 
 export class PumpExecutor {
-  constructor(config, wallet, { enableFallback = true } = {}) {
+  constructor(config, wallet, { enableFallback = true, quoteOnly = false } = {}) {
     this.config = config;
     this.wallet = wallet;
+    this.shadowQuoteContext = new AsyncLocalStorage();
     this.connection = new Connection(config.rpcHttpUrl, {
+      ...(config.shadowReadOnlyFetch ? { disableRetryOnRateLimit: true } : {}),
       // Quote/build against the same processed bank that emitted the target
       // event. Safety balances and final reconciliation still use confirmed.
       commitment: "processed",
       wsEndpoint: config.rpcWsUrl,
+      fetch: async (url, options = {}) => {
+        const deadline = AbortSignal.timeout(config.rpcTimeoutMs ?? 10000);
+        const context=this.shadowQuoteContext.getStore();
+        let body=context ? JSON.parse(options.body) : null;
+        const contextual=body && ["getAccountInfo","getMultipleAccounts"].includes(body.method);
+        if (contextual) {
+          body.params[1]={...body.params[1],minContextSlot:context.minSlot,commitment:context.commitment};
+          options={...options,body:JSON.stringify(body)};
+        }
+        const started=performance.now();
+        const response=await (config.shadowReadOnlyFetch ?? fetch)(url, { ...options, signal: options.signal ? AbortSignal.any([options.signal, deadline]) : deadline });
+        if (context) { context.rpcCalls++; context.rpcMs+=performance.now()-started; }
+        if (contextual && response.ok) {
+          const json=await response.clone().json();
+          if (!json.error) {
+            const slot=json.result?.context?.slot;
+            if (!Number.isSafeInteger(slot)||slot<context.minSlot) throw Error("shadow_market_slot_unproven");
+            context.slots.push(slot);
+            context.firstContextAtMs??=Date.now();
+          }
+        }
+        return response;
+      },
       confirmTransactionInitialTimeout: config.liveConfirmationTimeoutMs
     });
     this.pump = new OnlinePumpSdk(this.connection);
     this.amm = new OnlinePumpAmmSdk(this.connection);
-    this.sender = new TransactionSender(config, this.connection);
+    this.sender = quoteOnly ? null : new TransactionSender(config, this.connection);
     this.marketCache = new Map();
     this.marketRequests = new Map();
     this.latestBlockhash = null;
     this.pumpParameters = null;
     this.rpcSource = enableFallback ? "primary" : "fallback";
-    this.fallbackExecutor = enableFallback && config.rpcFallbackHttpUrl
+    this.fallbackExecutor = !quoteOnly && enableFallback && config.rpcFallbackHttpUrl
       ? new PumpExecutor({
           ...config,
           rpcHttpUrl: config.rpcFallbackHttpUrl,
@@ -204,6 +241,94 @@ export class PumpExecutor {
     return BigInt(unpackAccount(account, info, tokenProgram).amount.toString());
   }
 
+  async tokenBalanceContext(mint, tokenProgram, commitment = "confirmed") {
+    const account = getAssociatedTokenAddressSync(
+      mint,
+      this.wallet.publicKey,
+      true,
+      tokenProgram
+    );
+    let result;
+    try {
+      if (typeof this.connection.getAccountInfoAndContext !== "function") {
+        throw new Error("token balance RPC does not provide context slots");
+      }
+      result = await this.connection.getAccountInfoAndContext(account, commitment);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      if (typeof this.fallbackExecutor.tokenBalanceContext !== "function") {
+        throw new Error("fallback token balance RPC does not provide context slots");
+      }
+      return this.fallbackExecutor.tokenBalanceContext(mint, tokenProgram, commitment);
+    }
+    const slot = Number(result?.context?.slot);
+    if (!Number.isSafeInteger(slot) || slot <= 0) {
+      throw new Error(`token balance RPC returned no valid ${commitment} context slot`);
+    }
+    const accountState = result.value ? unpackAccount(account, result.value, tokenProgram) : null;
+    return {
+      amount: accountState ? BigInt(accountState.amount.toString()) : 0n,
+      slot,
+      commitment,
+      delegate: accountState?.delegate?.toBase58() ?? null,
+      rpcSource: this.rpcSource
+    };
+  }
+
+  // A single processed account read is not a provenance proof: that bank can
+  // be rolled back.  FAST BUY captures the same ATA at processed, confirmed,
+  // and finalized commitments in parallel, keeps the highest observed amount
+  // (the conservative floor), and records the RPC context slots. A rooted
+  // finalized observation is necessary but not sufficient: LiveEngine also
+  // requires a dedicated-wallet flow-ledger proof before FAST can submit.
+  async tokenBalanceEvidence(mint, tokenProgram) {
+    const account = getAssociatedTokenAddressSync(
+      mint,
+      this.wallet.publicKey,
+      true,
+      tokenProgram
+    );
+    const commitments = ["processed", "confirmed", "finalized"];
+    try {
+      if (typeof this.connection.getAccountInfoAndContext !== "function") {
+        throw new Error("token balance RPC does not provide context slots");
+      }
+      const observations = await Promise.all(commitments.map(async commitment => {
+        const result = await this.connection.getAccountInfoAndContext(account, commitment);
+        const slot = Number(result?.context?.slot);
+        if (!Number.isSafeInteger(slot) || slot <= 0) {
+          throw new Error(`token balance RPC returned no valid ${commitment} context slot`);
+        }
+        const accountState = result.value ? unpackAccount(account, result.value, tokenProgram) : null;
+        const amount = accountState ? BigInt(accountState.amount.toString()) : 0n;
+        return {
+          commitment,
+          slot,
+          amount: amount.toString(),
+          delegate: accountState?.delegate?.toBase58() ?? null
+        };
+      }));
+      const amount = observations.reduce(
+        (highest, observation) => BigInt(observation.amount) > highest
+          ? BigInt(observation.amount) : highest,
+        0n
+      );
+      return {
+        amount,
+        proof: {
+          kind: "multi_commitment_account_context",
+          rooted: true,
+          noDelegate: observations.every(observation => observation.delegate === null),
+          observations,
+          rpcSource: this.rpcSource
+        }
+      };
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.tokenBalanceEvidence(mint, tokenProgram);
+    }
+  }
+
   async waitForTokenBalanceChange(
     mint,
     tokenProgram,
@@ -240,6 +365,7 @@ export class PumpExecutor {
     return {
       mint,
       mintSupply: new BN(mintAccount.supply.toString()),
+      mintAccount,
       tokenDecimals: mintAccount.decimals,
       tokenProgram: mintInfo.owner,
       pool,
@@ -272,6 +398,97 @@ export class PumpExecutor {
     });
   }
 
+  // Read-only shadow capability. Never calls prepare(), initialize(), sender,
+  // blockhash, simulation or signing. A public key alone is sufficient.
+  async quoteShadow(side, mintAddress, rawAmount, options = {}) {
+    const commitment=options.marketCommitment==="confirmed"?"confirmed":"processed";
+    return this.shadowQuoteContext.run({minSlot:options.minContextSlot??0,commitment,slots:[],rpcCalls:0,rpcMs:0},async()=>{
+      const c=this.shadowQuoteContext.getStore();
+      const started=Date.now();
+      let q;
+      try {q=await this.#quoteShadowOnce(side,mintAddress,rawAmount,options);}
+      catch(error) {
+        error.shadowQuoteTelemetry={marketCommitment:commitment,firstContextAtMs:c.firstContextAtMs??null,
+          rpcMs:c.rpcMs,rpcCalls:c.rpcCalls,quoteMs:Date.now()-started};
+        throw error;
+      }
+      return {...q,marketContextSlot:c.slots.length?Math.min(...c.slots):null,
+        requiredContextSlot:c.minSlot,marketCommitment:c.commitment,contextVerified:c.slots.length>0,
+        marketContextMaxSlot:c.slots.length?Math.max(...c.slots):null,rpcCalls:c.rpcCalls,rpcMs:c.rpcMs,
+        firstContextAtMs:c.firstContextAtMs??null,quoteMs:Date.now()-q.startedAtMs};
+    });
+  }
+  async shadowAccountReadiness(mint,curve,slot,commitment) {
+    const result=await this.connection.getMultipleAccountsInfoAndContext([new PublicKey(mint),new PublicKey(curve)],{minContextSlot:slot,commitment});
+    return {slot:result.context.slot,ready:result.context.slot>=slot&&result.value.every(Boolean)};
+  }
+  async #quoteShadowOnce(side, mintAddress, rawAmount, options = {}) {
+    if (!["BUY", "SELL"].includes(side) || BigInt(rawAmount) <= 0n) throw Error("Invalid shadow quote");
+    const startedAtMs = Date.now();
+    const mint = new PublicKey(mintAddress);
+    // Do not cache pre-migration classification for a later exit.
+    const market = await this.#loadMarket(mint, side === "BUY" ? options.venueHint : null);
+    const context=this.shadowQuoteContext.getStore();
+    if (options.minContextSlot!==undefined || !this.pumpParameters) {
+      const [global,feeConfig]=await Promise.all([this.pump.fetchGlobal(),this.pump.fetchFeeConfig()]);
+      context.parameters={global,feeConfig};
+    } else context.parameters=this.pumpParameters;
+    if (side === "BUY") {
+      const minimum = minimumTargetTokenOutRaw(rawAmount, market.tokenDecimals,
+        options.targetAveragePriceSol, options.maxEntryDriftBps);
+      if (minimum === null) throw Error("Shadow entry requires target-relative price protection");
+      const built = await this.#tradeInstructions(side, mint, BigInt(rawAmount), market, minimum, true);
+      const size = market.tokenProgram.equals(TOKEN_2022_PROGRAM_ID)
+        ? getAccountLen([...getExtensionTypes(market.mintAccount.tlvData).map(getAccountTypeOfMintType)
+          .filter(type => type !== ExtensionType.Uninitialized), ExtensionType.ImmutableOwner]) : 165;
+      this.shadowRent ??= new Map();
+      if (!this.shadowRent.has(size)) this.shadowRent.set(size, await this.connection.getMinimumBalanceForRentExemption(size));
+      return { expectedTokenOutRaw: built.expectedTokenOutRaw, tokenDecimals: market.tokenDecimals,
+        hardMinimumTokenOutRaw: built.hardMinimumTokenOutRaw, venue: built.venue,
+        startedAtMs, stateReceivedAtMs: Date.now(), unsignedInstructionCount: built.instructions.length,
+        tradingFees: "included_in_SDK_quote", ...built.shadowQuoteDetails,
+        slippageBps: this.config.liveSlippageBps, rentSol: this.shadowRent.get(size) / 1e9,
+        rentAssumption: "new_associated_token_account", tokenAccountSize: size };
+    }
+    let amount, reserves, gross, spot;
+    if (market.hasPool) {
+      const s = await this.amm.swapSolanaState(market.pool, this.wallet.publicKey);
+      if (!s.pool.quoteMint.equals(NATIVE_MINT)) throw Error("Only SOL-quoted PumpSwap pools are supported");
+      const q = quotePumpAmmSell({ base: new BN(rawAmount), slippage: 0,
+        baseReserve: s.poolBaseAmount, quoteReserve: s.poolQuoteAmount,
+        virtualQuoteReserves: s.pool.virtualQuoteReserves,
+        feeBucketsTotal: s.pool.protocolFees.add(s.pool.creatorFees),
+        globalConfig: s.globalConfig, baseMintAccount: s.baseMintAccount, baseMint: s.baseMint,
+        coinCreator: s.pool.coinCreator, creator: s.pool.creator, feeConfig: s.feeConfig,
+        quoteMint: s.pool.quoteMint, isMayhemMode: s.pool.isMayhemMode,
+        creatorFeeBps: s.pool.creatorFeeBps, quoteTransferFee: s.quoteTransferFee });
+      amount = q.uiQuote;
+      gross = q.internalQuoteAmountOut;
+      spot = Number(s.poolQuoteAmount.add(s.pool.virtualQuoteReserves ?? new BN(0)).toString()) / Number(s.poolBaseAmount.toString());
+      reserves = { baseRaw: s.poolBaseAmount.toString(), quoteRaw: s.poolQuoteAmount.toString() };
+    } else {
+      // fetchSellState requires a real wallet ATA. A hypothetical shadow holding
+      // has none: fetchBuyState reads the same curve without inventing an ATA.
+      const s = await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram);
+      if (!s.quoteMint.equals(NATIVE_MINT) || isBondingCurveMigrated(s.bondingCurve)) throw Error("Curve unavailable or migrated");
+      amount = getSellSolAmountFromTokenAmount({ ...context.parameters,
+        mintSupply: market.mintSupply, bondingCurve: s.bondingCurve,
+        amount: new BN(rawAmount), quoteTransferFee: s.quoteTransferFee });
+      gross = new BN(rawAmount).mul(s.bondingCurve.virtualQuoteReserves)
+        .div(s.bondingCurve.virtualTokenReserves.add(new BN(rawAmount)));
+      spot = Number(s.bondingCurve.virtualQuoteReserves.toString()) / Number(s.bondingCurve.virtualTokenReserves.toString());
+      if (amount.gt(s.bondingCurve.realQuoteReserves)) throw Error("Insufficient real SOL reserves");
+      reserves = { virtualSolRaw: s.bondingCurve.virtualQuoteReserves.toString(),
+        virtualTokenRaw: s.bondingCurve.virtualTokenReserves.toString(), realSolRaw: s.bondingCurve.realQuoteReserves.toString() };
+    }
+    if (amount.lte(new BN(0))) throw Error("Zero sell quote");
+    return { expectedSolOutRaw: amount.toString(), venue: market.hasPool ? "pumpswap" : "pump-curve",
+      startedAtMs, stateReceivedAtMs: Date.now(), reserves, tradingFees: "included_in_SDK_quote",
+      tradingFeeRaw: gross.sub(amount).toString(),
+      priceImpactBps: (1 - Number(gross.toString()) / Number(rawAmount) / spot) * 10000,
+      slippageBps: this.config.liveSlippageBps };
+  }
+
   #jupiterHeaders(json = false) {
     return {
       ...(json ? { "content-type": "application/json" } : {}),
@@ -287,8 +504,12 @@ export class PumpExecutor {
     rawAmount,
     market,
     balanceCommitment = "confirmed",
-    hardMinimumTokenOut = null
+    hardMinimumTokenOut = null,
+    requireBaselineContext = false,
+    requireBalanceContext = false,
+    timing = null
   ) {
+    const prepareStartedAt = performance.now();
     const inputMint = side === "BUY" ? JUPITER_SOL_MINT : mint.toBase58();
     const outputMint = side === "BUY" ? mint.toBase58() : JUPITER_SOL_MINT;
     const url = new URL(`${this.config.jupiterApiUrl.replace(/\/$/, "")}/order`);
@@ -301,13 +522,27 @@ export class PumpExecutor {
         ? 0
         : this.config.liveSlippageBps)
     });
-    const [response, beforeTokenBalance] = await Promise.all([
-      fetch(url, {
+    const baselinePromise = requireBaselineContext
+      ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+      : requireBalanceContext
+        ? this.tokenBalanceContext(mint, market.tokenProgram, balanceCommitment)
+          .then(context => ({ amount: context.amount, proof: null, context }))
+      : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
+        .then(amount => ({ amount, proof: null }));
+    const quoteStartedAt = performance.now();
+    const quotePromise = fetch(url, {
         headers: this.#jupiterHeaders(),
         signal: AbortSignal.timeout(this.config.jupiterTimeoutMs)
-      }),
-      this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
-    ]);
+      }).then(response => {
+        if (timing) timing.quoteMs = performance.now() - quoteStartedAt;
+        return response;
+      });
+    const balanceStartedAt = performance.now();
+    const measuredBaselinePromise = baselinePromise.then(value => {
+      if (timing) timing.balanceMs = performance.now() - balanceStartedAt;
+      return value;
+    });
+    const [response, baseline] = await Promise.all([quotePromise, measuredBaselinePromise]);
     if (!response.ok) {
       throw new Error(`Jupiter order HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`);
     }
@@ -347,7 +582,14 @@ export class PumpExecutor {
     if (walletSignerIndex !== 0) {
       throw new Error("Jupiter transaction does not use the live wallet as its primary signer");
     }
+    const assembleStartedAt = performance.now();
     transaction.sign([this.wallet]);
+    if (timing) {
+      timing.assembleSignMs = performance.now() - assembleStartedAt;
+      timing.blockhashMs = 0;
+      timing.readyMs = performance.now() - prepareStartedAt;
+      timing.prepareMs = timing.readyMs;
+    }
     const expectedSignature = bs58.encode(transaction.signatures[0]);
     return {
       transaction,
@@ -355,19 +597,23 @@ export class PumpExecutor {
       mint,
       tokenProgram: market.tokenProgram,
       venue: "jupiter-multi-hop",
-      beforeTokenBalance,
+      beforeTokenBalance: baseline.amount,
+      beforeTokenBalanceEvidence: baseline.proof,
+      beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
+      beforeTokenBalanceContextDelegate: baseline.context?.delegate ?? null,
       lastValidBlockHeight,
       jupiterRequestId: order.requestId,
       jupiterRouter: order.router ?? "unknown",
       jupiterExpectedOut: order.outAmount ?? null,
       expectedTokenOutRaw: side === "BUY" ? order.outAmount ?? null : null,
       hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null,
+      beforeTokenBalanceKnown: !requireBaselineContext || baseline.proof?.rooted === true,
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };
   }
 
-  async #tradeInstructions(side, mint, rawAmount, market = null, hardMinimumTokenOut = null) {
+  async #tradeInstructions(side, mint, rawAmount, market = null, hardMinimumTokenOut = null, shadowDetails = false) {
     market ??= await this.#market(mint);
     const slippage = this.config.liveSlippageBps / 100;
 
@@ -378,6 +624,7 @@ export class PumpExecutor {
       }
       let instructions;
       let expectedTokenOutRaw = null;
+      let shadowQuoteDetails;
       if (side === "BUY" && supportsTradeV2(state.pool)) {
         const budget = new BN(rawAmount.toString());
         const quote = quotePumpAmmBuy({
@@ -415,6 +662,18 @@ export class PumpExecutor {
           minBaseOut
         );
         expectedTokenOutRaw = quote.base.toString();
+        if (shadowDetails) {
+          const spot=Number(state.poolQuoteAmount.add(state.pool.virtualQuoteReserves ?? new BN(0)).toString())/
+            Number(state.poolBaseAmount.toString());
+          const average=Number(quote.internalQuoteWithoutFees.toString())/Number(expectedTokenOutRaw);
+          shadowQuoteDetails = {
+            pool: market.pool.toBase58(),
+            reserves: { baseRaw: state.poolBaseAmount.toString(), quoteRaw: state.poolQuoteAmount.toString() },
+            priceImpactBps: (average/spot-1)*10000,
+            tradingFeeUpperBoundRaw: budget.sub(quote.internalQuoteWithoutFees).toString(),
+            tradingFeeDetail: "Budget minus SDK net quote input, including rounding remainder"
+          };
+        }
       } else if (side === "BUY") {
         if (hardMinimumTokenOut !== null) {
           throw new Error(
@@ -440,11 +699,12 @@ export class PumpExecutor {
         tokenProgram: market.tokenProgram,
         venue: "pumpswap",
         expectedTokenOutRaw,
+        ...(shadowQuoteDetails ? { shadowQuoteDetails } : {}),
         hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }
 
-    const parameters = this.pumpParameters ?? await this._refreshPumpParameters();
+    const parameters = this.shadowQuoteContext.getStore()?.parameters ?? this.pumpParameters ?? await this._refreshPumpParameters();
     const state = side === "BUY"
       ? await this.pump.fetchBuyState(mint, this.wallet.publicKey, market.tokenProgram)
       : await this.pump.fetchSellState(mint, this.wallet.publicKey, market.tokenProgram);
@@ -503,6 +763,18 @@ export class PumpExecutor {
         tokenProgram: market.tokenProgram,
         venue: "pump-curve",
         expectedTokenOutRaw: tokenAmount.toString(),
+        ...(shadowDetails ? { shadowQuoteDetails: {
+          reserves: { virtualSolRaw: state.bondingCurve.virtualQuoteReserves.toString(),
+            virtualTokenRaw: state.bondingCurve.virtualTokenReserves.toString(),
+            realSolRaw: state.bondingCurve.realQuoteReserves.toString(),
+            realTokenRaw: state.bondingCurve.realTokenReserves.toString() },
+          // Constant-product curve price impact excludes fees. Crossing the
+          // remaining curve supply cannot be represented by this expression.
+          priceImpactBps: tokenAmount.lt(state.bondingCurve.realTokenReserves)
+            ? Number(tokenAmount.toString()) / Number(state.bondingCurve.virtualTokenReserves.sub(tokenAmount).toString()) * 10000 : null,
+          tradingFeeRaw: null,
+          tradingFeeDetail: "SDK includes dynamic fees; exact BUY debit split not exposed"
+        } } : {}),
         hardMinimumTokenOutRaw: hardMinimumTokenOut?.toString() ?? null
       };
     }
@@ -537,10 +809,16 @@ export class PumpExecutor {
     skipBeforeTokenBalance = false,
     balanceCommitment = "confirmed",
     targetAveragePriceSol = null,
-    maxEntryDriftBps = null
+    maxEntryDriftBps = null,
+    requireBaselineContext = false,
+    requireBalanceContext = false,
+    timing = null
   } = {}) {
     const mint = new PublicKey(mintAddress);
+    const prepareStartedAt = performance.now();
+    const marketStartedAt = performance.now();
     const market = await this.#market(mint, venueHint);
+    if (timing) timing.marketRouteMs = performance.now() - marketStartedAt;
     const hardMinimumTokenOut = side === "BUY"
       ? minimumTargetTokenOutRaw(
           rawAmount,
@@ -556,22 +834,47 @@ export class PumpExecutor {
         BigInt(rawAmount),
         market,
         balanceCommitment,
-        hardMinimumTokenOut
+        hardMinimumTokenOut,
+        requireBaselineContext,
+        requireBalanceContext,
+        timing
       );
     }
-    const [trade, beforeTokenBalance, tip, latest] = await Promise.all([
-      this.#tradeInstructions(
+    const baselinePromise = skipBeforeTokenBalance
+      ? Promise.resolve({ amount: 0n, proof: null })
+      : requireBaselineContext
+        ? this.tokenBalanceEvidence(mint, market.tokenProgram)
+        : requireBalanceContext
+          ? this.tokenBalanceContext(mint, market.tokenProgram, balanceCommitment)
+            .then(context => ({ amount: context.amount, proof: null, context }))
+        : this.tokenBalance(mint, market.tokenProgram, balanceCommitment)
+          .then(amount => ({ amount, proof: null }));
+    const quoteStartedAt = performance.now();
+    const tradePromise = this.#tradeInstructions(
         side,
         mint,
         BigInt(rawAmount),
         market,
         hardMinimumTokenOut
-      ),
-      skipBeforeTokenBalance
-        ? Promise.resolve(0n)
-        : this.tokenBalance(mint, market.tokenProgram, balanceCommitment),
+      ).then(value => {
+        if (timing) timing.quoteMs = performance.now() - quoteStartedAt;
+        return value;
+      });
+    const balanceStartedAt = performance.now();
+    const measuredBaselinePromise = baselinePromise.then(value => {
+      if (timing) timing.balanceMs = performance.now() - balanceStartedAt;
+      return value;
+    });
+    const blockhashStartedAt = performance.now();
+    const blockhashPromise = this._recentBlockhash().then(value => {
+      if (timing) timing.blockhashMs = performance.now() - blockhashStartedAt;
+      return value;
+    });
+    const [trade, baseline, tip, latest] = await Promise.all([
+      tradePromise,
+      measuredBaselinePromise,
       this.sender.tipInstruction(this.wallet.publicKey),
-      this._recentBlockhash()
+      blockhashPromise
     ]);
     const priorityPrice = priorityMicroLamports(
       this.config.livePriorityFeeSol,
@@ -590,7 +893,13 @@ export class PumpExecutor {
         instructions
       }).compileToV0Message()
     );
+    const assembleStartedAt = performance.now();
     transaction.sign([this.wallet]);
+    if (timing) {
+      timing.assembleSignMs = performance.now() - assembleStartedAt;
+      timing.readyMs = performance.now() - prepareStartedAt;
+      timing.prepareMs = timing.readyMs;
+    }
     const expectedSignature = bs58.encode(transaction.signatures[0]);
 
     if (this.config.liveSimulate && !skipSimulation) {
@@ -613,11 +922,16 @@ export class PumpExecutor {
       mint,
       tokenProgram: trade.tokenProgram,
       venue: trade.venue,
-      beforeTokenBalance,
+      beforeTokenBalance: baseline.amount,
+      beforeTokenBalanceEvidence: baseline.proof,
+      beforeTokenBalanceContextSlot: baseline.context?.slot ?? null,
+      beforeTokenBalanceContextDelegate: baseline.context?.delegate ?? null,
       blockhash: latest.blockhash,
       lastValidBlockHeight: latest.lastValidBlockHeight,
       expectedTokenOutRaw: trade.expectedTokenOutRaw ?? null,
       hardMinimumTokenOutRaw: trade.hardMinimumTokenOutRaw ?? null,
+      beforeTokenBalanceKnown: !skipBeforeTokenBalance &&
+        (!requireBaselineContext || baseline.proof?.rooted === true),
       tokenDecimals: market.tokenDecimals,
       rpcSource: this.rpcSource
     };
@@ -680,7 +994,7 @@ export class PumpExecutor {
     });
   }
 
-  async closeEmptyTokenAccount(mintAddress, tokenProgramAddress) {
+  async closeEmptyTokenAccount(mintAddress, tokenProgramAddress, { onPrepared = null } = {}) {
     const mint = mintAddress instanceof PublicKey ? mintAddress : new PublicKey(mintAddress);
     const tokenProgram = tokenProgramAddress instanceof PublicKey
       ? tokenProgramAddress
@@ -756,6 +1070,11 @@ export class PumpExecutor {
       }
     }
 
+    await onPrepared?.(prepared.expectedSignature, {
+      tokenAccount: tokenAccount.toBase58(),
+      lastValidBlockHeight: prepared.lastValidBlockHeight,
+      recentBlockhash: latest.blockhash
+    });
     const signature = await this.submit(prepared);
     let confirmation;
     try {
@@ -809,6 +1128,31 @@ export class PumpExecutor {
       if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
       return this.fallbackExecutor.transactionWalletDelta(signature);
     }
+  }
+
+  async transactionTokenDelta(signature, mintAddress, ownerAddress, commitment = "confirmed") {
+    const mint = mintAddress.toBase58 ? mintAddress.toBase58() : String(mintAddress);
+    const owner = ownerAddress?.toBase58 ? ownerAddress.toBase58() : String(ownerAddress ?? "");
+    const metadataCommitment = transactionMetadataCommitment(commitment);
+    try {
+      const transaction = await this.connection.getParsedTransaction(signature, {
+        commitment: metadataCommitment, maxSupportedTransactionVersion: 0
+      });
+      return this.#tokenDeltaFromTransaction(transaction, signature, mint, owner);
+    } catch (error) {
+      if (!this.fallbackExecutor || !isRpcTransportError(error)) throw error;
+      return this.fallbackExecutor.transactionTokenDelta(
+        signature, mintAddress, ownerAddress, metadataCommitment
+      );
+    }
+  }
+
+  #tokenDeltaFromTransaction(transaction, signature, mint, owner) {
+    if (!transaction?.meta) throw new Error(`Confirmed transaction unavailable: ${signature}`);
+    const amount = (balances = []) => balances
+      .filter(balance => balance.mint === mint && (!owner || balance.owner === owner))
+      .reduce((sum, balance) => sum + BigInt(balance.uiTokenAmount.amount), 0n);
+    return amount(transaction.meta.postTokenBalances) - amount(transaction.meta.preTokenBalances);
   }
 
   async #confirmOnce(signature, prepared) {

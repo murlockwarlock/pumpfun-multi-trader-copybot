@@ -20,3 +20,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm test
+      - name: Check deployment SSH handling
+        shell: pwsh
+        run: ./test/deploy-ssh.test.ps1

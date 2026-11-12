@@ -25,8 +25,10 @@ Get-Content -LiteralPath $ServerConfigPath | ForEach-Object {
     }
 }
 $destination = "$($server['DEPLOY_USER'])@$($server['DEPLOY_HOST'])"
-$sshArgs = @('-i', $server['DEPLOY_KEY'], '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-p', $server['DEPLOY_PORT'], $destination)
-$scpArgs = @('-i', $server['DEPLOY_KEY'], '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-P', $server['DEPLOY_PORT'])
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $server['DEPLOY_KEY'] -Port $server['DEPLOY_PORT'])
+$sshArgs = $sshOptions + @($destination)
+$scpArgs = @(Get-DeploySshOptions -Key $server['DEPLOY_KEY'] -Port $server['DEPLOY_PORT'] -Scp)
 $remoteTemporary = "/tmp/pr6spr-telegram-$([guid]::NewGuid().ToString('N'))"
 try {
     & scp @scpArgs $TokenFile "${destination}:$remoteTemporary"

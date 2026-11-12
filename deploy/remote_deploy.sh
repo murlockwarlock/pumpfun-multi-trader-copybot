@@ -37,6 +37,7 @@ STAGING_DIR=$(mktemp -d)
 SWITCHED=0
 RELEASE_CREATED=0
 PREVIOUS_RELEASE=''
+ENV_BACKUP="$SHARED_DIR/bot.env.before-$RELEASE_ID"
 
 cleanup() {
     rm -rf "$STAGING_DIR"
@@ -49,6 +50,9 @@ rollback() {
     local failed_line=${BASH_LINENO[0]:-unknown}
     trap - EXIT ERR
     set +e
+    if [[ -f "$ENV_BACKUP" ]]; then
+        sudo install -o ubuntu -g ubuntu -m 0600 "$ENV_BACKUP" "$SHARED_DIR/bot.env"
+    fi
     if [[ "$SWITCHED" == 1 && -n "$PREVIOUS_RELEASE" && -d "$PREVIOUS_RELEASE" ]]; then
         rm -f "$NEXT_LINK"
         ln -s "$PREVIOUS_RELEASE" "$NEXT_LINK"
@@ -105,6 +109,9 @@ RELEASE_CREATED=1
 chown -R ubuntu:ubuntu "$RELEASE_DIR"
 
 grep -Eq '^TRADING_MODE=(paper|live)$' "$ENV_FILE"
+if grep -Fqx 'SNIPER_LAUNCH_FOLLOW=shadow' "$ENV_FILE"; then
+    grep -Fqx 'LIVE_TRADER_WALLETS=none' "$ENV_FILE"
+fi
 if grep -q '^TARGET_WALLETS=' "$ENV_FILE"; then
     grep -Eq '^TARGET_WALLETS=([A-Za-z0-9_-]+:)?[1-9A-HJ-NP-Za-km-z]{32,44}(,([A-Za-z0-9_-]+:)?[1-9A-HJ-NP-Za-km-z]{32,44})*$' "$ENV_FILE"
 else
@@ -136,6 +143,9 @@ if grep -Fqx 'TRADING_MODE=live' "$ENV_FILE"; then
     [[ -s "$SECRETS_DIR/jupiter-api-key" && ! -L "$SECRETS_DIR/jupiter-api-key" ]]
     [[ -s "$SECRETS_DIR/telegram-bot-token" && ! -L "$SECRETS_DIR/telegram-bot-token" ]]
 fi
+if [[ -f "$SHARED_DIR/bot.env" ]]; then
+    sudo install -o ubuntu -g ubuntu -m 0600 "$SHARED_DIR/bot.env" "$ENV_BACKUP"
+fi
 sudo install -o ubuntu -g ubuntu -m 0600 "$ENV_FILE" "$SHARED_DIR/bot.env"
 
 PREVIOUS_RELEASE=$(readlink -f "$CURRENT_LINK" 2>/dev/null || true)
@@ -153,8 +163,15 @@ sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"
 
 for attempt in {1..20}; do
-    RECENT_LOGS=$(sudo journalctl -u "$SERVICE_NAME" --since "2 minutes ago" --no-pager -o cat)
+    INVOCATION=$(sudo systemctl show -p InvocationID --value "$SERVICE_NAME")
+    RECENT_LOGS=$(sudo journalctl "_SYSTEMD_INVOCATION_ID=$INVOCATION" --no-pager -o cat)
+    LAUNCH_READY=1
+    if grep -Fqx 'SNIPER_LAUNCH_FOLLOW=shadow' "$ENV_FILE"; then
+        grep -Fq '"event":"launch_follow_ready"' <<<"$RECENT_LOGS" || LAUNCH_READY=0
+        if grep -Eq '"event":"launch_follow_(error|stopped)"' <<<"$RECENT_LOGS"; then LAUNCH_READY=0; fi
+    fi
     if sudo systemctl is-active --quiet "$SERVICE_NAME" && \
+       [[ "$LAUNCH_READY" == 1 ]] && \
        grep -Fq '"event":"subscribed"' <<<"$RECENT_LOGS" && \
        grep -Fq '"event":"backfill_ok"' <<<"$RECENT_LOGS"; then
         break

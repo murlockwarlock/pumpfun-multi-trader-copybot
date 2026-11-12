@@ -1,0 +1,2712 @@
+{
+  "generatedAt": "2026-11-12T16:41:46.075Z",
+  "source": {
+    "file": "work/next-copy/combined.jsonl",
+    "exists": true,
+    "bytes": 9576173,
+    "lines": 18606,
+    "sha256": "fa6ecccf762b184da6a432d81e6e548ba2916805b37f84a5332c6325ef629f55",
+    "runIds": [
+      "15915ccb-07c5-4e38-813f-56dceb361511"
+    ],
+    "start": {
+      "at": 1794380001276,
+      "iso": "2026-11-11T06:53:21.276Z",
+      "run": "15915ccb-07c5-4e38-813f-56dceb361511"
+    },
+    "lastRecord": {
+      "type": "SUBSCRIBED",
+      "at": 1794421479505,
+      "iso": "2026-11-11T18:24:39.505Z"
+    },
+    "lastHeartbeat": {
+      "at": 1794421479363,
+      "iso": "2026-11-11T18:24:39.363Z",
+      "subscriptions": 0,
+      "rpc": {
+        "requests": 13118,
+        "errors": 83,
+        "rateLimited": 0,
+        "budgetRejected": 705,
+        "totalMs": 4035118,
+        "methods": {
+          "getAccountInfo": 7886,
+          "getMultipleAccounts": 5230,
+          "getMinimumBalanceForRentExemption": 2
+        },
+        "latency": {
+          "count": 256,
+          "p50": 205,
+          "p95": 711,
+          "p99": 1299
+        }
+      },
+      "verification": null
+    },
+    "stop": null,
+    "durationMs": 41478229,
+    "dataGaps": [
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382464044,
+        "type": "WS_GAP",
+        "durationMs": 129635,
+        "code": 1006,
+        "reason": null,
+        "gen": 1,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382479058,
+        "type": "WS_GAP",
+        "durationMs": 114621,
+        "code": 1006,
+        "reason": null,
+        "gen": 2,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382494065,
+        "type": "WS_GAP",
+        "durationMs": 99614,
+        "code": 1006,
+        "reason": null,
+        "gen": 3,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382509083,
+        "type": "WS_GAP",
+        "durationMs": 84596,
+        "code": 1006,
+        "reason": null,
+        "gen": 4,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382532096,
+        "type": "WS_GAP",
+        "durationMs": 61583,
+        "code": 1006,
+        "reason": null,
+        "gen": 5,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382547112,
+        "type": "WS_GAP",
+        "durationMs": 46567,
+        "code": 1006,
+        "reason": null,
+        "gen": 6,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382562851,
+        "type": "WS_GAP",
+        "durationMs": 30828,
+        "code": 1006,
+        "reason": null,
+        "gen": 7,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382577859,
+        "type": "WS_GAP",
+        "durationMs": 15820,
+        "code": 1006,
+        "reason": null,
+        "gen": 8,
+        "restoredAt": 1794382593679,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382944225,
+        "type": "WS_GAP",
+        "durationMs": 113923,
+        "code": 1006,
+        "reason": null,
+        "gen": 9,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382959235,
+        "type": "WS_GAP",
+        "durationMs": 98913,
+        "code": 1006,
+        "reason": null,
+        "gen": 10,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382974247,
+        "type": "WS_GAP",
+        "durationMs": 83901,
+        "code": 1006,
+        "reason": null,
+        "gen": 11,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794382989255,
+        "type": "WS_GAP",
+        "durationMs": 68893,
+        "code": 1006,
+        "reason": null,
+        "gen": 12,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794383004262,
+        "type": "WS_GAP",
+        "durationMs": 53886,
+        "code": 1006,
+        "reason": null,
+        "gen": 13,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794383027277,
+        "type": "WS_GAP",
+        "durationMs": 30871,
+        "code": 1006,
+        "reason": null,
+        "gen": 14,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794383042283,
+        "type": "WS_GAP",
+        "durationMs": 15865,
+        "code": 1006,
+        "reason": null,
+        "gen": 15,
+        "restoredAt": 1794383058148,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794399388192,
+        "type": "WS_GAP",
+        "durationMs": 16296,
+        "code": 1006,
+        "reason": null,
+        "gen": 16,
+        "restoredAt": 1794399404488,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794399856495,
+        "type": "WS_GAP",
+        "durationMs": 16020,
+        "code": 1006,
+        "reason": null,
+        "gen": 17,
+        "restoredAt": 1794399872515,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794400530946,
+        "type": "WS_GAP",
+        "durationMs": 15979,
+        "code": 1006,
+        "reason": null,
+        "gen": 18,
+        "restoredAt": 1794400546925,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794400964701,
+        "type": "WS_GAP",
+        "durationMs": 15944,
+        "code": 1006,
+        "reason": null,
+        "gen": 19,
+        "restoredAt": 1794400980645,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794401007112,
+        "type": "WS_GAP",
+        "durationMs": 15878,
+        "code": 1006,
+        "reason": null,
+        "gen": 20,
+        "restoredAt": 1794401022990,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794401371819,
+        "type": "WS_GAP",
+        "durationMs": 16464,
+        "code": 1006,
+        "reason": null,
+        "gen": 21,
+        "restoredAt": 1794401388283,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794401691694,
+        "type": "WS_GAP",
+        "durationMs": 21618,
+        "code": 1006,
+        "reason": null,
+        "gen": 22,
+        "restoredAt": 1794401713312,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794401783592,
+        "type": "WS_GAP",
+        "durationMs": 18460,
+        "code": 1006,
+        "reason": null,
+        "gen": 23,
+        "restoredAt": 1794401802052,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794402064944,
+        "type": "WS_GAP",
+        "durationMs": 16530,
+        "code": 1006,
+        "reason": null,
+        "gen": 24,
+        "restoredAt": 1794402081474,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794402914397,
+        "type": "WS_GAP",
+        "durationMs": 19135,
+        "code": 1006,
+        "reason": null,
+        "gen": 25,
+        "restoredAt": 1794402933532,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794403574360,
+        "type": "WS_GAP",
+        "durationMs": 15762,
+        "code": 1006,
+        "reason": null,
+        "gen": 26,
+        "restoredAt": 1794403590122,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794403717143,
+        "type": "WS_GAP",
+        "durationMs": 16012,
+        "code": 1006,
+        "reason": null,
+        "gen": 27,
+        "restoredAt": 1794403733155,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404052165,
+        "type": "WS_GAP",
+        "durationMs": 16134,
+        "code": 1006,
+        "reason": null,
+        "gen": 28,
+        "restoredAt": 1794404068299,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404149900,
+        "type": "WS_GAP",
+        "durationMs": 15984,
+        "code": 1006,
+        "reason": null,
+        "gen": 29,
+        "restoredAt": 1794404165884,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404285734,
+        "type": "WS_GAP",
+        "durationMs": 15835,
+        "code": 1006,
+        "reason": null,
+        "gen": 30,
+        "restoredAt": 1794404301569,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404522269,
+        "type": "WS_GAP",
+        "durationMs": 15708,
+        "code": 1006,
+        "reason": null,
+        "gen": 31,
+        "restoredAt": 1794404537977,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404579451,
+        "type": "WS_GAP",
+        "durationMs": 15853,
+        "code": 1006,
+        "reason": null,
+        "gen": 32,
+        "restoredAt": 1794404595304,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794404813251,
+        "type": "WS_GAP",
+        "durationMs": 15850,
+        "code": 1006,
+        "reason": null,
+        "gen": 33,
+        "restoredAt": 1794404829101,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794405408137,
+        "type": "WS_GAP",
+        "durationMs": 15908,
+        "code": 1006,
+        "reason": null,
+        "gen": 34,
+        "restoredAt": 1794405424045,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794405670381,
+        "type": "WS_GAP",
+        "durationMs": 15880,
+        "code": 1006,
+        "reason": null,
+        "gen": 35,
+        "restoredAt": 1794405686261,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406001721,
+        "type": "WS_GAP",
+        "durationMs": 15860,
+        "code": 1006,
+        "reason": null,
+        "gen": 36,
+        "restoredAt": 1794406017581,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406350231,
+        "type": "WS_GAP",
+        "durationMs": 16224,
+        "code": 1006,
+        "reason": null,
+        "gen": 37,
+        "restoredAt": 1794406366455,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406508585,
+        "type": "WS_GAP",
+        "durationMs": 15820,
+        "code": 1006,
+        "reason": null,
+        "gen": 38,
+        "restoredAt": 1794406524405,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406593961,
+        "type": "WS_GAP",
+        "durationMs": 16060,
+        "code": 1006,
+        "reason": null,
+        "gen": 39,
+        "restoredAt": 1794406610021,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406781157,
+        "type": "WS_GAP",
+        "durationMs": 16510,
+        "code": 1006,
+        "reason": null,
+        "gen": 40,
+        "restoredAt": 1794406797667,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406842876,
+        "type": "WS_GAP",
+        "durationMs": 16336,
+        "code": 1006,
+        "reason": null,
+        "gen": 41,
+        "restoredAt": 1794406859212,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794406977194,
+        "type": "WS_GAP",
+        "durationMs": 15746,
+        "code": 1006,
+        "reason": null,
+        "gen": 42,
+        "restoredAt": 1794406992940,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407085882,
+        "type": "WS_GAP",
+        "durationMs": 15872,
+        "code": 1006,
+        "reason": null,
+        "gen": 43,
+        "restoredAt": 1794407101754,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407241353,
+        "type": "WS_GAP",
+        "durationMs": 15817,
+        "code": 1006,
+        "reason": null,
+        "gen": 44,
+        "restoredAt": 1794407257170,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407374475,
+        "type": "WS_GAP",
+        "durationMs": 15957,
+        "code": 1006,
+        "reason": null,
+        "gen": 45,
+        "restoredAt": 1794407390432,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407494205,
+        "type": "WS_GAP",
+        "durationMs": 15806,
+        "code": 1006,
+        "reason": null,
+        "gen": 46,
+        "restoredAt": 1794407510011,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407587088,
+        "type": "WS_GAP",
+        "durationMs": 16241,
+        "code": 1006,
+        "reason": null,
+        "gen": 47,
+        "restoredAt": 1794407603329,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407663476,
+        "type": "WS_GAP",
+        "durationMs": 15822,
+        "code": 1006,
+        "reason": null,
+        "gen": 48,
+        "restoredAt": 1794407679298,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407760448,
+        "type": "WS_GAP",
+        "durationMs": 15723,
+        "code": 1006,
+        "reason": null,
+        "gen": 49,
+        "restoredAt": 1794407776171,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407798838,
+        "type": "WS_GAP",
+        "durationMs": 15946,
+        "code": 1006,
+        "reason": null,
+        "gen": 50,
+        "restoredAt": 1794407814784,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794407897846,
+        "type": "WS_GAP",
+        "durationMs": 15910,
+        "code": 1006,
+        "reason": null,
+        "gen": 51,
+        "restoredAt": 1794407913756,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794408887709,
+        "type": "WS_GAP",
+        "durationMs": 17075,
+        "code": 1006,
+        "reason": null,
+        "gen": 52,
+        "restoredAt": 1794408904784,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794409307087,
+        "type": "WS_GAP",
+        "durationMs": 15937,
+        "code": 1006,
+        "reason": null,
+        "gen": 53,
+        "restoredAt": 1794409323024,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794409589996,
+        "type": "WS_GAP",
+        "durationMs": 15831,
+        "code": 1006,
+        "reason": null,
+        "gen": 54,
+        "restoredAt": 1794409605827,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794409666942,
+        "type": "WS_GAP",
+        "durationMs": 15768,
+        "code": 1006,
+        "reason": null,
+        "gen": 55,
+        "restoredAt": 1794409682710,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794409992561,
+        "type": "WS_GAP",
+        "durationMs": 16075,
+        "code": 1006,
+        "reason": null,
+        "gen": 56,
+        "restoredAt": 1794410008636,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794410109775,
+        "type": "WS_GAP",
+        "durationMs": 16541,
+        "code": 1006,
+        "reason": null,
+        "gen": 57,
+        "restoredAt": 1794410126316,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794410196731,
+        "type": "WS_GAP",
+        "durationMs": 15935,
+        "code": 1006,
+        "reason": null,
+        "gen": 58,
+        "restoredAt": 1794410212666,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794410777430,
+        "type": "WS_GAP",
+        "durationMs": 15788,
+        "code": 1006,
+        "reason": null,
+        "gen": 59,
+        "restoredAt": 1794410793218,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794410992115,
+        "type": "WS_GAP",
+        "durationMs": 16512,
+        "code": 1006,
+        "reason": null,
+        "gen": 60,
+        "restoredAt": 1794411008627,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794411141918,
+        "type": "WS_GAP",
+        "durationMs": 17236,
+        "code": 1006,
+        "reason": null,
+        "gen": 61,
+        "restoredAt": 1794411159154,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794411291772,
+        "type": "WS_GAP",
+        "durationMs": 16000,
+        "code": 1006,
+        "reason": null,
+        "gen": 62,
+        "restoredAt": 1794411307772,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794411909058,
+        "type": "WS_GAP",
+        "durationMs": 15849,
+        "code": 1006,
+        "reason": null,
+        "gen": 63,
+        "restoredAt": 1794411924907,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794411989505,
+        "type": "WS_GAP",
+        "durationMs": 15874,
+        "code": 1006,
+        "reason": null,
+        "gen": 64,
+        "restoredAt": 1794412005379,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412049269,
+        "type": "WS_GAP",
+        "durationMs": 16056,
+        "code": 1006,
+        "reason": null,
+        "gen": 65,
+        "restoredAt": 1794412065325,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412099745,
+        "type": "WS_GAP",
+        "durationMs": 15847,
+        "code": 1006,
+        "reason": null,
+        "gen": 66,
+        "restoredAt": 1794412115592,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412175247,
+        "type": "WS_GAP",
+        "durationMs": 16198,
+        "code": 1006,
+        "reason": null,
+        "gen": 67,
+        "restoredAt": 1794412191445,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412220859,
+        "type": "WS_GAP",
+        "durationMs": 15948,
+        "code": 1006,
+        "reason": null,
+        "gen": 68,
+        "restoredAt": 1794412236807,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412343123,
+        "type": "WS_GAP",
+        "durationMs": 16241,
+        "code": 1006,
+        "reason": null,
+        "gen": 69,
+        "restoredAt": 1794412359364,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412453795,
+        "type": "WS_GAP",
+        "durationMs": 15882,
+        "code": 1006,
+        "reason": null,
+        "gen": 70,
+        "restoredAt": 1794412469677,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412494592,
+        "type": "WS_GAP",
+        "durationMs": 15798,
+        "code": 1006,
+        "reason": null,
+        "gen": 71,
+        "restoredAt": 1794412510390,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412524370,
+        "type": "WS_GAP",
+        "durationMs": 16172,
+        "code": 1006,
+        "reason": null,
+        "gen": 72,
+        "restoredAt": 1794412540542,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412568240,
+        "type": "WS_GAP",
+        "durationMs": 15807,
+        "code": 1006,
+        "reason": null,
+        "gen": 73,
+        "restoredAt": 1794412584047,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412607541,
+        "type": "WS_GAP",
+        "durationMs": 16245,
+        "code": 1006,
+        "reason": null,
+        "gen": 74,
+        "restoredAt": 1794412623786,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412642550,
+        "type": "WS_GAP",
+        "durationMs": 15969,
+        "code": 1006,
+        "reason": null,
+        "gen": 75,
+        "restoredAt": 1794412658519,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412687602,
+        "type": "WS_GAP",
+        "durationMs": 15729,
+        "code": 1006,
+        "reason": null,
+        "gen": 76,
+        "restoredAt": 1794412703331,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412729500,
+        "type": "WS_GAP",
+        "durationMs": 15838,
+        "code": 1006,
+        "reason": null,
+        "gen": 77,
+        "restoredAt": 1794412745338,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412773593,
+        "type": "WS_GAP",
+        "durationMs": 15803,
+        "code": 1006,
+        "reason": null,
+        "gen": 78,
+        "restoredAt": 1794412789396,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412812204,
+        "type": "WS_GAP",
+        "durationMs": 16261,
+        "code": 1006,
+        "reason": null,
+        "gen": 79,
+        "restoredAt": 1794412828465,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412880135,
+        "type": "WS_GAP",
+        "durationMs": 15724,
+        "code": 1006,
+        "reason": null,
+        "gen": 80,
+        "restoredAt": 1794412895859,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412912134,
+        "type": "WS_GAP",
+        "durationMs": 15746,
+        "code": 1006,
+        "reason": null,
+        "gen": 81,
+        "restoredAt": 1794412927880,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794412963990,
+        "type": "WS_GAP",
+        "durationMs": 15873,
+        "code": 1006,
+        "reason": null,
+        "gen": 82,
+        "restoredAt": 1794412979863,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413038848,
+        "type": "WS_GAP",
+        "durationMs": 15739,
+        "code": 1006,
+        "reason": null,
+        "gen": 83,
+        "restoredAt": 1794413054587,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413110895,
+        "type": "WS_GAP",
+        "durationMs": 15912,
+        "code": 1006,
+        "reason": null,
+        "gen": 84,
+        "restoredAt": 1794413126807,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413161530,
+        "type": "WS_GAP",
+        "durationMs": 16764,
+        "code": 1006,
+        "reason": null,
+        "gen": 85,
+        "restoredAt": 1794413178294,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413232963,
+        "type": "WS_GAP",
+        "durationMs": 15974,
+        "code": 1006,
+        "reason": null,
+        "gen": 86,
+        "restoredAt": 1794413248937,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413336240,
+        "type": "WS_GAP",
+        "durationMs": 15906,
+        "code": 1006,
+        "reason": null,
+        "gen": 87,
+        "restoredAt": 1794413352146,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413397185,
+        "type": "WS_GAP",
+        "durationMs": 16318,
+        "code": 1006,
+        "reason": null,
+        "gen": 88,
+        "restoredAt": 1794413413503,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413471088,
+        "type": "WS_GAP",
+        "durationMs": 16059,
+        "code": 1006,
+        "reason": null,
+        "gen": 89,
+        "restoredAt": 1794413487147,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413500634,
+        "type": "WS_GAP",
+        "durationMs": 15898,
+        "code": 1006,
+        "reason": null,
+        "gen": 90,
+        "restoredAt": 1794413516532,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413527781,
+        "type": "WS_GAP",
+        "durationMs": 15853,
+        "code": 1006,
+        "reason": null,
+        "gen": 91,
+        "restoredAt": 1794413543634,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413567185,
+        "type": "WS_GAP",
+        "durationMs": 16089,
+        "code": 1006,
+        "reason": null,
+        "gen": 92,
+        "restoredAt": 1794413583274,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413620548,
+        "type": "WS_GAP",
+        "durationMs": 15936,
+        "code": 1006,
+        "reason": null,
+        "gen": 93,
+        "restoredAt": 1794413636484,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413664528,
+        "type": "WS_GAP",
+        "durationMs": 15755,
+        "code": 1006,
+        "reason": null,
+        "gen": 94,
+        "restoredAt": 1794413680283,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413709960,
+        "type": "WS_GAP",
+        "durationMs": 15926,
+        "code": 1006,
+        "reason": null,
+        "gen": 95,
+        "restoredAt": 1794413725886,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413758794,
+        "type": "WS_GAP",
+        "durationMs": 16073,
+        "code": 1006,
+        "reason": null,
+        "gen": 96,
+        "restoredAt": 1794413774867,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794413842506,
+        "type": "WS_GAP",
+        "durationMs": 15786,
+        "code": 1006,
+        "reason": null,
+        "gen": 97,
+        "restoredAt": 1794413858292,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414006482,
+        "type": "WS_GAP",
+        "durationMs": 15931,
+        "code": 1006,
+        "reason": null,
+        "gen": 98,
+        "restoredAt": 1794414022413,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414051147,
+        "type": "WS_GAP",
+        "durationMs": 16027,
+        "code": 1006,
+        "reason": null,
+        "gen": 99,
+        "restoredAt": 1794414067174,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414101751,
+        "type": "WS_GAP",
+        "durationMs": 15780,
+        "code": 1006,
+        "reason": null,
+        "gen": 100,
+        "restoredAt": 1794414117531,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414254863,
+        "type": "WS_GAP",
+        "durationMs": 16077,
+        "code": 1006,
+        "reason": null,
+        "gen": 101,
+        "restoredAt": 1794414270940,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414304938,
+        "type": "WS_GAP",
+        "durationMs": 16280,
+        "code": 1006,
+        "reason": null,
+        "gen": 102,
+        "restoredAt": 1794414321218,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414428876,
+        "type": "WS_GAP",
+        "durationMs": 15840,
+        "code": 1006,
+        "reason": null,
+        "gen": 103,
+        "restoredAt": 1794414444716,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414578634,
+        "type": "WS_GAP",
+        "durationMs": 16055,
+        "code": 1006,
+        "reason": null,
+        "gen": 104,
+        "restoredAt": 1794414594689,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794414791802,
+        "type": "WS_GAP",
+        "durationMs": 15758,
+        "code": 1006,
+        "reason": null,
+        "gen": 105,
+        "restoredAt": 1794414807560,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415036348,
+        "type": "WS_GAP",
+        "durationMs": 16021,
+        "code": 1006,
+        "reason": null,
+        "gen": 106,
+        "restoredAt": 1794415052369,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415222898,
+        "type": "WS_GAP",
+        "durationMs": 15933,
+        "code": 1006,
+        "reason": null,
+        "gen": 107,
+        "restoredAt": 1794415238831,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415257848,
+        "type": "WS_GAP",
+        "durationMs": 17344,
+        "code": 1006,
+        "reason": null,
+        "gen": 108,
+        "restoredAt": 1794415275192,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415303746,
+        "type": "WS_GAP",
+        "durationMs": 15892,
+        "code": 1006,
+        "reason": null,
+        "gen": 109,
+        "restoredAt": 1794415319638,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415355014,
+        "type": "WS_GAP",
+        "durationMs": 15945,
+        "code": 1006,
+        "reason": null,
+        "gen": 110,
+        "restoredAt": 1794415370959,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415424164,
+        "type": "WS_GAP",
+        "durationMs": 16431,
+        "code": 1006,
+        "reason": null,
+        "gen": 111,
+        "restoredAt": 1794415440595,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415478694,
+        "type": "WS_GAP",
+        "durationMs": 15909,
+        "code": 1006,
+        "reason": null,
+        "gen": 112,
+        "restoredAt": 1794415494603,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415525618,
+        "type": "WS_GAP",
+        "durationMs": 16091,
+        "code": 1006,
+        "reason": null,
+        "gen": 113,
+        "restoredAt": 1794415541709,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415736142,
+        "type": "WS_GAP",
+        "durationMs": 15898,
+        "code": 1006,
+        "reason": null,
+        "gen": 114,
+        "restoredAt": 1794415752040,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415790302,
+        "type": "WS_GAP",
+        "durationMs": 16184,
+        "code": 1006,
+        "reason": null,
+        "gen": 115,
+        "restoredAt": 1794415806486,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415888976,
+        "type": "WS_GAP",
+        "durationMs": 15807,
+        "code": 1006,
+        "reason": null,
+        "gen": 116,
+        "restoredAt": 1794415904783,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415941721,
+        "type": "WS_GAP",
+        "durationMs": 16107,
+        "code": 1006,
+        "reason": null,
+        "gen": 117,
+        "restoredAt": 1794415957828,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794415985957,
+        "type": "WS_GAP",
+        "durationMs": 15900,
+        "code": 1006,
+        "reason": null,
+        "gen": 118,
+        "restoredAt": 1794416001857,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416033720,
+        "type": "WS_GAP",
+        "durationMs": 16790,
+        "code": 1006,
+        "reason": null,
+        "gen": 119,
+        "restoredAt": 1794416050510,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416089726,
+        "type": "WS_GAP",
+        "durationMs": 17536,
+        "code": 1006,
+        "reason": null,
+        "gen": 120,
+        "restoredAt": 1794416107262,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416169015,
+        "type": "WS_GAP",
+        "durationMs": 15807,
+        "code": 1006,
+        "reason": null,
+        "gen": 121,
+        "restoredAt": 1794416184822,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416220110,
+        "type": "WS_GAP",
+        "durationMs": 16185,
+        "code": 1006,
+        "reason": null,
+        "gen": 122,
+        "restoredAt": 1794416236295,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416325879,
+        "type": "WS_GAP",
+        "durationMs": 15808,
+        "code": 1006,
+        "reason": null,
+        "gen": 123,
+        "restoredAt": 1794416341687,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416390530,
+        "type": "WS_GAP",
+        "durationMs": 16455,
+        "code": 1006,
+        "reason": null,
+        "gen": 124,
+        "restoredAt": 1794416406985,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794416940830,
+        "type": "WS_GAP",
+        "durationMs": 16144,
+        "code": 1006,
+        "reason": null,
+        "gen": 125,
+        "restoredAt": 1794416956974,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417053750,
+        "type": "WS_GAP",
+        "durationMs": 15882,
+        "code": 1006,
+        "reason": null,
+        "gen": 126,
+        "restoredAt": 1794417069632,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417127230,
+        "type": "WS_GAP",
+        "durationMs": 16034,
+        "code": 1006,
+        "reason": null,
+        "gen": 127,
+        "restoredAt": 1794417143264,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417186027,
+        "type": "WS_GAP",
+        "durationMs": 15995,
+        "code": 1006,
+        "reason": null,
+        "gen": 128,
+        "restoredAt": 1794417202022,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417447463,
+        "type": "WS_GAP",
+        "durationMs": 19799,
+        "code": 1006,
+        "reason": null,
+        "gen": 129,
+        "restoredAt": 1794417467262,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417502854,
+        "type": "WS_GAP",
+        "durationMs": 18928,
+        "code": 1006,
+        "reason": null,
+        "gen": 130,
+        "restoredAt": 1794417521782,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417579589,
+        "type": "WS_GAP",
+        "durationMs": 16838,
+        "code": 1006,
+        "reason": null,
+        "gen": 131,
+        "restoredAt": 1794417596427,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417690906,
+        "type": "WS_GAP",
+        "durationMs": 15933,
+        "code": 1006,
+        "reason": null,
+        "gen": 132,
+        "restoredAt": 1794417706839,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794417918970,
+        "type": "WS_GAP",
+        "durationMs": 15852,
+        "code": 1006,
+        "reason": null,
+        "gen": 133,
+        "restoredAt": 1794417934822,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418235193,
+        "type": "WS_GAP",
+        "durationMs": 15933,
+        "code": 1006,
+        "reason": null,
+        "gen": 134,
+        "restoredAt": 1794418251126,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418328621,
+        "type": "WS_GAP",
+        "durationMs": 16062,
+        "code": 1006,
+        "reason": null,
+        "gen": 135,
+        "restoredAt": 1794418344683,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418584748,
+        "type": "WS_GAP",
+        "durationMs": 17070,
+        "code": 1006,
+        "reason": null,
+        "gen": 136,
+        "restoredAt": 1794418601818,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418662686,
+        "type": "WS_GAP",
+        "durationMs": 16036,
+        "code": 1006,
+        "reason": null,
+        "gen": 137,
+        "restoredAt": 1794418678722,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418707167,
+        "type": "WS_GAP",
+        "durationMs": 16810,
+        "code": 1006,
+        "reason": null,
+        "gen": 138,
+        "restoredAt": 1794418723977,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794418937750,
+        "type": "WS_GAP",
+        "durationMs": 17337,
+        "code": 1006,
+        "reason": null,
+        "gen": 139,
+        "restoredAt": 1794418955087,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419332432,
+        "type": "WS_GAP",
+        "durationMs": 15709,
+        "code": 1006,
+        "reason": null,
+        "gen": 140,
+        "restoredAt": 1794419348141,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419387897,
+        "type": "WS_GAP",
+        "durationMs": 15845,
+        "code": 1006,
+        "reason": null,
+        "gen": 141,
+        "restoredAt": 1794419403742,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419501035,
+        "type": "WS_GAP",
+        "durationMs": 16170,
+        "code": 1006,
+        "reason": null,
+        "gen": 142,
+        "restoredAt": 1794419517205,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419671989,
+        "type": "WS_GAP",
+        "durationMs": 16995,
+        "code": 1006,
+        "reason": null,
+        "gen": 143,
+        "restoredAt": 1794419688984,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419768093,
+        "type": "WS_GAP",
+        "durationMs": 15829,
+        "code": 1006,
+        "reason": null,
+        "gen": 144,
+        "restoredAt": 1794419783922,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794419955566,
+        "type": "WS_GAP",
+        "durationMs": 16019,
+        "code": 1006,
+        "reason": null,
+        "gen": 145,
+        "restoredAt": 1794419971585,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420150613,
+        "type": "WS_GAP",
+        "durationMs": 15847,
+        "code": 1006,
+        "reason": null,
+        "gen": 146,
+        "restoredAt": 1794420166460,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420195716,
+        "type": "WS_GAP",
+        "durationMs": 16194,
+        "code": 1006,
+        "reason": null,
+        "gen": 147,
+        "restoredAt": 1794420211910,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420232620,
+        "type": "WS_GAP",
+        "durationMs": 15953,
+        "code": 1006,
+        "reason": null,
+        "gen": 148,
+        "restoredAt": 1794420248573,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420282667,
+        "type": "WS_GAP",
+        "durationMs": 15983,
+        "code": 1006,
+        "reason": null,
+        "gen": 149,
+        "restoredAt": 1794420298650,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420326929,
+        "type": "WS_GAP",
+        "durationMs": 16319,
+        "code": 1006,
+        "reason": null,
+        "gen": 150,
+        "restoredAt": 1794420343248,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420398099,
+        "type": "WS_GAP",
+        "durationMs": 16381,
+        "code": 1006,
+        "reason": null,
+        "gen": 151,
+        "restoredAt": 1794420414480,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420478483,
+        "type": "WS_GAP",
+        "durationMs": 15979,
+        "code": 1006,
+        "reason": null,
+        "gen": 152,
+        "restoredAt": 1794420494462,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420557414,
+        "type": "WS_GAP",
+        "durationMs": 15833,
+        "code": 1006,
+        "reason": null,
+        "gen": 153,
+        "restoredAt": 1794420573247,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420659231,
+        "type": "WS_GAP",
+        "durationMs": 15884,
+        "code": 1006,
+        "reason": null,
+        "gen": 154,
+        "restoredAt": 1794420675115,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420792834,
+        "type": "WS_GAP",
+        "durationMs": 15896,
+        "code": 1006,
+        "reason": null,
+        "gen": 155,
+        "restoredAt": 1794420808730,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420884306,
+        "type": "WS_GAP",
+        "durationMs": 16056,
+        "code": 1006,
+        "reason": null,
+        "gen": 156,
+        "restoredAt": 1794420900362,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG"
+        ],
+        "restoredAll": false
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794420931587,
+        "type": "WS_GAP",
+        "durationMs": 16448,
+        "code": 1006,
+        "reason": null,
+        "gen": 157,
+        "restoredAt": 1794420948035,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794421371940,
+        "type": "WS_GAP",
+        "durationMs": 16391,
+        "code": 1006,
+        "reason": null,
+        "gen": 158,
+        "restoredAt": 1794421388331,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794421422915,
+        "type": "WS_GAP",
+        "durationMs": 17095,
+        "code": 1006,
+        "reason": null,
+        "gen": 159,
+        "restoredAt": 1794421440010,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      },
+      {
+        "run": "15915ccb-07c5-4e38-813f-56dceb361511",
+        "at": 1794421463659,
+        "type": "WS_GAP",
+        "durationMs": 15846,
+        "code": 1006,
+        "reason": null,
+        "gen": 160,
+        "restoredAt": 1794421479505,
+        "restoredWallets": [
+          "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG",
+          "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT",
+          "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm"
+        ],
+        "restoredAll": true
+      }
+    ],
+    "counts": {
+      "START": 1,
+      "SUBSCRIBED": 444,
+      "HEALTH": 2073,
+      "SIGNAL": 3986,
+      "ELIGIBLE": 3656,
+      "UNKNOWN": 2772,
+      "FINALIZED": 3644,
+      "BUY_QUOTE": 443,
+      "SELL_QUOTE": 1134,
+      "FINALITY_POLL_ERROR": 100,
+      "WS_GAP": 160,
+      "WS_ERROR": 158,
+      "FINALITY_UNKNOWN": 18,
+      "TARGET_SELL_SIGNAL": 6,
+      "INELIGIBLE": 11
+    },
+    "reliable": {
+      "finalizedRecords": 3644,
+      "byWallet": {
+        "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+          "status": "DATA_GAP",
+          "start": null,
+          "end": null,
+          "counts": {
+            "wsNotification": 0,
+            "parsedSignal": 0,
+            "confirmed": 0,
+            "eligibleBuy": 0,
+            "buyQuote": 0,
+            "sellQuote": 0,
+            "closed": 0
+          },
+          "missing": {
+            "wsNotificationToParsedSignal": 0,
+            "parsedSignalToConfirmed": 0,
+            "confirmedToEligibleBuy": 0,
+            "eligibleBuyToBuyQuote": 0,
+            "buyQuoteToSellQuote": 0,
+            "sellQuoteToClosed": 0
+          },
+          "reasons": {},
+          "latencies": {
+            "signalToPrepared": {
+              "count": 0,
+              "p50": null,
+              "p95": null,
+              "p99": null
+            },
+            "buyQuote": {
+              "count": 0,
+              "p50": null,
+              "p95": null,
+              "p99": null
+            },
+            "sellQuote": {
+              "count": 0,
+              "p50": null,
+              "p95": null,
+              "p99": null
+            },
+            "rpc": {
+              "count": 526215,
+              "p50": 205,
+              "p95": 793,
+              "p99": 1698
+            }
+          },
+          "ws": {
+            "gaps": 318,
+            "gapMs": 3399078,
+            "errors": 158,
+            "coverage": "INCOMPLETE"
+          },
+          "finalized": {
+            "available": 3644,
+            "coverage": "INCOMPLETE"
+          },
+          "coordination": {
+            "key": "run:wallet:signature",
+            "modelledClosed": 0,
+            "executedClosed": 0,
+            "closedRequiresConfirmedBuy": true,
+            "observedSignals": false
+          }
+        },
+        "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+          "status": "DATA_GAP",
+          "start": null,
+          "end": null,
+          "counts": {
+            "wsNotification": 2421,
+            "parsedSignal": 3882,
+            "confirmed": 3558,
+            "eligibleBuy": 2206,
+            "buyQuote": 423,
+            "sellQuote": 412,
+            "closed": 412
+          },
+          "missing": {
+            "wsNotificationToParsedSignal": 0,
+            "parsedSignalToConfirmed": 324,
+            "confirmedToEligibleBuy": 1352,
+            "eligibleBuyToBuyQuote": 1783,
+            "buyQuoteToSellQuote": 11,
+            "sellQuoteToClosed": 0
+          },
+          "reasons": {
+            "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 135,
+            "REPEAT_OPEN_POSITION": 1432,
+            "OWN_RPC_BUDGET": 606,
+            "RPC_ERROR": 217,
+            "TARGET_SELL_NOT_SEEN": 93,
+            "DEADLINE": 1,
+            "POSITION_CAP": 141,
+            "WS_GAP": 78,
+            "OTHER": 4,
+            "VERIFICATION_QUEUE": 5,
+            "PRICE_LIMIT": 2
+          },
+          "latencies": {
+            "signalToPrepared": {
+              "count": 426,
+              "p50": 1855,
+              "p95": 2350,
+              "p99": 2459
+            },
+            "buyQuote": {
+              "count": 426,
+              "p50": 1417,
+              "p95": 1816,
+              "p99": 2040
+            },
+            "sellQuote": {
+              "count": 1087,
+              "p50": 1449,
+              "p95": 2040,
+              "p99": 2386
+            },
+            "rpc": {
+              "count": 526215,
+              "p50": 205,
+              "p95": 793,
+              "p99": 1698
+            }
+          },
+          "ws": {
+            "gaps": 318,
+            "gapMs": 3399078,
+            "errors": 158,
+            "coverage": "INCOMPLETE"
+          },
+          "finalized": {
+            "available": 3644,
+            "coverage": "INCOMPLETE"
+          },
+          "coordination": {
+            "key": "run:wallet:signature",
+            "modelledClosed": 412,
+            "executedClosed": 0,
+            "closedRequiresConfirmedBuy": true,
+            "observedSignals": true
+          }
+        },
+        "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+          "status": "DATA_GAP",
+          "start": null,
+          "end": null,
+          "counts": {
+            "wsNotification": 57,
+            "parsedSignal": 104,
+            "confirmed": 86,
+            "eligibleBuy": 47,
+            "buyQuote": 17,
+            "sellQuote": 17,
+            "closed": 17
+          },
+          "missing": {
+            "wsNotificationToParsedSignal": 0,
+            "parsedSignalToConfirmed": 18,
+            "confirmedToEligibleBuy": 39,
+            "eligibleBuyToBuyQuote": 30,
+            "buyQuoteToSellQuote": 0,
+            "sellQuoteToClosed": 0
+          },
+          "reasons": {
+            "MARKET_OR_LIQUIDITY": 7,
+            "OTHER": 12,
+            "TARGET_SELL_NOT_SEEN": 17,
+            "RPC_ERROR": 5,
+            "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 3,
+            "OWN_RPC_BUDGET": 11,
+            "POSITION_CAP": 14
+          },
+          "latencies": {
+            "signalToPrepared": {
+              "count": 17,
+              "p50": 1632,
+              "p95": 2315,
+              "p99": 2315
+            },
+            "buyQuote": {
+              "count": 17,
+              "p50": 1197,
+              "p95": 2093,
+              "p99": 2093
+            },
+            "sellQuote": {
+              "count": 47,
+              "p50": 1348,
+              "p95": 1668,
+              "p99": 2005
+            },
+            "rpc": {
+              "count": 526215,
+              "p50": 205,
+              "p95": 793,
+              "p99": 1698
+            }
+          },
+          "ws": {
+            "gaps": 318,
+            "gapMs": 3399078,
+            "errors": 158,
+            "coverage": "INCOMPLETE"
+          },
+          "finalized": {
+            "available": 3644,
+            "coverage": "INCOMPLETE"
+          },
+          "coordination": {
+            "key": "run:wallet:signature",
+            "modelledClosed": 17,
+            "executedClosed": 0,
+            "closedRequiresConfirmedBuy": true,
+            "observedSignals": true
+          }
+        }
+      },
+      "status": "DATA_GAP"
+    }
+  },
+  "sourcePreserved": true,
+  "note": "This audit is read-only; it does not rewrite or append to the observer journal."
+}

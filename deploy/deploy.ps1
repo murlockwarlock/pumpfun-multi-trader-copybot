@@ -55,6 +55,9 @@ if (-not $RuntimeEnvPath) {
 
 $server = Read-EnvFile $ServerConfigPath
 $runtime = Read-EnvFile $RuntimeEnvPath
+if ($runtime['SNIPER_LAUNCH_FOLLOW'] -eq 'shadow' -and $runtime['LIVE_TRADER_WALLETS'] -ne 'none') {
+    throw 'Launch-follow shadow rollout requires LIVE_TRADER_WALLETS=none.'
+}
 $hostName = Require-Value $server 'DEPLOY_HOST'
 $userName = Require-Value $server 'DEPLOY_USER'
 $port = Require-Value $server 'DEPLOY_PORT'
@@ -64,11 +67,13 @@ if ($port -notmatch '^\d+$') { throw 'DEPLOY_PORT must be numeric.' }
 if (-not (Test-Path -LiteralPath $keyPath -PathType Leaf)) { throw 'DEPLOY_KEY is not readable.' }
 
 $allowedRuntimeKeys = @(
+    'SNIPER_LAUNCH_FOLLOW',
     'TRADING_MODE',
     'TARGET_WALLET',
     'TARGET_WALLETS',
     'LIVE_TRADER_WALLETS',
     'RPC_HTTP_URL',
+    'ANALYTICS_RPC_HTTP_URL',
     'RPC_FALLBACK_HTTP_URL',
     'RPC_WS_URL',
     'RPC_FALLBACK_WS_URL',
@@ -88,6 +93,8 @@ $allowedRuntimeKeys = @(
      'FAST_MAX_SIGNAL_AGE_MS',
      'FAST_MAX_ENTRY_DRIFT_BPS',
      'FAST_SKIP_SIMULATION',
+     'FAST_INVENTORY_POLICY',
+     'FAST_CANARY_MAX_ROUNDTRIPS',
      'FAST_SHADOW_PROBE_ENABLED',
      'FALLBACK_CONCURRENCY',
      'SHADOW_ENABLED',
@@ -165,21 +172,10 @@ $remoteBundle = "/tmp/pr6spr-paper-copybot-$releaseId.tar.gz"
 $remoteEnv = "/tmp/pr6spr-paper-copybot-$releaseId.env"
 $remoteScript = "/tmp/pr6spr-paper-copybot-$releaseId-deploy.sh"
 $destination = "$userName@$hostName"
-$sshArgs = @(
-    '-i', $keyPath,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-p', $port,
-    $destination
-)
-$scpArgs = @(
-    '-i', $keyPath,
-    '-o', 'IdentitiesOnly=yes',
-    '-o', 'BatchMode=yes',
-    '-o', 'StrictHostKeyChecking=accept-new',
-    '-P', $port
-)
+. (Join-Path $PSScriptRoot "ssh-common.ps1")
+$sshOptions = @(Get-DeploySshOptions -Key $keyPath -Port $port)
+$sshArgs = $sshOptions + @($destination)
+$scpArgs = @(Get-DeploySshOptions -Key $keyPath -Port $port -Scp)
 
 New-Item -ItemType Directory -Path $tempDir | Out-Null
 try {
@@ -213,6 +209,8 @@ try {
     Push-Location $ProjectRoot
     try {
         & $tar -czf $bundlePath `
+            --exclude='.git' `
+            --exclude='work' `
             --exclude='.env' `
             --exclude='data' `
             --exclude='secrets' `

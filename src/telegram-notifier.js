@@ -100,6 +100,11 @@ export class TelegramNotifier {
         "Курсор продвинут; остальные сделки продолжают обрабатываться."
       ].filter(Boolean).join("\n");
       options = { dedupeKey: `quarantine:${details.signature}`, dedupeMs: 86_400_000 };
+    } else if (
+      event === "live_settled" &&
+      !["LIVE_BUY", "LIVE_SELL"].includes(details.resultType)
+    ) {
+      return Promise.resolve(false);
     } else if (event === "live_settled") {
       const pnl = details.realizedPnlSol === undefined
         ? null
@@ -153,6 +158,44 @@ export class TelegramNotifier {
         "Проверьте кошелёк и при необходимости продайте вручную."
       ].join("\n");
       options = { dedupeKey: `exit-retry:${details.mint}`, dedupeMs: 300_000 };
+    } else if (
+      event === "live_exit_recovery" &&
+      ["confirmation_unknown", "legacy_exit_unknown"].includes(details.status)
+    ) {
+      text = [
+        "🚨 Статус SELL не определён",
+        `Mint: ${short(details.mint, 10)}`,
+        `Tx: ${details.signature ? `https://solscan.io/tx/${details.signature}` : "нет сигнатуры"}`,
+        `Доказательство: ${details.recoveryEvidence ?? "unknown"}`,
+        "Новая продажа заблокирована до проверки транзакции; при необходимости вмешайтесь вручную."
+      ].join("\n");
+      options = { dedupeKey: `exit-unknown:${details.signature ?? details.targetSignature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_sell_unknown") {
+      text = [
+        "🚨 SELL подтверждён, но изменение токенов не найдено",
+        `Mint: ${short(details.mint, 10)}`,
+        details.signature ? `Tx: https://solscan.io/tx/${details.signature}` : null,
+        "Повторная отправка остановлена до проверки on-chain состояния."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `sell-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_unknown") {
+      text = [
+        "🚨 Результат live-транзакции не определён",
+        `Mint: ${short(details.mint, 10)}`,
+        details.signature ? `Tx: https://solscan.io/tx/${details.signature}` : null,
+        details.error ?? "Проверьте транзакцию вручную; повторная отправка не выполняется."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `live-unknown:${details.signature ?? details.mint}`, dedupeMs: 300_000 };
+    } else if (event === "live_position_quarantined") {
+      text = [
+        "🚨 Позиция изолирована: принадлежность токенов не доказана",
+        `Mint: ${short(details.mint, 10)}`,
+        details.entrySignature || details.signature
+          ? `Tx: https://solscan.io/tx/${details.entrySignature ?? details.signature}` : null,
+        `Причина: ${details.reason ?? "unknown"}`,
+        "Автоматическая продажа заблокирована; требуется проверка истории переводов."
+      ].filter(Boolean).join("\n");
+      options = { dedupeKey: `position-quarantined:${details.mint}`, dedupeMs: 300_000 };
     } else if (event === "admin_report") {
       text = details.text;
     }

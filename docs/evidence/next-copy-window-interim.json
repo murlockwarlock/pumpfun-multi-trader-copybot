@@ -1,0 +1,1114 @@
+{
+  "start": 1794379620000,
+  "end": 1794552420000,
+  "cutoff": 1794380935708,
+  "complete": false,
+  "runs": {
+    "d8b90338-d89b-4ede-85db-faf024036905": {
+      "startedAt": 1794379619428,
+      "lastAt": 1794379999619,
+      "lastHealthAt": 1794379999619,
+      "rpc": {
+        "requests": 0,
+        "errors": 0,
+        "rateLimited": 0,
+        "budgetRejected": 0,
+        "totalMs": 0,
+        "methods": {},
+        "latencyMs": []
+      },
+      "verificationRpc": null,
+      "wallets": {
+        "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+          "spans": [
+            {
+              "from": 1794379620569,
+              "to": 1794379999619,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794379620000,
+              "to": 1794379620569
+            },
+            {
+              "from": 1794379999619,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 379050,
+          "unprovenMs": 936658,
+          "signals": 0,
+          "observedBuy": 0,
+          "unresolvedSignals": 0,
+          "eligibleBuy": 0,
+          "timelyBuy": 0,
+          "causes": {
+            "BUY": {},
+            "SOURCE": {},
+            "SELL": {}
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "30s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "120s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "target": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            }
+          }
+        }
+      }
+    },
+    "614e6d15-a4cd-4ca6-ae84-1b9ba11fbf9a": {
+      "startedAt": 1794379715062,
+      "lastAt": 1794379995214,
+      "lastHealthAt": 1794379995214,
+      "rpc": {
+        "requests": 158,
+        "errors": 1,
+        "rateLimited": 0,
+        "budgetRejected": 22,
+        "totalMs": 46023,
+        "methods": {
+          "getAccountInfo": 94,
+          "getMultipleAccounts": 63,
+          "getMinimumBalanceForRentExemption": 1
+        },
+        "latencyMs": [
+          223,
+          613,
+          209,
+          223,
+          205,
+          213,
+          196,
+          191,
+          615,
+          618,
+          198,
+          207,
+          203,
+          226,
+          236,
+          214,
+          639,
+          202,
+          204,
+          210,
+          191,
+          207,
+          618,
+          688,
+          198,
+          230,
+          221,
+          226,
+          257,
+          183,
+          217,
+          203,
+          231,
+          255,
+          224,
+          220,
+          177,
+          209,
+          224,
+          224,
+          234,
+          225,
+          213,
+          189,
+          265,
+          546,
+          646,
+          186,
+          190,
+          203,
+          199,
+          193,
+          217,
+          574,
+          212,
+          251,
+          215,
+          200,
+          210,
+          205,
+          577,
+          195,
+          208,
+          202,
+          209,
+          189,
+          206,
+          209,
+          192,
+          217,
+          197,
+          190,
+          195,
+          598,
+          613,
+          223,
+          228,
+          210,
+          210,
+          281,
+          617,
+          642,
+          205,
+          205,
+          209,
+          192,
+          198,
+          199,
+          674,
+          194,
+          757,
+          211,
+          203,
+          208,
+          200,
+          212,
+          216,
+          233,
+          202,
+          223,
+          196,
+          211,
+          212,
+          203,
+          710,
+          1906,
+          211,
+          733,
+          208,
+          214,
+          210,
+          206,
+          214,
+          211,
+          852,
+          208,
+          210,
+          214,
+          207,
+          214,
+          224,
+          586,
+          186,
+          214,
+          216,
+          222,
+          212,
+          192,
+          224,
+          193,
+          224,
+          250,
+          233,
+          229,
+          191,
+          225,
+          242,
+          257,
+          221,
+          215,
+          245,
+          239,
+          610,
+          206,
+          223,
+          209,
+          233,
+          245,
+          200,
+          570,
+          702,
+          574,
+          626,
+          209,
+          238,
+          214,
+          219,
+          185
+        ]
+      },
+      "verificationRpc": null,
+      "wallets": {
+        "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+          "spans": [
+            {
+              "from": 1794379715923,
+              "to": 1794379995214,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794379715062,
+              "to": 1794379715923
+            },
+            {
+              "from": 1794379995214,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 279291,
+          "unprovenMs": 941355,
+          "signals": 39,
+          "observedBuy": 26,
+          "unresolvedSignals": 6,
+          "eligibleBuy": 21,
+          "timelyBuy": 8,
+          "causes": {
+            "BUY": {
+              "REPEAT_OPEN_POSITION": 10,
+              "OWN_BUDGET_OR_COOLDOWN": 2,
+              "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 1
+            },
+            "SOURCE": {
+              "RPC_429": 1,
+              "OWN_BUDGET_OR_COOLDOWN": 5
+            },
+            "SELL": {
+              "OWN_BUDGET_OR_COOLDOWN": 10,
+              "RPC_ERROR": 1
+            }
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 5,
+              "unknown": 16,
+              "finalityUnknown": 0,
+              "netLamports": "-2668301",
+              "withoutBestLamports": "-2219529",
+              "netWithoutRentRecoveryLamports": "-10237501"
+            },
+            "30s": {
+              "pairs": 3,
+              "unknown": 18,
+              "finalityUnknown": 0,
+              "netLamports": "-3394492",
+              "withoutBestLamports": "-2968024",
+              "netWithoutRentRecoveryLamports": "-7936012"
+            },
+            "120s": {
+              "pairs": 3,
+              "unknown": 18,
+              "finalityUnknown": 0,
+              "netLamports": "-1638671",
+              "withoutBestLamports": "-1308955",
+              "netWithoutRentRecoveryLamports": "-6180191"
+            },
+            "target": {
+              "pairs": 1,
+              "unknown": 20,
+              "finalityUnknown": 0,
+              "netLamports": "-1989832",
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": "-3503672"
+            }
+          }
+        },
+        "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+          "spans": [
+            {
+              "from": 1794379715923,
+              "to": 1794379995214,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794379715062,
+              "to": 1794379715923
+            },
+            {
+              "from": 1794379995214,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 279291,
+          "unprovenMs": 941355,
+          "signals": 0,
+          "observedBuy": 0,
+          "unresolvedSignals": 0,
+          "eligibleBuy": 0,
+          "timelyBuy": 0,
+          "causes": {
+            "BUY": {},
+            "SOURCE": {},
+            "SELL": {}
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "30s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "120s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "target": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            }
+          }
+        }
+      }
+    },
+    "15915ccb-07c5-4e38-813f-56dceb361511": {
+      "startedAt": 1794380001276,
+      "lastAt": 1794380934218,
+      "lastHealthAt": 1794380921654,
+      "rpc": {
+        "requests": 313,
+        "errors": 0,
+        "rateLimited": 0,
+        "budgetRejected": 11,
+        "totalMs": 94366,
+        "methods": {
+          "getAccountInfo": 185,
+          "getMultipleAccounts": 127,
+          "getMinimumBalanceForRentExemption": 1
+        },
+        "latencyMs": [
+          171,
+          207,
+          178,
+          195,
+          172,
+          171,
+          206,
+          787,
+          189,
+          213,
+          285,
+          172,
+          230,
+          178,
+          597,
+          219,
+          560,
+          174,
+          202,
+          202,
+          168,
+          210,
+          220,
+          186,
+          196,
+          212,
+          1042,
+          203,
+          205,
+          207,
+          875,
+          196,
+          234,
+          250,
+          210,
+          249,
+          186,
+          223,
+          184,
+          206,
+          214,
+          269,
+          240,
+          858,
+          986,
+          206,
+          221,
+          178,
+          195,
+          193,
+          244,
+          1740,
+          200,
+          223,
+          240,
+          207,
+          232,
+          202,
+          219,
+          214,
+          222,
+          226,
+          205,
+          222,
+          188,
+          693,
+          196,
+          243,
+          208,
+          196,
+          266,
+          196,
+          881,
+          178,
+          181,
+          183,
+          185,
+          183,
+          224,
+          744,
+          189,
+          199,
+          202,
+          196,
+          191,
+          201,
+          667,
+          208,
+          225,
+          258,
+          213,
+          209,
+          190,
+          533,
+          179,
+          180,
+          185,
+          178,
+          169,
+          204,
+          595,
+          203,
+          254,
+          258,
+          224,
+          214,
+          204,
+          229,
+          215,
+          216,
+          209,
+          196,
+          223,
+          203,
+          553,
+          184,
+          189,
+          197,
+          185,
+          199,
+          192,
+          712,
+          190,
+          191,
+          200,
+          207,
+          203,
+          628,
+          712,
+          183,
+          191,
+          185,
+          194,
+          202,
+          839,
+          1031,
+          194,
+          247,
+          197,
+          229,
+          195,
+          174,
+          552,
+          179,
+          185,
+          187,
+          197,
+          204,
+          592,
+          627,
+          187,
+          192,
+          192,
+          193,
+          196,
+          203,
+          1133,
+          199,
+          209,
+          217,
+          200,
+          204,
+          212,
+          209,
+          1121,
+          231,
+          198,
+          220,
+          216,
+          845,
+          197,
+          200,
+          204,
+          900,
+          207,
+          228,
+          228,
+          227,
+          217,
+          210,
+          1748,
+          185,
+          218,
+          230,
+          210,
+          231,
+          192,
+          213,
+          201,
+          217,
+          219,
+          225,
+          232,
+          867,
+          1217,
+          192,
+          252,
+          199,
+          204,
+          200,
+          592,
+          593,
+          207,
+          208,
+          228,
+          208,
+          207,
+          499,
+          599,
+          184,
+          214,
+          176,
+          172,
+          192,
+          208,
+          740,
+          203,
+          208,
+          214,
+          209,
+          198,
+          217,
+          588,
+          211,
+          213,
+          223,
+          241,
+          231,
+          209,
+          232,
+          211,
+          226,
+          213,
+          212,
+          230,
+          619,
+          814,
+          198,
+          203,
+          193,
+          220,
+          187,
+          173,
+          965,
+          177,
+          210,
+          195,
+          181,
+          195,
+          556,
+          618,
+          196,
+          210,
+          232,
+          210,
+          191
+        ]
+      },
+      "verificationRpc": null,
+      "wallets": {
+        "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+          "spans": [
+            {
+              "from": 1794380002171,
+              "to": 1794380921654,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794380001276,
+              "to": 1794380002171
+            },
+            {
+              "from": 1794380921654,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 919483,
+          "unprovenMs": 14949,
+          "signals": 0,
+          "observedBuy": 0,
+          "unresolvedSignals": 0,
+          "eligibleBuy": 0,
+          "timelyBuy": 0,
+          "causes": {
+            "BUY": {},
+            "SOURCE": {},
+            "SELL": {}
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "30s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "120s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "target": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            }
+          }
+        },
+        "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+          "spans": [
+            {
+              "from": 1794380002172,
+              "to": 1794380932865,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794380001276,
+              "to": 1794380002172
+            },
+            {
+              "from": 1794380932865,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 930693,
+          "unprovenMs": 3739,
+          "signals": 61,
+          "observedBuy": 39,
+          "unresolvedSignals": 1,
+          "eligibleBuy": 38,
+          "timelyBuy": 9,
+          "causes": {
+            "BUY": {
+              "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 5,
+              "REPEAT_OPEN_POSITION": 20,
+              "OWN_BUDGET_OR_COOLDOWN": 4
+            },
+            "SOURCE": {
+              "RPC_ERROR": 1
+            },
+            "SELL": {
+              "OWN_BUDGET_OR_COOLDOWN": 5,
+              "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 3
+            }
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 8,
+              "unknown": 30,
+              "finalityUnknown": 0,
+              "netLamports": "-4413032",
+              "withoutBestLamports": "-4024082",
+              "netWithoutRentRecoveryLamports": "-16523752"
+            },
+            "30s": {
+              "pairs": 6,
+              "unknown": 32,
+              "finalityUnknown": 0,
+              "netLamports": "-5082459",
+              "withoutBestLamports": "-4555768",
+              "netWithoutRentRecoveryLamports": "-14165499"
+            },
+            "120s": {
+              "pairs": 7,
+              "unknown": 31,
+              "finalityUnknown": 0,
+              "netLamports": "-5617925",
+              "withoutBestLamports": "-5587067",
+              "netWithoutRentRecoveryLamports": "-16214805"
+            },
+            "target": {
+              "pairs": 2,
+              "unknown": 36,
+              "finalityUnknown": 0,
+              "netLamports": "-303172",
+              "withoutBestLamports": "-278978",
+              "netWithoutRentRecoveryLamports": "-3330852"
+            }
+          }
+        },
+        "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+          "spans": [
+            {
+              "from": 1794380002176,
+              "to": 1794380921654,
+              "gen": 1
+            }
+          ],
+          "unavailable": [
+            {
+              "from": 1794380001276,
+              "to": 1794380002176
+            },
+            {
+              "from": 1794380921654,
+              "to": 1794380935708
+            }
+          ],
+          "reconnects": [],
+          "coveredMs": 919478,
+          "unprovenMs": 14954,
+          "signals": 0,
+          "observedBuy": 0,
+          "unresolvedSignals": 0,
+          "eligibleBuy": 0,
+          "timelyBuy": 0,
+          "causes": {
+            "BUY": {},
+            "SOURCE": {},
+            "SELL": {}
+          },
+          "horizons": {
+            "10s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "30s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "120s": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            },
+            "target": {
+              "pairs": 0,
+              "unknown": 0,
+              "finalityUnknown": 0,
+              "netLamports": null,
+              "withoutBestLamports": null,
+              "netWithoutRentRecoveryLamports": null
+            }
+          }
+        }
+      }
+    }
+  },
+  "coverage": {
+    "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+      "coveredMs": 1198769,
+      "unprovenMs": 116939,
+      "gaps": [
+        {
+          "from": 1794379620000,
+          "to": 1794379715923
+        },
+        {
+          "from": 1794379995214,
+          "to": 1794380002176
+        },
+        {
+          "from": 1794380921654,
+          "to": 1794380935708
+        }
+      ],
+      "status": "VERIFIED"
+    },
+    "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+      "coveredMs": 1209984,
+      "unprovenMs": 105724,
+      "gaps": [
+        {
+          "from": 1794379620000,
+          "to": 1794379715923
+        },
+        {
+          "from": 1794379995214,
+          "to": 1794380002172
+        },
+        {
+          "from": 1794380932865,
+          "to": 1794380935708
+        }
+      ],
+      "status": "INVALID"
+    },
+    "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+      "coveredMs": 1298533,
+      "unprovenMs": 17175,
+      "gaps": [
+        {
+          "from": 1794379620000,
+          "to": 1794379620569
+        },
+        {
+          "from": 1794379999619,
+          "to": 1794380002171
+        },
+        {
+          "from": 1794380921654,
+          "to": 1794380935708
+        }
+      ],
+      "status": "VERIFIED"
+    }
+  },
+  "independent": {
+    "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
+      "headTime": 1794381028,
+      "lowerBoundary": true,
+      "listed": 3,
+      "unseen": 3,
+      "unclassified": 0,
+      "failed": 0,
+      "rpcErrors": 0,
+      "knownMissing": [],
+      "slotMismatches": [],
+      "status": "VERIFIED"
+    },
+    "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
+      "headTime": 1794381028,
+      "lowerBoundary": true,
+      "listed": 123,
+      "unseen": 18,
+      "unclassified": 2,
+      "failed": 5,
+      "rpcErrors": 0,
+      "knownMissing": [
+        {
+          "signature": "Ci55KsPxdJKhzoUvD1PgTUYHVZympRuAFEXRVJeqdBzmffnkWo17ZfssHp9WgtZg7VjwPR1DRXAsJCka15TwDnR",
+          "slot": 468032494,
+          "blockTime": 1794380596,
+          "trades": [
+            {
+              "side": "SELL",
+              "eligible": true,
+              "mint": "DigVnUDwgbSSWNMNsgzGNw8EQhqwjniPU2EsfD4Wpump",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "gUatKNmVffrebTUbAEWqEZwY5Laifw9KemesSHFhLPDdGaNnafBzhZ3Tcnd6fEZx8qxwLfqTtVGaAXLV6D2ogaC",
+          "slot": 468028329,
+          "blockTime": 1794379705,
+          "trades": [
+            {
+              "side": "BUY",
+              "eligible": true,
+              "mint": "DyVufMTQfhRiNDmV78QVJw3H6AHpEzCC44U4Ap1RfiPw",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "2J3a93n54UBpqGe8g4NinivAcvJYf8h1i2U3Y7zbpaMjYnNER6bDoX4jRSHBfYEDwhg7enwfVSEcSBNirHFM5vVS",
+          "slot": 468028315,
+          "blockTime": 1794379701,
+          "trades": [
+            {
+              "side": "BUY",
+              "eligible": true,
+              "mint": "DigVnUDwgbSSWNMNsgzGNw8EQhqwjniPU2EsfD4Wpump",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "5UWVkouj5ESNSfPeiH9Tr3cS7U86Y9XDGrwYBHSkaFJ7bFSGsqkNAj6iSKSKFU1X4B1cwk2gX1DmpfqbGFwujFVk",
+          "slot": 468028289,
+          "blockTime": 1794379696,
+          "trades": [
+            {
+              "side": "BUY",
+              "eligible": true,
+              "mint": "uHMWNFjUNxbPy1q43WrdbzygmJwdeh6AiQm1NKdxPAY",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "41NAtkBoCY5rFSXY1W3tQC8mGR86RP4Lf48YmermbrTCh4F4PYdiBCwT2XRpUDSki8rTGv5T4KMg4i37ZHXgFVtc",
+          "slot": 468028275,
+          "blockTime": 1794379693,
+          "trades": [
+            {
+              "side": "SELL",
+              "eligible": true,
+              "mint": "uHMWNFjUNxbPy1q43WrdbzygmJwdeh6AiQm1NKdxPAY",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "5eXvMy9qYqrKMPeA4qkMzJv3Db2frG67Y3WZNCGzrtfhYB9jZAaJyGfX2X82ffyczy5Fi4GLJDbVb8ESar4Jko1i",
+          "slot": 468028194,
+          "blockTime": 1794379676,
+          "trades": [
+            {
+              "side": "BUY",
+              "eligible": true,
+              "mint": "uHMWNFjUNxbPy1q43WrdbzygmJwdeh6AiQm1NKdxPAY",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "4Ah5ZCk2i8pmbffLTDn16QBjMX7rynE9m7jBMtkKJWHt35MihZj8wBgEALsQF4KAqeZQ6BkdPyDiApMsBn7drNhW",
+          "slot": 468028185,
+          "blockTime": 1794379674,
+          "trades": [
+            {
+              "side": "SELL",
+              "eligible": true,
+              "mint": "uHMWNFjUNxbPy1q43WrdbzygmJwdeh6AiQm1NKdxPAY",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "3yFGuvhhZ17Q3BfzA7dtUjgDuGJL32VHKb8XU3ZpstuVBMKqGMCaC7YeCH794F9xH2Cb8ahvjY1z8WLUP3JfVd5w",
+          "slot": 468028030,
+          "blockTime": 1794379641,
+          "trades": [
+            {
+              "side": "SELL",
+              "eligible": true,
+              "mint": "BXwgus8w5NPgxxWxTUUHiKUz3Jezn8RB6uqowcJxpump",
+              "venue": "pumpswap"
+            }
+          ]
+        },
+        {
+          "signature": "4VWFQKF2ReqvkKjzHjzjBY11ZnaPzB8gQw1MKGbBfqzVNUTDCztA7iZbJ1oTiBFeycahQxGu6S4VztHkM5fv8owr",
+          "slot": 468027992,
+          "blockTime": 1794379633,
+          "trades": [
+            {
+              "side": "BUY",
+              "eligible": true,
+              "mint": "6yXjaaaC6D9987UvJpBHHzU53jK3hPxGpbhcUNXxpump",
+              "venue": "pumpswap"
+            }
+          ]
+        }
+      ],
+      "slotMismatches": [],
+      "status": "INVALID"
+    },
+    "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
+      "headTime": 1794381028,
+      "lowerBoundary": true,
+      "listed": 0,
+      "unseen": 0,
+      "unclassified": 0,
+      "failed": 0,
+      "rpcErrors": 0,
+      "knownMissing": [],
+      "slotMismatches": [],
+      "status": "VERIFIED"
+    }
+  },
+  "malformed": {}
+}

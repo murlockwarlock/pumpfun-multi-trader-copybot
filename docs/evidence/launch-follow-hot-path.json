@@ -1,0 +1,34 @@
+{
+  "baselineRef": "c26e666",
+  "samples": {
+    "baseline": [
+      71,
+      72,
+      63,
+      63,
+      62,
+      62
+    ],
+    "current": [
+      62,
+      63,
+      61,
+      61,
+      62,
+      62
+    ]
+  },
+  "baseline": {
+    "n": 6,
+    "p50": 63,
+    "p95": 72,
+    "p99": 72
+  },
+  "current": {
+    "n": 6,
+    "p50": 62,
+    "p95": 63,
+    "p99": 63
+  },
+  "unit": "ms since notification"
+}
