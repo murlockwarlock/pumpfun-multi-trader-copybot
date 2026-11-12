@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T10:22:05.658Z",
+  "generatedAt": "2026-11-12T10:26:04.163Z",
   "status": "INVALID",
   "observerRuns": [
     "15915ccb-07c5-4e38-813f-56dceb361511"
@@ -135,8 +135,8 @@
       },
       "last24h": {
         "status": "UNPROVEN",
-        "start": 1794392525658,
-        "end": 1794478925658,
+        "start": 1794392764163,
+        "end": 1794479164163,
         "counts": {
           "wsNotification": 0,
           "parsedSignal": 0,
@@ -175,9 +175,9 @@
             "p99": null
           },
           "rpc": {
-            "count": 370688,
+            "count": 367616,
             "p50": 205,
-            "p95": 813,
+            "p95": 808,
             "p99": 1657
           }
         },
@@ -335,28 +335,28 @@
       },
       "last24h": {
         "status": "INVALID",
-        "start": 1794392525658,
-        "end": 1794478925658,
+        "start": 1794392764163,
+        "end": 1794479164163,
         "counts": {
-          "wsNotification": 1601,
-          "parsedSignal": 2587,
-          "confirmed": 1441,
-          "eligibleBuy": 1451,
+          "wsNotification": 1588,
+          "parsedSignal": 2566,
+          "confirmed": 1437,
+          "eligibleBuy": 1445,
           "buyQuote": 294,
-          "sellQuote": 284,
-          "closed": 284
+          "sellQuote": 283,
+          "closed": 283
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 1146,
+          "parsedSignalToConfirmed": 1129,
           "confirmedToEligibleBuy": 0,
-          "eligibleBuyToBuyQuote": 1157,
-          "buyQuoteToSellQuote": 10,
+          "eligibleBuyToBuyQuote": 1151,
+          "buyQuoteToSellQuote": 11,
           "sellQuoteToClosed": 0
         },
         "reasons": {
-          "REPEAT_OPEN_POSITION": 886,
-          "RPC_ERROR": 174,
+          "RPC_ERROR": 160,
+          "REPEAT_OPEN_POSITION": 880,
           "DEADLINE_OR_CONTEXT_UNDISTINGUISHED": 87,
           "OWN_RPC_BUDGET": 408,
           "TARGET_SELL_NOT_SEEN": 70,
@@ -380,15 +380,15 @@
             "p99": 1982
           },
           "sellQuote": {
-            "count": 741,
-            "p50": 1452,
+            "count": 740,
+            "p50": 1451,
             "p95": 2032,
             "p99": 2369
           },
           "rpc": {
-            "count": 370688,
+            "count": 367616,
             "p50": 205,
-            "p95": 813,
+            "p95": 808,
             "p99": 1657
           }
         },
@@ -538,8 +538,8 @@
       },
       "last24h": {
         "status": "INVALID",
-        "start": 1794392525658,
-        "end": 1794478925658,
+        "start": 1794392764163,
+        "end": 1794479164163,
         "counts": {
           "wsNotification": 51,
           "parsedSignal": 83,
@@ -586,9 +586,9 @@
             "p99": 2005
           },
           "rpc": {
-            "count": 370688,
+            "count": 367616,
             "p50": 205,
-            "p95": 813,
+            "p95": 808,
             "p99": 1657
           }
         },
@@ -850,7 +850,10 @@
         "sellImpactBps": 0.6986131479769231,
         "rentSol": 0.00151384,
         "netSol": -0.000551174,
+        "netUsd": -0.046315151219999996,
+        "roi": -0.1102348,
         "netWithoutRentSol": -0.002065014,
+        "netWithoutRentUsd": -0.17352312642,
         "sellAvailable": true,
         "independent": true
       },
@@ -871,7 +874,10 @@
         "sellImpactBps": 8.295584283395385,
         "rentSol": 0.00151384,
         "netSol": -0.003048911,
+        "netUsd": -0.25619999133,
+        "roi": -0.05123999879131247,
         "netWithoutRentSol": -0.004562751,
+        "netWithoutRentUsd": -0.38340796653000003,
         "sellAvailable": true,
         "independent": true
       },
@@ -892,7 +898,10 @@
         "sellImpactBps": 16.563297642794296,
         "rentSol": 0.00151384,
         "netSol": -0.005956871,
+        "netUsd": -0.50055587013,
+        "roi": -0.05005558710555278,
         "netWithoutRentSol": -0.007470711,
+        "netWithoutRentUsd": -0.62776384533,
         "sellAvailable": true,
         "independent": true
       },
@@ -913,7 +922,10 @@
         "sellImpactBps": 33.0165602101018,
         "rentSol": 0.00151384,
         "netSol": -0.012336189,
+        "netUsd": -1.03660996167,
+        "roi": -0.05183049817933459,
         "netWithoutRentSol": -0.013850029,
+        "netWithoutRentUsd": -1.16381793687,
         "sellAvailable": true,
         "independent": true
       },
@@ -934,7 +946,10 @@
         "sellImpactBps": 49.63932517643044,
         "rentSol": 0.00151384,
         "netSol": -0.019479585,
+        "netUsd": -1.63686952755,
+        "roi": -0.05456231768588572,
         "netWithoutRentSol": -0.020993425,
+        "netWithoutRentUsd": -1.76407750275,
         "sellAvailable": true,
         "independent": true
       }

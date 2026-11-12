@@ -69,6 +69,7 @@ test("five-size smoke is explicitly not a prospective strategy comparison", () =
   assert.equal(report.rpcBudget.oneBuyPlusOneSell, 71);
   assert.equal(report.rpcBudget.oneBuyPlusFourSells, 176);
   assert.match(report.rpcBudget.conclusion, /insufficient/);
+  assert.ok(report.scenarios.every(s => Number.isFinite(s.netUsd) && Number.isFinite(s.roi)));
   assert.ok(report.scenarios.every(s => s.contextVerified && s.independent));
 });
 
