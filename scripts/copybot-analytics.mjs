@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { observationReason } from "./next-copy-reasons.mjs";
 
@@ -44,18 +45,39 @@ function signalLatency(row) {
 }
 
 export function buildFunnel(rows, { start = -Infinity, end = Infinity, wallet = null } = {}) {
-  const own = rows.filter(r => (!wallet || r.wallet === wallet) && inWindow(r, start, end));
-  const signals = new Set(own.filter(r => r.type === "SIGNAL" && r.provisionalSides?.includes("BUY")).map(r => r.signature));
-  const parsed = new Set(own.filter(r => r.type === "SIGNAL").map(r => r.signature));
-  const finalized = new Map(rows.filter(r => r.type === "FINALIZED" && eventTime(r) <= end).map(r => [r.signature, r.slot]));
-  const confirmed = new Set([...signals].filter(sig => finalized.has(sig)));
-  const eligible = new Set(own.filter(r => r.type === "ELIGIBLE" && r.side === "BUY").map(r => r.signature));
-  const buyQuotes = new Set(own.filter(r => r.type === "BUY_QUOTE").map(r => r.signature));
-  const sellQuotes = new Set(own.filter(r => r.type === "SELL_QUOTE").map(r => r.signature));
-  const closed = new Set(own.filter(r => r.type === "SELL_QUOTE" && r.netLamports != null).map(r => r.signature));
+  const scoped = rows.filter(r => inWindow(r, start, end));
+  const runOf = row => row?.run ?? "legacy";
+  const keyOf = row => row?.signature ? `${runOf(row)}:${row.wallet ?? wallet ?? "*"}:${row.signature}` : null;
+  const own = scoped.filter(r => (!wallet || r.wallet === wallet) && (r.wallet === wallet || r.wallet == null || r.type === "START"));
+  const signalRows = own.filter(r => r.type === "SIGNAL" && r.signature);
+  const parsedKeys = new Set(signalRows.map(keyOf).filter(Boolean));
+  const buySignalKeys = new Set(signalRows.filter(r => r.provisionalSides?.includes("BUY")).map(keyOf).filter(Boolean));
+  const finalizedRows = scoped.filter(r => r.type === "FINALIZED" && r.signature);
+  const finalByRunSig = new Map();
+  for (const row of finalizedRows) {
+    const key = `${runOf(row)}:${row.signature}`;
+    const list = finalByRunSig.get(key) ?? [];
+    list.push(row);
+    finalByRunSig.set(key, list);
+  }
+  const hasFinalized = signalRows.filter(r => {
+    const candidates = finalByRunSig.get(`${runOf(r)}:${r.signature}`) ?? [];
+    return candidates.some(f => eventTime(f) >= eventTime(r) && Number.isFinite(Number(f.slot)) &&
+      (!Number.isFinite(Number(r.slot)) || Number(f.slot) >= Number(r.slot)));
+  }).map(keyOf);
+  const confirmed = new Set(hasFinalized.filter(Boolean));
+  const stageRows = type => own.filter(r => r.type === type && r.signature);
+  const eligible = new Set(stageRows("ELIGIBLE").filter(r => r.side === "BUY" && confirmed.has(keyOf(r))).map(keyOf));
+  const buyQuotes = new Set(stageRows("BUY_QUOTE").filter(r => eligible.has(keyOf(r))).map(keyOf));
+  const sellRows = stageRows("SELL_QUOTE").filter(r => buyQuotes.has(keyOf(r)));
+  const sellQuotes = new Set(sellRows.map(keyOf));
+  const closedRows = sellRows.filter(r => r.netLamports != null && r.sourceSignatureProof !== false);
+  const closed = new Set(closedRows.map(keyOf));
+  const modelledClosed = new Set(closedRows.filter(r => r.modelled !== false && r.executed !== true && r.executionStatus !== "executed").map(keyOf));
+  const executedClosed = new Set(closedRows.filter(r => r.executed === true || r.executionStatus === "executed" || r.type === "LIVE_SETTLEMENT").map(keyOf));
   const counts = {
-    wsNotification: own.filter(r => r.type === "WS_SIGNAL" || r.type === "WS_NOTIFICATION").length,
-    parsedSignal: parsed.size,
+    wsNotification: new Set(own.filter(r => r.type === "WS_SIGNAL" || r.type === "WS_NOTIFICATION").map(keyOf).filter(Boolean)).size,
+    parsedSignal: parsedKeys.size,
     confirmed: confirmed.size,
     eligibleBuy: eligible.size,
     buyQuote: buyQuotes.size,
@@ -64,7 +86,9 @@ export function buildFunnel(rows, { start = -Infinity, end = Infinity, wallet = 
   };
   // Older observer journals do not have a separate WS_NOTIFICATION record.
   // SIGNAL is the first persisted receipt and is therefore the lower-bound WS stage.
-  if (!counts.wsNotification) counts.wsNotification = signals.size;
+  // Older observer journals do not persist a separate WS notification. SIGNAL
+  // is then only a lower-bound receipt, never proof of complete coverage.
+  if (!counts.wsNotification) counts.wsNotification = buySignalKeys.size;
   const reasons = {};
   for (const r of own.filter(r => r.type === "UNKNOWN" || r.type === "INELIGIBLE" || r.type === "FINALITY_POLL_ERROR")) {
     addReason(reasons, r.reason ?? r.error ?? r.type);
@@ -75,14 +99,74 @@ export function buildFunnel(rows, { start = -Infinity, end = Infinity, wallet = 
     sellQuote: latencyStats(own.filter(r => r.type === "SELL_QUOTE").map(r => r.quote?.quoteMs ?? r.latencyMs)),
     rpc: latencyStats(rows.filter(r => inWindow(r, start, end)).flatMap(r => Array.isArray(r.rpc?.latencyMs) ? r.rpc.latencyMs : []))
   };
-  const gaps = own.filter(r => r.type === "WS_GAP" || r.type === "WS_ERROR");
+  const subscriptionRows = scoped.filter(r => r.type === "SUBSCRIBED" && r.wallet);
+  const subscriptions = new Map();
+  for (const row of subscriptionRows) {
+    const key = `${runOf(row)}:${row.gen ?? "?"}`;
+    const set = subscriptions.get(key) ?? new Set();
+    set.add(row.wallet);
+    subscriptions.set(key, set);
+  }
+  const gaps = scoped.filter(r => {
+    if (r.type !== "WS_GAP" && r.type !== "WS_ERROR") return false;
+    if (r.wallet) return !wallet || r.wallet === wallet;
+    if (!wallet) return true;
+    const set = subscriptions.get(`${runOf(r)}:${r.gen ?? "?"}`);
+    return !set || set.has(wallet);
+  });
   const missing = {};
   const title = value => value.charAt(0).toUpperCase() + value.slice(1);
   for (let i = 1; i < STAGES.length; i++) missing[`${STAGES[i - 1]}To${title(STAGES[i])}`] = Math.max(0, counts[STAGES[i - 1]] - counts[STAGES[i]]);
-  const gapMs = gaps.reduce((sum, r) => sum + (Number(r.durationMs) || 0), 0);
-  const status = gaps.length ? "DATA_GAP" : (counts.confirmed < counts.parsedSignal ? "INVALID" : "UNPROVEN");
+  const gapMs = gaps.filter(r => r.type === "WS_GAP" || r.type === "DATA_GAP").reduce((sum, r) => {
+    if (Number.isFinite(Number(r.durationMs))) return sum + Number(r.durationMs);
+    const restored = subscriptionRows.filter(s => s.run === r.run && Number(s.at) > Number(r.at) && Number(s.gen ?? -1) > Number(r.gen ?? -1));
+    const restoredAt = restored.length ? Math.min(...restored.map(s => Number(s.at))) : null;
+    return sum + (restoredAt == null ? 0 : Math.max(0, restoredAt - Number(r.at)));
+  }, 0);
+  const status = !counts.parsedSignal ? (gaps.length ? "DATA_GAP" : "UNPROVEN_NO_OBSERVATIONS") :
+    gaps.length ? "DATA_GAP" : (counts.confirmed < counts.parsedSignal ? "INVALID" : "UNPROVEN");
+  const finalAvailable = new Set(finalizedRows.filter(r => !wallet || r.wallet === wallet || r.wallet == null).map(r => `${runOf(r)}:${r.signature}`)).size;
   return { status, start: start === -Infinity ? null : start, end: end === Infinity ? null : end, counts, missing, reasons, latencies,
-    ws: { gaps: gaps.length, gapMs, errors: own.filter(r => r.type === "WS_ERROR").length }, finalized: { available: finalized.size, coverage: confirmed.size === signals.size ? "PROVEN" : "INCOMPLETE" } };
+    ws: { gaps: gaps.length, gapMs, errors: gaps.filter(r => r.type === "WS_ERROR").length, coverage: gaps.length ? "INCOMPLETE" : (counts.wsNotification ? "OBSERVED_LOWER_BOUND" : "UNKNOWN") },
+    finalized: { available: finalAvailable, coverage: confirmed.size === parsedKeys.size && parsedKeys.size > 0 ? "PROVEN" : "INCOMPLETE" },
+    coordination: { key: "run:wallet:signature", modelledClosed: modelledClosed.size, executedClosed: executedClosed.size,
+      closedRequiresConfirmedBuy: true, observedSignals: parsedKeys.size > 0 } };
+}
+
+export function auditObserverRun(file, { rows = null } = {}) {
+  const data = rows ?? readJsonl(file);
+  const bytes = fs.existsSync(file) ? fs.statSync(file).size : null;
+  const hash = fs.existsSync(file) ? crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex") : null;
+  const times = data.map(eventTime).filter(Number.isFinite);
+  const start = data.find(r => r.type === "START");
+  const last = data.at(-1) ?? null;
+  const health = data.filter(r => r.type === "HEALTH").at(-1) ?? null;
+  const stop = data.find(r => r.type === "STOP") ?? null;
+  const compactRpc = rpc => rpc ? { requests: rpc.requests ?? null, errors: rpc.errors ?? null, rateLimited: rpc.rateLimited ?? null,
+    budgetRejected: rpc.budgetRejected ?? null, totalMs: rpc.totalMs ?? null, methods: rpc.methods ?? null,
+    latency: latencyStats(Array.isArray(rpc.latencyMs) ? rpc.latencyMs : []) } : null;
+  const subscriptions = data.filter(r => r.type === "SUBSCRIBED" && r.wallet);
+  const expectedWallets = start?.wallets ?? [...new Set(subscriptions.map(r => r.wallet))];
+  const gaps = data.filter(r => r.type === "WS_GAP" || r.type === "DATA_GAP").map(r => {
+    const restored = r.type === "WS_GAP" ? subscriptions.filter(s => s.run === r.run && Number(s.at) > Number(r.at) && Number(s.gen ?? -1) > Number(r.gen ?? -1)) : [];
+    const restoredAt = restored.length ? Math.min(...restored.map(s => Number(s.at))) : null;
+    const restoredWallets = [...new Set(restored.filter(s => Number(s.at) === restoredAt).map(s => s.wallet))];
+    return { run: r.run ?? null, at: r.at ?? null, type: r.type,
+      durationMs: Number.isFinite(Number(r.durationMs)) ? Number(r.durationMs) : (restoredAt == null ? null : restoredAt - Number(r.at)),
+      code: r.code ?? null, reason: r.reason ?? null, gen: r.gen ?? null, restoredAt, restoredWallets,
+      restoredAll: expectedWallets.length > 0 && expectedWallets.every(w => restoredWallets.includes(w)) };
+  });
+  const wallets = start?.wallets ?? [...new Set(data.map(r => r.wallet).filter(Boolean))];
+  const byWallet = Object.fromEntries(wallets.map(wallet => [wallet, buildFunnel(data, { wallet })]));
+  const confirmedRows = data.filter(r => r.type === "FINALIZED" && r.signature);
+  return { file, exists: fs.existsSync(file), bytes, lines: data.length, sha256: hash,
+    runIds: [...new Set(data.map(r => r.run).filter(Boolean))], start: start ? { at: start.at, iso: new Date(start.at).toISOString(), run: start.run } : null,
+    lastRecord: last ? { type: last.type, at: last.at, iso: eventTime(last) == null ? null : new Date(eventTime(last)).toISOString() } : null,
+    lastHeartbeat: health ? { at: health.at, iso: new Date(health.at).toISOString(), subscriptions: health.subscriptions ?? null, rpc: compactRpc(health.rpc), verification: health.verification ?? null } : null,
+    stop: stop ? { at: stop.at, iso: new Date(stop.at).toISOString() } : null,
+    durationMs: times.length > 1 ? Math.max(...times) - Math.min(...times) : null, dataGaps: gaps,
+    counts: data.reduce((out, row) => (out[row.type] = (out[row.type] ?? 0) + 1, out), {}),
+    reliable: { finalizedRecords: confirmedRows.length, byWallet, status: gaps.length ? "DATA_GAP" : (confirmedRows.length ? "UNPROVEN" : "UNPROVEN_NO_CONFIRMED_OBSERVATIONS") } };
 }
 
 function sourceKey(row) {
@@ -173,7 +257,7 @@ export function sizeStudySnapshot(file) {
   if (!file || !fs.existsSync(file)) return { status: "UNKNOWN", reason: "size smoke evidence not found" };
   const data = JSON.parse(fs.readFileSync(file, "utf8"));
   const scenarios = (data.scenarios ?? []).map(s => ({ id: s.id, inputLamports: s.inputLamports,
-    venue: s.buy?.venue ?? null, marketContextSlot: s.buy?.marketContextSlot ?? null,
+    venue: s.buy?.venue ?? null, pool: s.buy?.pool ?? null, reserves: s.buy?.reserves ?? null, marketContextSlot: s.buy?.marketContextSlot ?? null,
     commitment: s.buy?.marketCommitment ?? null, contextVerified: s.buy?.contextVerified === true,
     rpcCalls: (s.buy?.rpcCalls ?? 0) + (s.sell?.rpcCalls ?? 0), buyRpcCalls: s.buy?.rpcCalls ?? null, sellRpcCalls: s.sell?.rpcCalls ?? null,
     rpcMs: s.buy?.rpcMs ?? null, quoteMs: s.buy?.quoteMs ?? null, sellQuoteMs: s.sell?.quoteMs ?? null,
@@ -187,8 +271,17 @@ export function sizeStudySnapshot(file) {
     independent: true }));
   const oneExitRpcCalls = scenarios.reduce((n, s) => n + s.rpcCalls, 0);
   const fourExitRpcCalls = (data.scenarios ?? []).reduce((n, s) => n + (s.buy?.rpcCalls ?? 0) + 4 * (s.sell?.rpcCalls ?? 0), 0);
+  const buySnapshots = scenarios.filter(s => s.buyRpcCalls != null);
+  const snapshotFields = buySnapshots.map(q => JSON.stringify({ pool: q.pool, reserves: q.reserves, commitment: q.commitment, verified: q.contextVerified }));
+  const sharedSnapshotPossible = snapshotFields.length > 0 && snapshotFields.every(v => v === snapshotFields[0]);
+  const independentBuyRpcCalls = buySnapshots.reduce((n, q) => n + Number(q.buyRpcCalls ?? 0), 0);
+  const sharedSnapshotRpcCalls = buySnapshots.length ? Math.max(...buySnapshots.map(q => Number(q.buyRpcCalls ?? 0))) : null;
   return { status: "UNPROVEN", reason: "single-mint smoke, no common prospective source signature and no paired trader exits", fx: data.fx,
     scenarios, comparableProspectivePairs: 0, rpcCalls: oneExitRpcCalls,
+    sharedSnapshot: { possible: sharedSnapshotPossible, confirmed: sharedSnapshotPossible && buySnapshots.every(q => q.commitment === "confirmed" && q.contextVerified === true),
+      independentBuyRpcCalls, sharedSnapshotRpcCalls, estimatedSavedRpcCalls: sharedSnapshotRpcCalls == null ? null : independentBuyRpcCalls - sharedSnapshotRpcCalls,
+      localSdkQuotes: sharedSnapshotPossible ? "eligible_for_local_integer_quote_fanout" : "not_run_mixed_market_snapshots",
+      errorBound: sharedSnapshotPossible ? "must be measured against same-slot SDK fixture" : "UNKNOWN: smoke snapshots differ by slot/reserves; no historical price substituted" },
     rpcBudget: { oneBuyPlusOneSell: oneExitRpcCalls, oneBuyPlusFourSells: fourExitRpcCalls, perObserverAccountBudgetPerMinute: 45, verificationBudgetPerMinute: 18,
       conclusion: fourExitRpcCalls > 45 ? "single observer budget is insufficient for five sizes at one signal; shared WS can reduce duplicate verification but quote reads still need a separate pool or a staged research run" : "within observed account budget" },
     requiredBudgetNote: "five independent quotes use separate account reads; this smoke has one BUY and one SELL only, so no 10s/30s/120s/target comparison exists" };
@@ -233,9 +326,9 @@ export function renderMarkdown(report) {
   }
   rows.push("", "## Five-size study", "", `Status **${report.sizeStudy.status}**. ${report.sizeStudy.reason}.`, "", "| Scenario | Input lamports | Venue | Confirmed | BUY+SELL RPC | BUY impact bps | SELL impact bps | BUY ms | SELL ms | Net SOL | Net USD | ROI | No rent SOL |", "|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
   for (const s of report.sizeStudy.scenarios ?? []) rows.push(`| ${s.id} | ${s.inputLamports} | ${s.venue ?? "UNKNOWN"} | ${s.contextVerified ? "yes" : "no"} | ${s.rpcCalls ?? "UNKNOWN"} | ${s.priceImpactBps ?? "UNKNOWN"} | ${s.sellImpactBps ?? "UNKNOWN"} | ${s.quoteMs ?? "UNKNOWN"} | ${s.sellQuoteMs ?? "UNKNOWN"} | ${s.netSol ?? "UNKNOWN"} | ${s.netUsd ?? "UNKNOWN"} | ${s.roi == null ? "UNKNOWN" : (s.roi * 100).toFixed(2) + "%"} | ${s.netWithoutRentSol ?? "UNKNOWN"} |`);
-  rows.push("", `Observed RPC budget for one BUY plus one SELL is ${report.sizeStudy.rpcBudget?.oneBuyPlusOneSell ?? "UNKNOWN"} calls. A four-exit five-size run estimates ${report.sizeStudy.rpcBudget?.oneBuyPlusFourSells ?? "UNKNOWN"} account reads against a ${report.sizeStudy.rpcBudget?.perObserverAccountBudgetPerMinute ?? "UNKNOWN"}/minute observer budget. ${report.sizeStudy.rpcBudget?.conclusion ?? "UNKNOWN"}.`, "", "No prospective pair is counted as profitable until all sizes share the same source signature, source slot, exit horizon and confirmed market context.", "", "## Candidate screen", "", `Cached candidate files ${report.candidates?.cachedFiles ?? "UNKNOWN"}, authenticated signers ${report.candidates?.authenticatedSigners ?? "UNKNOWN"} of target 100. Status **${report.candidates?.status ?? "UNKNOWN"}**.`, "", "| Candidate | Wallet | Eligible BUY | Eligible SELL | Unsupported | Non-SOL |", "|---|---|---:|---:|---:|---:|");
+  rows.push("", `Observed RPC budget for one BUY plus one SELL is ${report.sizeStudy.rpcBudget?.oneBuyPlusOneSell ?? "UNKNOWN"} calls. A four-exit five-size run estimates ${report.sizeStudy.rpcBudget?.oneBuyPlusFourSells ?? "UNKNOWN"} account reads against a ${report.sizeStudy.rpcBudget?.perObserverAccountBudgetPerMinute ?? "UNKNOWN"}/minute observer budget. ${report.sizeStudy.rpcBudget?.conclusion ?? "UNKNOWN"}.`, `Shared confirmed snapshot: ${report.sizeStudy.sharedSnapshot?.possible ? "possible" : "not proven"}; independent BUY reads ${report.sizeStudy.sharedSnapshot?.independentBuyRpcCalls ?? "UNKNOWN"}, one snapshot lower-bound ${report.sizeStudy.sharedSnapshot?.sharedSnapshotRpcCalls ?? "UNKNOWN"}, error bound **${report.sizeStudy.sharedSnapshot?.errorBound ?? "UNKNOWN"}**.`, "", "No prospective pair is counted as profitable until all sizes share the same source signature, source slot, exit horizon and confirmed market context.", "", "## Candidate screen", "", `Cached candidate files ${report.candidates?.cachedFiles ?? "UNKNOWN"}, authenticated signers ${report.candidates?.authenticatedSigners ?? "UNKNOWN"} of target 100. Status **${report.candidates?.status ?? "UNKNOWN"}**.`, "", "| Candidate | Wallet | Eligible BUY | Eligible SELL | Unsupported | Non-SOL |", "|---|---|---:|---:|---:|---:|");
   for (const c of report.candidates?.top ?? []) rows.push(`| ${c.name} | ${c.wallet} | ${c.eligibleBuy} | ${c.eligibleSell} | ${c.unsupported} | ${c.nonSol} |`);
-  rows.push("", "## Decision", "", "No strategy or size is selected as a winner. Current results are **UNPROVEN** because the server shadow journal lacks a service run-id, the five-size evidence has no common prospective pairs, and the cached historical screen contains fewer than 100 authenticated addresses. The next step is to let observer PID 8032 finish unchanged, then run a read-only report over the closed window and keep data with missing finality or coverage as UNKNOWN.", "");
+  rows.push("", "## Decision", "", "No strategy or size is selected as a winner. Current results are **INVALID/DATA_GAP** for coverage and **UNPROVEN** for profitability: the old observer ended without STOP during a documented host shutdown, the five-size evidence has no common same-slot snapshot or prospective pairs, and the cached historical screen contains fewer than 100 authenticated addresses. Keep modelled closes separate from real executions; do not start a new experiment until the supervisor readiness criteria in `docs/observer-run-audit.md` are met.", "");
   return rows.join("\n");
 }
 

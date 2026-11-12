@@ -18,7 +18,7 @@
   "funnel": {
     "3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG": {
       "allTime": {
-        "status": "UNPROVEN",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
@@ -66,17 +66,25 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
-          "coverage": "PROVEN"
+          "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 0,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": false
         }
       },
       "currentRun": {
-        "status": "UNPROVEN",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
@@ -124,17 +132,25 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
-          "coverage": "PROVEN"
+          "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 0,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": false
         }
       },
       "last24h": {
-        "status": "UNPROVEN",
+        "status": "DATA_GAP",
         "start": 1794392764163,
         "end": 1794479164163,
         "counts": {
@@ -182,36 +198,44 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 290,
+          "gapMs": 2349562,
+          "errors": 145,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
-          "available": 3644,
-          "coverage": "PROVEN"
+          "available": 2402,
+          "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 0,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": false
         }
       }
     },
     "sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT": {
       "allTime": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
           "wsNotification": 2421,
           "parsedSignal": 3882,
-          "confirmed": 2206,
-          "eligibleBuy": 2219,
-          "buyQuote": 426,
+          "confirmed": 3558,
+          "eligibleBuy": 2206,
+          "buyQuote": 423,
           "sellQuote": 412,
           "closed": 412
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 1676,
-          "confirmedToEligibleBuy": 0,
-          "eligibleBuyToBuyQuote": 1793,
-          "buyQuoteToSellQuote": 14,
+          "parsedSignalToConfirmed": 324,
+          "confirmedToEligibleBuy": 1352,
+          "eligibleBuyToBuyQuote": 1783,
+          "buyQuoteToSellQuote": 11,
           "sellQuoteToClosed": 0
         },
         "reasons": {
@@ -254,34 +278,42 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 412,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       },
       "currentRun": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
           "wsNotification": 2421,
           "parsedSignal": 3882,
-          "confirmed": 2206,
-          "eligibleBuy": 2219,
-          "buyQuote": 426,
+          "confirmed": 3558,
+          "eligibleBuy": 2206,
+          "buyQuote": 423,
           "sellQuote": 412,
           "closed": 412
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 1676,
-          "confirmedToEligibleBuy": 0,
-          "eligibleBuyToBuyQuote": 1793,
-          "buyQuoteToSellQuote": 14,
+          "parsedSignalToConfirmed": 324,
+          "confirmedToEligibleBuy": 1352,
+          "eligibleBuyToBuyQuote": 1783,
+          "buyQuoteToSellQuote": 11,
           "sellQuoteToClosed": 0
         },
         "reasons": {
@@ -324,34 +356,42 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 412,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       },
       "last24h": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": 1794392764163,
         "end": 1794479164163,
         "counts": {
           "wsNotification": 1588,
           "parsedSignal": 2566,
-          "confirmed": 1437,
-          "eligibleBuy": 1445,
-          "buyQuote": 294,
-          "sellQuote": 283,
-          "closed": 283
+          "confirmed": 2336,
+          "eligibleBuy": 1437,
+          "buyQuote": 292,
+          "sellQuote": 282,
+          "closed": 282
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 1129,
-          "confirmedToEligibleBuy": 0,
-          "eligibleBuyToBuyQuote": 1151,
-          "buyQuoteToSellQuote": 11,
+          "parsedSignalToConfirmed": 230,
+          "confirmedToEligibleBuy": 899,
+          "eligibleBuyToBuyQuote": 1145,
+          "buyQuoteToSellQuote": 10,
           "sellQuoteToClosed": 0
         },
         "reasons": {
@@ -393,25 +433,33 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 290,
+          "gapMs": 2349562,
+          "errors": 145,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
-          "available": 3644,
+          "available": 2402,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 282,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       }
     },
     "DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm": {
       "allTime": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
           "wsNotification": 57,
           "parsedSignal": 104,
-          "confirmed": 47,
+          "confirmed": 86,
           "eligibleBuy": 47,
           "buyQuote": 17,
           "sellQuote": 17,
@@ -419,8 +467,8 @@
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 57,
-          "confirmedToEligibleBuy": 0,
+          "parsedSignalToConfirmed": 18,
+          "confirmedToEligibleBuy": 39,
           "eligibleBuyToBuyQuote": 30,
           "buyQuoteToSellQuote": 0,
           "sellQuoteToClosed": 0
@@ -461,23 +509,31 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 17,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       },
       "currentRun": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": null,
         "end": null,
         "counts": {
           "wsNotification": 57,
           "parsedSignal": 104,
-          "confirmed": 47,
+          "confirmed": 86,
           "eligibleBuy": 47,
           "buyQuote": 17,
           "sellQuote": 17,
@@ -485,8 +541,8 @@
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 57,
-          "confirmedToEligibleBuy": 0,
+          "parsedSignalToConfirmed": 18,
+          "confirmedToEligibleBuy": 39,
           "eligibleBuyToBuyQuote": 30,
           "buyQuoteToSellQuote": 0,
           "sellQuoteToClosed": 0
@@ -527,23 +583,31 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 318,
+          "gapMs": 3399078,
+          "errors": 158,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
           "available": 3644,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 17,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       },
       "last24h": {
-        "status": "INVALID",
+        "status": "DATA_GAP",
         "start": 1794392764163,
         "end": 1794479164163,
         "counts": {
           "wsNotification": 51,
           "parsedSignal": 83,
-          "confirmed": 41,
+          "confirmed": 66,
           "eligibleBuy": 41,
           "buyQuote": 15,
           "sellQuote": 15,
@@ -551,8 +615,8 @@
         },
         "missing": {
           "wsNotificationToParsedSignal": 0,
-          "parsedSignalToConfirmed": 42,
-          "confirmedToEligibleBuy": 0,
+          "parsedSignalToConfirmed": 17,
+          "confirmedToEligibleBuy": 25,
           "eligibleBuyToBuyQuote": 26,
           "buyQuoteToSellQuote": 0,
           "sellQuoteToClosed": 0
@@ -593,13 +657,21 @@
           }
         },
         "ws": {
-          "gaps": 0,
-          "gapMs": 0,
-          "errors": 0
+          "gaps": 290,
+          "gapMs": 2349562,
+          "errors": 145,
+          "coverage": "INCOMPLETE"
         },
         "finalized": {
-          "available": 3644,
+          "available": 2402,
           "coverage": "INCOMPLETE"
+        },
+        "coordination": {
+          "key": "run:wallet:signature",
+          "modelledClosed": 15,
+          "executedClosed": 0,
+          "closedRequiresConfirmedBuy": true,
+          "observedSignals": true
         }
       }
     }
@@ -837,6 +909,11 @@
         "id": "control",
         "inputLamports": "5000000",
         "venue": "pumpswap",
+        "pool": "EtPUikvqDKE9czxgDq1SvoN8f2cxRk15VufMkhisxV8S",
+        "reserves": {
+          "baseRaw": "276120192593002",
+          "quoteRaw": "52450883161"
+        },
         "marketContextSlot": 468169158,
         "commitment": "confirmed",
         "contextVerified": true,
@@ -861,6 +938,11 @@
         "id": "usd5",
         "inputLamports": "59502558",
         "venue": "pumpswap",
+        "pool": "EtPUikvqDKE9czxgDq1SvoN8f2cxRk15VufMkhisxV8S",
+        "reserves": {
+          "baseRaw": "276120192593002",
+          "quoteRaw": "52450883161"
+        },
         "marketContextSlot": 468169267,
         "commitment": "confirmed",
         "contextVerified": true,
@@ -885,6 +967,11 @@
         "id": "usd10",
         "inputLamports": "119005117",
         "venue": "pumpswap",
+        "pool": "EtPUikvqDKE9czxgDq1SvoN8f2cxRk15VufMkhisxV8S",
+        "reserves": {
+          "baseRaw": "276120192593002",
+          "quoteRaw": "52450883161"
+        },
         "marketContextSlot": 468169378,
         "commitment": "confirmed",
         "contextVerified": true,
@@ -909,6 +996,11 @@
         "id": "usd20",
         "inputLamports": "238010234",
         "venue": "pumpswap",
+        "pool": "EtPUikvqDKE9czxgDq1SvoN8f2cxRk15VufMkhisxV8S",
+        "reserves": {
+          "baseRaw": "276120192593002",
+          "quoteRaw": "52450883161"
+        },
         "marketContextSlot": 468169494,
         "commitment": "confirmed",
         "contextVerified": true,
@@ -933,6 +1025,11 @@
         "id": "usd30",
         "inputLamports": "357015351",
         "venue": "pumpswap",
+        "pool": "EtPUikvqDKE9czxgDq1SvoN8f2cxRk15VufMkhisxV8S",
+        "reserves": {
+          "baseRaw": "277693059984459",
+          "quoteRaw": "52057408365"
+        },
         "marketContextSlot": 468169607,
         "commitment": "confirmed",
         "contextVerified": true,
@@ -956,6 +1053,15 @@
     ],
     "comparableProspectivePairs": 0,
     "rpcCalls": 71,
+    "sharedSnapshot": {
+      "possible": false,
+      "confirmed": false,
+      "independentBuyRpcCalls": 36,
+      "sharedSnapshotRpcCalls": 8,
+      "estimatedSavedRpcCalls": 28,
+      "localSdkQuotes": "not_run_mixed_market_snapshots",
+      "errorBound": "UNKNOWN: smoke snapshots differ by slot/reserves; no historical price substituted"
+    },
     "rpcBudget": {
       "oneBuyPlusOneSell": 71,
       "oneBuyPlusFourSells": 176,
@@ -967,107 +1073,13 @@
   },
   "candidates": {
     "target": 100,
-    "cachedFiles": 36,
-    "screenedCandidates": 36,
+    "cachedFiles": 0,
+    "screenedCandidates": 0,
     "authenticatedSigners": 39,
     "missingToTarget": 61,
     "status": "UNPROVEN_INSUFFICIENT_CACHED_ADDRESSES",
-    "excludedForInsufficientCoverage": [
-      "3CdG3mgaumweQsUpkMgp5b5wHFgd3nJwh2aDw1ktZA5i",
-      "5rFYLMVFDGWfwSpz6eZENwyNPYPxPfJJJSShGj9QmuZZ",
-      "Ah5bQDFT3s3NUtgcU81AeSgw7EJW871Y9YwrvyVFbBc4",
-      "BtFRspyDDBRjSXyTmMsm9tYRouuaZZdpB9Kmh5mSkrWu",
-      "BtkFpES41nrkA9bqXpQ8yiYUKinVFcysrNF5MWfogKip",
-      "CpzqSPJgFLYFYn6auiyp5aR6rxh67EzWLuJ7AZ5c1YbB",
-      "EXaEiYhku3ggMVK9QtxUkRXFXuAmoR2gaxPvDF5HtMAK",
-      "9tH2zRYdS3X7PEcsPno3GST1EHe8GX8CSNih1pKpamAp",
-      "Gau71FxKMomuyHrKQyifWEYhdmU2kcc4cHbEjJhBi1Xk",
-      "GgDAijkjPdaXNdiPQyqKZuTDE6DeTXSYxrfvCjBorZst",
-      "EwJYY4q2rcrdEH26doRbYX9JxbpYPSNZvRLgzhPKi418",
-      "i5t7PczfEQWvsnpMa5bSiSQLFGz8u6CRmcmPWtQ4RRN"
-    ],
-    "top": [
-      {
-        "name": "cand_j45",
-        "wallet": "J45JdaaqLniscYrf5QRLSbhumkyos5de8j5veoddeHCx",
-        "listed": 3215,
-        "trades": 2100,
-        "buys": 901,
-        "sells": 1199,
-        "eligibleBuy": 901,
-        "eligibleSell": 1199,
-        "unsupported": 0,
-        "nonSol": 0,
-        "venues": {
-          "undefined": 2100
-        },
-        "score": 5101
-      },
-      {
-        "name": "cand_7ufmve",
-        "wallet": "7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL",
-        "listed": 2569,
-        "trades": 1467,
-        "buys": 153,
-        "sells": 1314,
-        "eligibleBuy": 153,
-        "eligibleSell": 1314,
-        "unsupported": 0,
-        "nonSol": 0,
-        "venues": {
-          "undefined": 1467
-        },
-        "score": 3087
-      },
-      {
-        "name": "cand_2jxpmu",
-        "wallet": "2JxPmU9UU5KhSQ7h5v8PfhgbxPQhHNyBqNrhPAjPiWCu",
-        "listed": 1997,
-        "trades": 1299,
-        "buys": 431,
-        "sells": 868,
-        "eligibleBuy": 431,
-        "eligibleSell": 868,
-        "unsupported": 0,
-        "nonSol": 0,
-        "venues": {
-          "undefined": 1299
-        },
-        "score": 3029
-      },
-      {
-        "name": "cand_grok1r",
-        "wallet": "grok1r9rhYXqniD79L3eeBB6bBLd8ytGrhDRa6kgRNt",
-        "listed": 12000,
-        "trades": 895,
-        "buys": 157,
-        "sells": 738,
-        "eligibleBuy": 157,
-        "eligibleSell": 738,
-        "unsupported": 0,
-        "nonSol": 0,
-        "venues": {
-          "undefined": 895
-        },
-        "score": 1947
-      },
-      {
-        "name": "cand_8zp",
-        "wallet": "8zpZdVXdBcybJCNwxhgTqMTA2tNo9FqLm5VM8N6E1ixx",
-        "listed": 736,
-        "trades": 665,
-        "buys": 497,
-        "sells": 168,
-        "eligibleBuy": 497,
-        "eligibleSell": 168,
-        "unsupported": 0,
-        "nonSol": 0,
-        "venues": {
-          "undefined": 665
-        },
-        "score": 1827
-      }
-    ],
+    "excludedForInsufficientCoverage": [],
+    "top": [],
     "overlapWithRawSigners": 0
   },
   "serverStatus": {

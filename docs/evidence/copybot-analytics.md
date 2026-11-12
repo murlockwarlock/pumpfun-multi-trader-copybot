@@ -34,15 +34,15 @@ Observer run 15915ccb-07c5-4e38-813f-56dceb361511, rows 18606.
 
 | Wallet | Scope | WS | Parsed | Confirmed | Eligible BUY | BUY quote | SELL quote | Closed | Status |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---|
-| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | allTime | 0 | 0 | 0 | 0 | 0 | 0 | 0 | UNPROVEN |
-| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | currentRun | 0 | 0 | 0 | 0 | 0 | 0 | 0 | UNPROVEN |
-| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | last24h | 0 | 0 | 0 | 0 | 0 | 0 | 0 | UNPROVEN |
-| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | allTime | 2421 | 3882 | 2206 | 2219 | 426 | 412 | 412 | INVALID |
-| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | currentRun | 2421 | 3882 | 2206 | 2219 | 426 | 412 | 412 | INVALID |
-| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | last24h | 1588 | 2566 | 1437 | 1445 | 294 | 283 | 283 | INVALID |
-| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | allTime | 57 | 104 | 47 | 47 | 17 | 17 | 17 | INVALID |
-| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | currentRun | 57 | 104 | 47 | 47 | 17 | 17 | 17 | INVALID |
-| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | last24h | 51 | 83 | 41 | 41 | 15 | 15 | 15 | INVALID |
+| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | allTime | 0 | 0 | 0 | 0 | 0 | 0 | 0 | DATA_GAP |
+| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | currentRun | 0 | 0 | 0 | 0 | 0 | 0 | 0 | DATA_GAP |
+| 3j5c4aD1aznxQXJ3DWw1b7UD8kKuaqXVbpaVeWPR83TG | last24h | 0 | 0 | 0 | 0 | 0 | 0 | 0 | DATA_GAP |
+| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | allTime | 2421 | 3882 | 3558 | 2206 | 423 | 412 | 412 | DATA_GAP |
+| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | currentRun | 2421 | 3882 | 3558 | 2206 | 423 | 412 | 412 | DATA_GAP |
+| sssssv2ivFNk1ogpBnEkcijSHzvib5vKfhiJMhRT2NT | last24h | 1588 | 2566 | 2336 | 1437 | 292 | 282 | 282 | DATA_GAP |
+| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | allTime | 57 | 104 | 86 | 47 | 17 | 17 | 17 | DATA_GAP |
+| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | currentRun | 57 | 104 | 86 | 47 | 17 | 17 | 17 | DATA_GAP |
+| DGma4Uxm9JS6yLNdgYaxsZhwk2nxrRGMfMt5buXbiFCm | last24h | 51 | 83 | 66 | 41 | 15 | 15 | 15 | DATA_GAP |
 
 ### Funnel latency
 
@@ -71,21 +71,17 @@ Status **UNPROVEN**. single-mint smoke, no common prospective source signature a
 | usd30 | 357015351 | pumpswap | yes | 14 | 50.6460944531395 | 49.63932517643044 | 678 | 658 | -0.019479585 | -1.63686952755 | -5.46% | -0.020993425 |
 
 Observed RPC budget for one BUY plus one SELL is 71 calls. A four-exit five-size run estimates 176 account reads against a 45/minute observer budget. single observer budget is insufficient for five sizes at one signal; shared WS can reduce duplicate verification but quote reads still need a separate pool or a staged research run.
+Shared confirmed snapshot: not proven; independent BUY reads 36, one snapshot lower-bound 8, error bound **UNKNOWN: smoke snapshots differ by slot/reserves; no historical price substituted**.
 
 No prospective pair is counted as profitable until all sizes share the same source signature, source slot, exit horizon and confirmed market context.
 
 ## Candidate screen
 
-Cached candidate files 36, authenticated signers 39 of target 100. Status **UNPROVEN_INSUFFICIENT_CACHED_ADDRESSES**.
+Cached candidate files 0, authenticated signers 39 of target 100. Status **UNPROVEN_INSUFFICIENT_CACHED_ADDRESSES**.
 
 | Candidate | Wallet | Eligible BUY | Eligible SELL | Unsupported | Non-SOL |
 |---|---|---:|---:|---:|---:|
-| cand_j45 | J45JdaaqLniscYrf5QRLSbhumkyos5de8j5veoddeHCx | 901 | 1199 | 0 | 0 |
-| cand_7ufmve | 7ufmve7ZSFCzuNcKRunYrGtyb2Ka1MXzkWwf7jZhVsmL | 153 | 1314 | 0 | 0 |
-| cand_2jxpmu | 2JxPmU9UU5KhSQ7h5v8PfhgbxPQhHNyBqNrhPAjPiWCu | 431 | 868 | 0 | 0 |
-| cand_grok1r | grok1r9rhYXqniD79L3eeBB6bBLd8ytGrhDRa6kgRNt | 157 | 738 | 0 | 0 |
-| cand_8zp | 8zpZdVXdBcybJCNwxhgTqMTA2tNo9FqLm5VM8N6E1ixx | 497 | 168 | 0 | 0 |
 
 ## Decision
 
-No strategy or size is selected as a winner. Current results are **UNPROVEN** because the server shadow journal lacks a service run-id, the five-size evidence has no common prospective pairs, and the cached historical screen contains fewer than 100 authenticated addresses. The next step is to let observer PID 8032 finish unchanged, then run a read-only report over the closed window and keep data with missing finality or coverage as UNKNOWN.
+No strategy or size is selected as a winner. Current results are **INVALID/DATA_GAP** for coverage and **UNPROVEN** for profitability: the old observer ended without STOP during a documented host shutdown, the five-size evidence has no common same-slot snapshot or prospective pairs, and the cached historical screen contains fewer than 100 authenticated addresses. Keep modelled closes separate from real executions; do not start a new experiment until the supervisor readiness criteria in `docs/observer-run-audit.md` are met.
